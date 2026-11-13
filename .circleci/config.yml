@@ -1,0 +1,95 @@
+version: 2.1
+
+commands:
+  sync-submodules:
+    steps:
+      - run: git submodule sync
+      - run: git submodule update --init
+  checkout-submodules:
+    steps:
+      - checkout:
+          method: blobless
+      - sync-submodules
+
+executors:
+  go:
+    docker:
+      - image: alexfalkowski/go:5.23
+  release:
+    docker:
+      - image: alexfalkowski/release:8.49
+  alpine:
+    docker:
+      - image: alpine:latest
+
+jobs:
+  build:
+    executor: go
+    working_directory: ~/go-linux
+    steps:
+      - checkout-submodules
+      - run: make source-key
+      - restore_cache:
+          name: restore go cache
+          keys:
+            - go-linux-go-cache-v1-{{ checksum "go.mod" }}-{{ checksum "~/.go-version" }}-{{ checksum "~/.go-lint-version" }}-{{ checksum ".source-key" }}
+            - go-linux-go-cache-v1-
+      - run: make dep
+      - run: make lint
+      - run: make sec
+      - run: make specs
+      - save_cache:
+          name: save go cache
+          key: go-linux-go-cache-v1-{{ checksum "go.mod" }}-{{ checksum "~/.go-version" }}-{{ checksum "~/.go-lint-version" }}-{{ checksum ".source-key" }}
+          paths:
+            - ~/go/pkg/mod
+            - ~/.cache/go-build
+            - ~/.cache/golangci-lint
+      - run: make coverage
+      - store_test_results:
+          path: test/reports
+      - store_artifacts:
+          path: test/reports
+      - run: make codecov-upload
+    resource_class: arm.large
+  sync:
+    executor: release
+    working_directory: ~/go-linux
+    steps:
+      - checkout-submodules
+      - run: make sync push
+    resource_class: arm.large
+  version:
+    executor: release
+    working_directory: ~/go-linux
+    steps:
+      - checkout-submodules
+      - run: version
+      - run: package
+    resource_class: arm.large
+  wait-all:
+    executor: alpine
+    resource_class: small
+    steps:
+      - run: echo "all applicable jobs finished"
+
+workflows:
+  go-linux:
+    max_auto_reruns: 3
+    jobs:
+      - build
+      - sync:
+          requires:
+            - build
+          filters: 'pipeline.git.branch != "master"'
+      - version:
+          context: gh
+          serial-group: << pipeline.project.slug >>/version
+          requires:
+            - build
+          filters: 'pipeline.git.branch == "master"'
+      - wait-all:
+          requires:
+            - build
+            - sync
+            - version
