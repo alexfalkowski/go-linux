@@ -1,0 +1,65 @@
+version: "2"
+linters:
+  settings:
+    lll:
+      line-length: 180
+    funlen:
+      lines: 80
+  default: all
+  disable:
+    - bodyclose
+    - containedctx
+    - depguard
+    - embeddedstructfieldcheck
+    - err113
+    - exhaustive
+    - exhaustruct
+    - forcetypeassert
+    - funcorder
+    - gochecknoglobals
+    - gochecknoinits
+    - goconst
+    - gomodguard
+    - gomodguard_v2
+    - ireturn
+    - mnd
+    - nakedret
+    - nilnil
+    - nlreturn
+    - nonamedreturns
+    - noinlineerr
+    - paralleltest
+    - recvcheck
+    - revive
+    - tagalign
+    - tagliatelle
+    - varnamelen
+    - wrapcheck
+    - wsl
+    - wsl_v5
+    - exhaustruct_v5
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - tmp
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - tmp
+      - third_party$
+      - builtin$
+      - examples$
