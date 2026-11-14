@@ -1,0 +1,60 @@
+# pidfd
+
+Status: P05 complete by user acceptance on 2026-11-14; corrected-revision CI and R01 verification follow-ups remain explicit below. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns acceptance, results, and remaining gaps. Shared [API conventions](api.md) apply; the [package guide](../pidfd.md) owns usage.
+
+## Caller and resource model
+
+The caller opens a numeric process identity or adopts a separately owned pidfd, signals or observes exit, optionally reaps an eligible child, and closes the handle. `pidfd.Process` owns a private `*os.File` and an `eventfd.Counter` for close interruption. It implements `io.Closer` and `syscall.Conn`; it does not expose byte I/O, because pidfds are readiness objects rather than readable streams. Dependencies point to the existing eventfd package, standard Go packages, and the pinned x/sys. No new dependency or universal descriptor abstraction is introduced.
+
+| Surface | Included behavior |
+| --- | --- |
+| `Open(pid)` | Acquire a thread-group leader using pidfd_open with atomic close-on-exec; validate positive signed-32-bit PID without truncation |
+| `Adopt(file)` | Consume exclusive ownership on every call; close the input on validation or wake-descriptor construction failure |
+| `Signal(syscall.Signal)` | pidfd_send_signal with nil siginfo and flags zero; zero probes permission/existence |
+| `WaitReady()` | Observe poll readability/hangup, before or after reaping; do not consume child status |
+| `Wait()` | waitid(P_PIDFD, WEXITED|WNOHANG) plus interruptible readiness; return normal code, terminating signal, and core-dump indication |
+| `Close()` | Wake pending waiters and release both local descriptors, without killing or reaping |
+| `SyscallConn()` | Lifetime-protected borrowed descriptor access using the standard Go interface |
+
+`Exit.Code` is 0–255 after normal exit or -1 for signal termination; `Signal` is zero after normal exit. `CoreDump` reflects CLD_DUMPED, not a promise that a file exists. Error returns accompany a zero Exit. The private decoder views the x/sys siginfo buffer in native byte order: the SIGCHLD union begins after the aligned three-int header, and pid/uid/status occupy its first three words. The supported amd64 and arm64 layouts both place the union at byte 16; tests verify real nonzero codes, code 255, signal termination, and preservation of the kernel's core-dump status. No copied syscall tables or private Go runtime structures are used.
+
+## Standard-library overlap and ownership
+
+Go 1.27 already manages pidfds in `os.Process`. `Process.WithHandle` protects a borrowed handle during a callback, and `SysProcAttr.PidFD` obtains a descriptor during startup. This package does not launch processes or replace os/exec cleanup. For `exec.Cmd`, retain reaping with `Cmd.Wait` and use this package for signaling/observation only. For `os.StartProcess`, choose one reaper; call `os.Process.Release` after pidfd-owned reaping. Wait does not manufacture os.ProcessState or promise resource-usage accounting.
+
+The local Go source confirms that an explicitly requested startup PidFD remains caller-owned while Go duplicates its own process handle. WithHandle callers duplicate with F_DUPFD_CLOEXEC inside its callback and adopt only that duplicate. Startup and duplicate-composition tests exercise these actual paths, including Cmd.Wait running before exit. Duplicates share status flags, so making a duplicated handle nonblocking can make the standard library's blocking waitid return EAGAIN. The package preserves those flags.
+
+Adopt requires FD_CLOEXEC and validates the Linux 7.0 pidfs filesystem identity with fstatfs. It rejects PIDFD_THREAD (O_EXCL), O_PATH, and other filesystem objects. This checks descriptor type without requiring signal permission or a live target, unlike a signal-zero validation probe. Reaped pidfds are accepted. Adopt consumes the input immediately and closes it on every failure, including wake allocation failure. The input file must be exclusive during adoption and unused afterwards. This user-selected rule replaces the pilot's conditional ownership transfer: it removes caller cleanup branches at the cost of making rejected inputs unavailable for reuse. Open delegates acquired descriptors to the same consuming constructor. There is no inheritable-descriptor opt-out or pre-pidfs fallback.
+
+Open cannot validate earlier numeric-PID identity. Acquisition can target a reused PID if an earlier process was reaped before the syscall. Startup PidFD acquisition avoids that opening window; holding an acquired descriptor prevents later retargeting, not numeric reuse itself. Signal errors preserve actual Linux permission and lifetime errors. Adopt does not grant reaping rights.
+
+## Waiting, concurrency, and close
+
+A single atomic closed flag coordinates repeated/concurrent close and wait cancellation. RawConn.Control holds lifetime references for the process descriptor and private wake descriptor around poll. Close marks the owner closed, adds one to the eventfd, and closes both owners. Waiters leave the wake record unread so every concurrent poll sees readiness. Poll is a public syscall through x/sys; no private runtime hooks, cancellation goroutines, helper processes, or dependency on future P07 are needed. Each blocked waiter can occupy an OS thread, so this is not a scalable wait-many API.
+
+An alternative using RawConn.Read and Go's poller would require a nonblocking pidfd with successful Go poller registration. Requiring or changing shared nonblocking mode would exclude or interfere with the documented standard-library adoption paths. A private epoll/event-loop abstraction would enlarge scope before P07. One private eventfd per handle supplies close cancellation while preserving both blocking and nonblocking input descriptors. This concrete ownership requirement justifies the extra descriptor and atomic lifecycle state.
+
+Wait performs WNOHANG checks before blocking, so a live non-child immediately returns ECHILD. Exit readiness is level-triggered and persists after reaping; all observers can succeed. Reapers compete through Linux waitid: only one consumes status, and other waiters or external reapers see ECHILD. No status cache masks those races. The kernel's group-exit readiness prevents an early leader-thread exit from being treated as whole-process termination. Ptrace/traced children and stop/continue events are excluded.
+
+Close wakes pending readiness waits with os.ErrClosed. Wait never executes blocking waitid, even on blocking input descriptors. Already executing signal or status syscalls can complete while Close runs, and borrowed caller callbacks must return promptly. A syscall already holding a file reference may finish releasing its descriptor after Close starts. Existing deadlines on adopted files are preserved but do not control these waits. No context/deadline API is promised.
+
+Zero owners return os.ErrInvalid. High-level closed operations and repeated close match os.ErrClosed; closed state precedes signal-number validation. Negative and signed-32-bit-overflowing signal numbers return EINVAL without truncation; Linux validates the remaining signal range. Syscall errors carry os.PathError operation context and preserve errno. RawConn methods preserve os.File's raw error semantics. Close returns joined cleanup errors while attempting to release both resources.
+
+## Verification and omissions
+
+External Go tests use require through `package=pidfd make specs`, with race detection and retained JSON/JUnit/coverage. Real bounded children exercise typed exit codes, fatal signals/core status, signaling, repeated observation before/after reaping, multiple observers/reapers, external-reaper races, non-child observation, zero/closed owners, close interruption without child termination, raw access, flags, and descriptor counts. Adoption tests cover blocking/nonblocking, startup descriptors, WithHandle duplicates, already reaped handles, wrong filesystem objects, thread/O_PATH/inheritable rejection, and failure ownership. Bounded resource-limit subprocesses force eventfd allocation failure after Open acquisition and during Adopt; they verify both acquired-pidfd cleanup and consumed-input cleanup without private test seams.
+
+The SIGABRT fixture lowers only the child's core-file limit. That limit does not control every core handler, and SIGABRT alone does not guarantee CLD_DUMPED. After exit readiness, the test observes status with waitid(P_PID, WEXITED|WNOWAIT|WNOHANG), then verifies that pidfd.Wait reaps the child and preserves the observed core-dump flag. The test logs its kernel si_code without skipping either outcome. A CLD_KILLED result verifies the false flag only; positive CLD_DUMPED coverage on the primary target remains pending until a capable runner executes it. Host core-dump policy is unchanged.
+
+Ordinary-user execution needs permitted pidfd, pidfs inspection, fcntl, eventfd, poll, and waitid operations. Test fixtures additionally need procfs and the documented executables. Tests never send a nonzero signal outside test-owned children. Permission-denial coverage uses signal zero against a different-UID PID 1. Missing prerequisites skip only in optional runs and fail under required=true; such a skip remains a verification gap. An elevated runner with permission to signal that target is not equivalent to denial coverage. Cross-user signal success is not promised by these tests.
+
+The user accepted P05 completion after the fixture correction. A passing corrected-revision Linux 7.0 arm64 run at Go 1.27.0 and 1.27.4 remains a CI follow-up; positive CLD_DUMPED coverage on that target remains open for R01. Earlier jobs 123/124 verified signal-permission denial but failed the old core-dump expectation. Local Linux 7.3 amd64 results and both compile architectures do not establish corrected-revision primary-target runtime coverage. The P05 handoffs retain commands, results, acceptance scope, and evidence limits.
+
+Initial omissions: process/thread creation, thread pidfds, process-group signaling, queued/custom siginfo, pidfd_getfd, namespace operations, ptrace/stop/continue waits, rusage, deadlines, contexts, wait-many orchestration, and automatic child ownership transfer from os/exec. All included Linux operations and pidfs validation were checked against upstream 7.0 sources; no newer or vendor-specific feature is required. Rare syscall errors and exhaustive concurrency schedules remain beyond executed proof.
+
+## Primary references
+
+- [pidfd_open](https://man7.org/linux/man-pages/man2/pidfd_open.2.html), [pidfd_send_signal](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html), and [waitid](https://man7.org/linux/man-pages/man2/waitid.2.html): acquisition races, readiness, signal permission, reaping rights, and WNOHANG.
+- [Linux 7.0 pidfd UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/pidfd.h), [filesystem magic](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/magic.h), and [pidfs implementation](https://github.com/torvalds/linux/blob/v7.0/fs/pidfs.c): baseline flags, filesystem identity, persistent process handles, and readiness.
+- [Linux 7.0 wait implementation](https://github.com/torvalds/linux/blob/v7.0/kernel/exit.c) and [siginfo ABI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/asm-generic/siginfo.h): P_PIDFD, status consumption, and SIGCHLD layout.
+- [Go Process.WithHandle](https://pkg.go.dev/os@go1.27.4#Process.WithHandle), [SysProcAttr.PidFD](https://pkg.go.dev/syscall@go1.27.4#SysProcAttr), [pidfd source](https://cs.opensource.google/go/go/+/go1.27.4:src/os/pidfd_linux.go), and [raw connection source](https://cs.opensource.google/go/go/+/go1.27.4:src/os/rawconn.go): standard ownership and lifetime integration, also inspected in the local toolchain.

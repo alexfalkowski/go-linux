@@ -12,6 +12,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. Primary runtime v
 - [eventfd](docs/eventfd.md): event counters, semaphore reads, and pollable Go I/O with deadlines.
 - [timerfd](docs/timerfd.md): kernel timers, explicit clock domains, and pollable expiration counts.
 - [mmap](docs/mmap.md): owned anonymous/file mappings, page protection, and memory advice.
+- [pidfd](docs/pidfd.md): process handles, signaling, exit observation, and eligible child reaping.
 
 ## 🚀 Setup
 
