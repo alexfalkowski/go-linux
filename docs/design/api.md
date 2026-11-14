@@ -10,6 +10,8 @@ P04 implementation follow-up: [mmap](mmap.md) refines the mapping pilot with an 
 
 P05 implementation follow-up: [pidfd](pidfd.md) refines the process pilot with immediate ownership consumption by Adopt, flag-preserving standard-library handle composition, eventfd-interrupted poll waits, and nonblocking child-status checks. The [usage guide](../pidfd.md) separates observation from reaping. P05 is complete by user acceptance after the core-dump fixture correction. Corrected-revision ordinary arm64 CI now passes at both Go versions in jobs 193/194 at ae50d8d; positive primary-target core-dump evidence remains an explicit R01 follow-up. Creation/adoption cleanup is a shared ownership rule for subsequent packages.
 
+P07 implementation follow-up: [epoll](epoll.md) supplies explicit readiness sets for borrowed standard files, independently owned registrations, stable event identities, trigger modes, and close-interrupted waits. The [usage guide](../epoll.md) explains extended source lifetime and batch races. Existing opaque facility owners remain independent of epoll; their producer registration is outside this initial scope. P07 is complete at 5e42c6f after required Linux 7.0 arm64 jobs 236/238 each pass all 41 epoll events without skips at Go 1.27.0 and 1.27.4; local Linux 7.3 amd64 checks remain separate.
+
 ## Standard-library overlap
 
 The caller is a Go program that needs a Linux facility while retaining normal Go I/O and resource management. Ordinary application work should continue through the standard library. The inventory uses the installed Go 1.27.4 documentation and source, including the API history for features available before the module's Go 1.27.0 floor; minimum-version execution remains F02 work.

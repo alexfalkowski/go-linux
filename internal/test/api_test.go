@@ -7,6 +7,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/eventfd"
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mount"
@@ -26,6 +27,8 @@ func TestResourcesKeepDescriptorAccessPrivate(t *testing.T) {
 		{name: "process", owner: &pidfd.Process{}},
 		{name: "filesystem configuration", owner: &mount.Config{}},
 		{name: "mount", owner: &mount.Handle{}},
+		{name: "readiness set", owner: &epoll.Poller{}},
+		{name: "readiness registration", owner: &epoll.Registration{}},
 	} {
 		t.Run(resource.name, func(t *testing.T) {
 			require.NotImplements(t, (*syscall.Conn)(nil), resource.owner)

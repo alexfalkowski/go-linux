@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/eventfd"
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mmap"
@@ -15,6 +16,24 @@ import (
 	"github.com/alexfalkowski/go-linux/timerfd"
 	"github.com/stretchr/testify/require"
 )
+
+// Poller creates an empty readiness set and registers cleanup.
+func Poller(t *testing.T) *epoll.Poller {
+	t.Helper()
+	poller, err := epoll.New()
+	require.NoError(t, err)
+	Cleanup(t, poller)
+	return poller
+}
+
+// Registration borrows file to add an owned readiness entry with cleanup.
+func Registration(t *testing.T, poller *epoll.Poller, file *os.File, interests epoll.Events) *epoll.Registration {
+	t.Helper()
+	registration, err := poller.Add(file, interests)
+	require.NoError(t, err)
+	Cleanup(t, registration)
+	return registration
+}
 
 // Counter creates an owned counter with cleanup and a five-second I/O deadline.
 func Counter(t *testing.T, initial uint32, mode eventfd.Mode) *eventfd.Counter {

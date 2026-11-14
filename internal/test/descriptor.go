@@ -121,6 +121,13 @@ func NewEventfdDescriptor(t *testing.T, before map[int]string) int {
 	return newDescriptor(t, before, "anon_inode:[eventfd]")
 }
 
+// NewEpollDescriptor selects a newly acquired explicit epoll instance.
+// Lifetime and observation requirements follow NewDescriptor.
+func NewEpollDescriptor(t *testing.T, before map[int]string) int {
+	t.Helper()
+	return newDescriptor(t, before, "anon_inode:[eventpoll]")
+}
+
 // FileDescriptor observes a file's number before an ownership transfer. Keep
 // the receiving owner open while inspecting that number after the transfer.
 func FileDescriptor(t *testing.T, file *os.File) int {
