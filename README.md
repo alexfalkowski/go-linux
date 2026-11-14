@@ -9,6 +9,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. Primary runtime v
 ## 📦 Packages
 
 - [memfd](docs/memfd.md): memory-backed files, ordinary Go file I/O, and irreversible seals.
+- [eventfd](docs/eventfd.md): event counters, semaphore reads, and pollable Go I/O with deadlines.
 
 ## 🚀 Setup
 

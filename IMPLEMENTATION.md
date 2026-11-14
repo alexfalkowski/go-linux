@@ -1,6 +1,6 @@
 # Linux APIs for Go: implementation plan
 
-Status: F01, F02, and P01 (`memfd`) complete for the available Linux 7.0 arm64 CI target. P02 (`eventfd`) is next. Revisit the verification target when the runner environment changes.
+Status: F01, F02, P01 (`memfd`), and P02 (`eventfd`) complete for the available Linux 7.0 arm64 CI target. P03 (`timerfd`) is next. Revisit the verification target when the runner environment changes.
 
 This document is the shared execution plan for Codex, Claude, and human contributors. It is self-contained: an agent should be able to implement the next work item without access to the conversation that produced it.
 
@@ -16,9 +16,9 @@ The initial scope is **21 public packages in one module, across nine domains**. 
 
 | Field | Value |
 | --- | --- |
-| Current work item | None — P01 complete |
-| Next work item | P02 — `eventfd` |
-| Completed work items | F01, F02, P01 |
+| Current work item | P02 — `eventfd`, complete |
+| Next work item | P03 — `timerfd` |
+| Completed work items | F01, F02, P01, P02 |
 | Implementation repository | `github.com/alexfalkowski/go-linux`; this plan lives in `IMPLEMENTATION.md` |
 | Module path | `github.com/alexfalkowski/go-linux` |
 | Minimum Linux version | 7.0 |
@@ -29,7 +29,7 @@ The initial scope is **21 public packages in one module, across nine domains**. 
 | Observed userspace | Ubuntu 26.04.1 LTS |
 | Observed CircleCI kernel | `7.0.0-1017-aws` |
 | Observed CircleCI architecture | `arm64` (`aarch64`) |
-| CircleCI executor/image/resource class | Docker / configured image `alexfalkowski/go:5.23` / `arm.large`; current jobs 12–14 and their runner diagnostics verified |
+| CircleCI executor/image/resource class | Docker / configured image `alexfalkowski/go:5.23` / `arm.large`; foundation jobs 12–14 and P02 jobs 57–58 runner diagnostics verified |
 | Observed local execution privileges | UID 1000; effective and bounding capability sets are empty |
 | Observed local execution restrictions | `NoNewPrivs: 1`; `Seccomp: 2` (filter mode); user/mount/network namespace creation plus UID/GID mapping probe returns `EPERM`; no facility-specific success coverage inferred |
 | CircleCI execution privileges and restrictions | UID 3434; `CapEff: 00000000a0040400`; `CapBnd: 00000000a00405fb`; `NoNewPrivs: 0`; `Seccomp: 2`; user/mount/network namespace creation and UID/GID mapping probe succeeds |
@@ -239,6 +239,7 @@ F02 ran local prerequisite discovery and a disposable user/mount/network namespa
 | F02 / Linux 7.0 baseline | Verified | None for F02 | Jobs 14 and 12 execute 15 tests each on actual `7.0.0-1017-aws` arm64 with Go 1.27.0 and 1.27.4 | Available CircleCI Linux 7.0 arm64 runner | Resolved 2026-11-14 |
 | F02 / arm64 CI matrix and isolation | Verified for the available target | No additional kernel lane required; facility-specific privileged success remains with its owning package | Jobs 12–14 pass; diagnostics record kernel, architecture, UID, capabilities, seccomp, and namespace success; both architectures compile at both Go versions | Current CircleCI runner at minimum/latest supported Go versions | Resolved 2026-11-14; revisit when the runner changes |
 | P01 / creation, I/O, six seals, and lifecycle on Linux 7.0 arm64 | Verified on the primary target and local Linux 7.3 amd64 | None for P01 | [Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35) and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36) each pass all 23 memfd tests without failures or skips on actual Linux 7.0.0-1017-aws arm64; both compile architectures pass | Existing CircleCI arm64 Go matrix with permitted memfd/fcntl/mmap and MFD_EXEC policy | Resolved 2026-11-14 for implementation revision 3b9ae31 |
+| P02 / creation, both counter modes, record I/O, polling/deadlines, and lifecycle on Linux 7.0 arm64 | Verified on the primary target and local Linux 7.3 amd64 | None for P02 | [Go 1.27.0 job 57](https://circleci.com/gh/alexfalkowski/go-linux/57) and [Go 1.27.4 job 58](https://circleci.com/gh/alexfalkowski/go-linux/58) each pass all 38 eventfd test events and all 76 regression test events without failures/skips on actual Linux 7.0.0-1017-aws arm64; both compile architectures pass | Existing CircleCI arm64 Go matrix with permitted eventfd2 and Go polling | Resolved 2026-11-14 for implementation revision 1c5b6f8 |
 
 ## Phase 0: foundation
 
@@ -254,7 +255,9 @@ F02 ran local prerequisite discovery and a disposable user/mount/network namespa
 
   **Complete for the available Linux 7.0 arm64 target (2026-11-14).** The [package guide](docs/memfd.md), [design note](docs/design/memfd.md), package documentation, and executable example cover the owned `os.File`, non-executable/sealable default, executable opt-in, all six seals, raw descriptor lifetime, and omissions. Local tests pass at both Go versions; the full regression suite, lint, vet, security checks, and both compile architectures pass. [Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35) and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36) each execute all 23 memfd tests without failures or skips on actual Linux 7.0.0-1017-aws arm64, closing the P01 verification gap. The CI follow-up handoff below records the evidence and revision.
 
-- [ ] **P02 — `eventfd`: event counters.** Implement ordinary and semaphore modes, byte-oriented `Read`/`Write`, typed counter helpers, and `Close`. Preserve fixed-size/native-endian semantics. Establish Go polling/deadline integration for this descriptor and document any explicitly exposed raw nonblocking behavior. **Acceptance:** verify increments, reads and draining semantics, semaphore behavior, invalid buffers/values, blocking or deadlines as offered, and close during a blocked operation. Interface assertions supplement behavioral tests.
+- [x] **P02 — `eventfd`: event counters.** Implement ordinary and semaphore modes, byte-oriented `Read`/`Write`, typed counter helpers, and `Close`. Preserve fixed-size/native-endian semantics. Establish Go polling/deadline integration for this descriptor and document any explicitly exposed raw nonblocking behavior. **Acceptance:** verify increments, reads and draining semantics, semaphore behavior, invalid buffers/values, blocking or deadlines as offered, and close during a blocked operation. Interface assertions supplement behavioral tests.
+
+  **Complete for the available Linux 7.0 arm64 target (2026-11-14).** The [package guide](docs/eventfd.md), [design note](docs/design/eventfd.md), GoDoc, and executable examples cover the private pollable file owner, exclusive ordinary/semaphore modes, native-endian records, typed helpers, deadlines, borrowed `SyscallConn` access with standard `syscall.Conn` compatibility, close interruption, and omissions. [Go 1.27.0 job 57](https://circleci.com/gh/alexfalkowski/go-linux/57) and [Go 1.27.4 job 58](https://circleci.com/gh/alexfalkowski/go-linux/58) each pass all 38 eventfd and 76 regression test events without failures/skips on actual Linux 7.0.0-1017-aws arm64. Local focused runs pass at both Go versions; formatting, lint, vet, amd64/arm64 compilation, and security checks pass. The CI acceptance handoff below records the verified revision and closes the primary-target gap. P03 is next.
 
 - [ ] **P03 — `timerfd`: kernel timers.** Implement creation, arming/disarming, state inspection, and expiration reads. Represent relative versus absolute deadlines and clock choice explicitly; a monotonic absolute deadline is not an ordinary wall-clock `time.Time`. Support byte I/O and typed expiration counts where appropriate. **Acceptance:** verify one-shot and periodic behavior with tolerant timing assertions, disarming, expiration counts, supported clock modes, and resource shutdown. Clock-change cancellation tests need a dedicated VM or equivalent environment where adjusting the clock cannot affect the shared host.
 
@@ -339,6 +342,7 @@ Record material changes here with the reason and affected work items. Routine im
 | 2026-11-14 | Implement P01 around an embedded `os.File`, atomically close-on-exec and non-executable/sealable by default; pin x/sys v0.50.0 and Testify v1.12.1 | Preserve the pilot API, use lifetime-protected fcntl operations, and retain actual kernel errors. User preferences for require assertions, plain filenames with Linux tags, and related-code grouping/blank lines are recorded in AGENTS.md. |
 | 2026-11-14 | Keep README as a concise package index; put each public package's usage guide in `docs/<package>.md` | User-requested documentation convention prevents README growth; GoDoc, executable examples, and `docs/design/<package>.md` retain their respective API, runnable-usage, and design responsibilities. |
 | 2026-11-14 | Use plain filenames and explicit `//go:build linux` constraints for every repository-owned Go file, including tests and package docs | User selected this convention over `_linux.go` suffixes; preserve `_test.go` and leave dependency/submodule sources unchanged. Apply it to the existing foundation as well as public packages. |
+| 2026-11-14 | Implement P02 with a private `os.File`, atomic nonblocking/close-on-exec flags, native-endian records, and verified Go polling/deadlines | Preserve the pilot API without exposing stream/seek operations; require successful deadline registration before publishing the owner and normalize Go's private deadline closing error. Raw connections retain standard raw error semantics. |
 
 ## Handoff log
 
@@ -534,3 +538,77 @@ Next work item and concrete starting point: P02 — refine docs/design/api.md in
 ```
 
 CI evidence: [workflow](https://app.circleci.com/workflow/a15195a1-be0d-4bc3-88fc-8cbf7808fc04), [build 34](https://circleci.com/gh/alexfalkowski/go-linux/34), [Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35), and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36). Each verification job retains environment.json and JSON/JUnit test reports in its artifacts.
+
+### P02 — 2026-11-14
+
+This handoff records the implementation before primary-target CI evidence was collected. Its pending status is superseded by the CI acceptance handoff below.
+
+```text
+Work item: P02 — eventfd
+Status: implemented; required primary-target runtime verification pending
+Implementation: ready
+Verification: local Linux 7.3 amd64 runtime checks at Go 1.27.0 and 1.27.4 pass; Linux 7.0 arm64 runtime acceptance remains open
+Agent and date: Codex, 2026-11-14
+Changes: added eventfd/counter.go, doc.go, counter_test.go, and example_test.go; added docs/eventfd.md and docs/design/eventfd.md; updated README.md, docs/design/api.md, docs/verification.md, and this plan. Dependencies, vendored state, shared bin revision, CI configuration, support floors, and existing package implementations are unchanged.
+API decisions: New(initial uint32, mode Mode) returns an owned Counter containing a private os.File. Default=0 drains the accumulated count; Semaphore=1 consumes one unit. Creation atomically sets EFD_NONBLOCK and EFD_CLOEXEC. A zero-deadline probe requires working Go polling before publishing ownership and closes the file on failure. Read/Write preserve native-endian eight-byte records; ReadValue/Add provide typed I/O. Buffer checks cover Go's special zero-length-read case. The kernel validates counter values. No raw-mode constructor, contexts, exported file, seek API, generic descriptor type, or shared internals were added.
+Primary references: inspected upstream Linux 7.0 fs/eventfd.c, eventfd(2), Go NewFile/RawConn documentation, installed Go os/file_unix.go, os/file_posix.go, os/rawconn.go and internal/poll sources, and the pinned x/sys eventfd2 wrapper and amd64/arm64 constants. Relevant primary links are in docs/design/eventfd.md. The minimum/current toolchains' file_posix.go and fd_poll_runtime.go were compared and are identical.
+Ownership and errors: explicit Close owns cleanup and interrupts poll-blocked reads/writes. Zero-value errors match os.ErrInvalid; repeated close, valid I/O, and deadline setters after close match os.ErrClosed. Deadline setters expose Go's private closing error directly, so the wrapper normalizes it for the known pollable owner without extra mutable lifecycle state or string matching. Raw connections retain standard os.File raw closing errors. Invalid buffer sizes take precedence after close; valid-buffer I/O checks deadlines/lifetime before kernel value validation. Actual syscall errno remains available through errors.Is/errors.As.
+Test strategy: external Go tests with require assertions through the existing gotestsum harness. Real kernel scenarios cover initial-value width, accumulation/draining, semaphore decrementing, byte encoding/record boundaries, invalid sizes and values without mutation, zero and maximum counts, raw EAGAIN, descriptor flags/ownership, blocking and overflow backpressure, deadline expiry/reset/direction independence, pending deadline changes, close during blocked reads/writes, zero/closed states, invalid modes, and concurrent additions. Interface assertions supplement behavior. No mocks, private test seams, new harness, fuzzing, or benchmarks.
+Checks: make help -> command discovery passed; package=memfd make specs -> existing harness executed 23 passing events before implementation
+Checks: go version; uname -srmo; id -u; selected /proc/self/status fields -> Go 1.27.4, Linux 7.3.4-2-t2-resolute amd64, UID 1000, empty effective/bounding capabilities, NoNewPrivs 1, Seccomp 2
+Checks: GOPATH=/tmp/go-linux-p01-toolchains make dep and GOPATH=/tmp/go-linux-p01-toolchains GOTOOLCHAIN=go1.27.0 make dep -> passed using the previously established writable checksum/module cache; dependency state unchanged
+Checks: make format -> passed; package=eventfd make specs and GOPATH=/tmp/go-linux-p01-toolchains GOTOOLCHAIN=go1.27.0 package=eventfd make specs -> each passed 37 test events with race detection and zero failures/skips on the final Go source state
+Checks: make coverage after each focused run -> eventfd statement coverage 92.1% at Go 1.27.4 and 92.5% at Go 1.27.0; constructor syscall failure/poller rejection are uncovered; no claim of exhaustive state/kernel coverage
+Checks: make specs profile=rootless required=true arch=amd64 kernel=newer -> 75 passing regression events with race detection, zero failures/skips; make coverage -> combined module statement coverage 85.4%. The existing command main remains 0% in instrumented tests and was exercised separately through make test-environment.
+Checks: make vet compile and GOPATH=/tmp/go-linux-p01-toolchains GOTOOLCHAIN=go1.27.0 make vet compile -> passed on final source at both Go versions, including package/test compilation for linux/amd64 and linux/arm64; foreign architecture binaries were not executed
+Checks: GOLANGCI_LINT_CACHE=/tmp/go-linux-p02-lint package=eventfd make lint -> passed after final code/test edits; betteralign ran across repository packages and golangci-lint ran for eventfd, reporting 0 issues
+Checks: make sec -> passed on final code/test state; govulncheck scanned package/test dependencies with no vulnerabilities, Trivy reported go.mod vulnerability count 0 with secret scanning enabled
+Checks: make test-environment arch=amd64 kernel=newer -> passed; ordinary-user eventfd2/I/O/polling succeeded locally. Optional namespace creation/mapping remains unavailable with EPERM and is not an eventfd prerequisite.
+Artifacts: focused JSON/JUnit/coverage snapshots under ignored test/reports/p02-go1.27.0/ and p02-go1.27.4/; full-suite snapshot under p02-regression-go1.27.4/. Parsed JSON event counts confirm 37/37/75 passes with no failures/skips.
+Failure classification: the first focused run had one assertion failure because deadline setters after close exposed Go's private closing error rather than os.ErrClosed. Source inspection confirmed the cause; added lifecycle error normalization and reran focused and regression checks successfully. A later patch-context mismatch changed no files and was reapplied against the inspected context. No setup, permission, or unexplained failures remain in local checks.
+Refactor: local code/test, caller-boundary, and public-interface/lifecycle/dependency passes retained the direct owner and simple record methods. One private helper centralizes the required deadline closing-error normalization; test helpers share waiting, cleanup, and kernel-empty checks. Replaced deadline-based empty-counter assertions with raw EAGAIN checks so drain and semaphore consumption are actually observed. Readability passes preserved related grouping and explained repeated numeric/boolean assertions.
+Challenge pass: checked omitted flag/mode effects, 32/64-bit limits and native byte order, every short-read length, oversized writes, forbidden values without mutation, zero at empty/full counts, full drain versus semaphore decrement, blocked write atomicity, deadline direction/reset/persistence, pending I/O wakeups, zero/closed precedence, raw borrowing errors, and descriptor counts. Source mutation-style reasoning confirms these assertions reject missing flags, dropped additions, partial overflow, lost consumption, skipped size validation, and missing deadline error normalization; no mutation tool was run. Source review covers constructor syscall/poller failure cleanup, which was not forced through an injected seam. Kernel producer overflow and every concurrency schedule remain outside this item's executable proof. No independent review agent was used.
+Documentation validation: git diff --check and one-off local Markdown-link/build-tag inventories passed; the guide was checked against the executable example and actual API. No Markdown-specific Make target exists.
+Verification gap register: added P02 primary-target creation, both modes, record I/O, polling/deadlines, and lifecycle runtime gap. No primary-target eventfd CI reports were observed and no gap was resolved by cross-compilation. P02 remains unchecked; this is implementation readiness, not complete package acceptance or release readiness.
+Confidence: 96% for implementation readiness and local validation, supported by both Go-version kernel runs, the race-enabled regression suite, both compile architectures, lint/vet/security results, primary-source inspection, and the challenge pass. This does not accept Linux 7.0 arm64 runtime behavior before its CI evidence exists.
+Dependency assessment and next item: P03 is independent of missing P02 arm64 execution. Start with docs/design/api.md's timerfd sketch, refine clock/relative/absolute-time semantics in docs/design/timerfd.md and docs/timerfd.md, then implement arming/disarming/state/expiration reads with verified Go polling. Preserve exceptional zero-byte timerfd read semantics rather than allowing os.File to turn them into EOF; clock-jump cancellation success needs an isolated clock-controlled VM and must remain a gap when unavailable. Separately collect P02 JSON/JUnit and environment artifacts from the existing CircleCI Go 1.27.0/1.27.4 arm64 matrix before checking P02 complete.
+```
+
+### P02 review follow-up — 2026-11-14
+
+This handoff records the raw-access simplification before its primary-target CI results were collected. The CI acceptance handoff below supersedes its pending verification status.
+
+```text
+Work item: P02 — eventfd; raw access and review
+Status: implemented; primary Linux 7.0 arm64 runtime verification remains pending
+API decisions: expose only SyscallConn() (syscall.RawConn, error) for borrowed descriptor access. Preserve the standard syscall.Conn interface without a package-specific alias or duplicate method.
+Changes: updated GoDoc, usage/design guides, and the P02 API follow-up; the raw-access example queries close-on-exec under SyscallConn and handles callback and syscall errors separately. Flag-query coverage exercises the standard interface; raw EAGAIN and zero/closed-state coverage use the same public method.
+Checks on final Go source: make format; package=eventfd make specs; make coverage; GOPATH=/tmp/go-linux-p01-toolchains GOTOOLCHAIN=go1.27.0 package=eventfd make specs; GOLANGCI_LINT_CACHE=/tmp/go-linux-p02-lint package=eventfd make lint; make vet compile — all passed. Both focused runs passed 38 test events with race detection and no failures/skips. Go 1.27.4 statement coverage is 92.1%; both compile architectures passed. Earlier security checks are recorded in the P02 handoff above.
+Review: two independent agents reviewed the original implementation. The subsequent removal of the duplicate method and alias was reviewed locally against the syscall.Conn assertion, interface-based flag query, raw/lifecycle tests, and executable example. No blocking findings.
+Refactor: removed redundant raw-access names after local code/test, caller-boundary, and public-interface/lifecycle passes; retained the standard interface and existing behavioral coverage.
+Limitations: primary arm64 runtime execution remains unobserved; constructor rejection cleanup is source-reviewed without injected execution; kernel-producer overflow and exhaustive concurrency schedules are outside executed coverage. Focused local tests cover the changed package; CI owns the complete suite. P02 stays unchecked and P03 remains independent.
+Confidence: 95% for the local simplification, supported by focused checks at both Go versions, lint/vet/compile, and the compatibility/lifecycle challenge pass; this does not accept the pending primary-target runtime behavior.
+```
+
+### P02 — 2026-11-14, primary-target CI acceptance
+
+```text
+Work item: P02 — eventfd, CI verification follow-up
+Status: complete for the available Linux 7.0 arm64 target
+Implementation: ready
+Verification: required primary-target runtime evidence verified at Go 1.27.0 and 1.27.4
+Agent and date: Codex, 2026-11-14
+Repository and verified implementation revision: github.com/alexfalkowski/go-linux, 1c5b6f8f63529938a8d05ac0dff905f66194453f, PR #4
+CI evidence: workflow f67af340-bc20-4e7d-bab2-60ab4e8ce17a; build 56, verify-go1.27.0 job 57, and verify-go1.27.4 job 58 passed for the current implementation, including the standard SyscallConn API.
+Runtime evidence: environment.json reports actual Linux 7.0.0-1017-aws, aarch64/arm64, rootless profile, and the matching Go version in each verification job. specs.json records 38 eventfd test passes and 76 total regression test passes, with zero failures/skips and a successful eventfd package result in both jobs. Both jobs pass dependency setup, vet, and amd64/arm64 compilation.
+Changes: marked P02 complete in the state table and checkbox, resolved its verification gap, updated package/API/verification status, and recorded this acceptance handoff. Prior handoffs retain their historical pending status and are explicitly superseded here. P03 is next.
+Evidence collection: the diagnose-issue collector completed but reported no CircleCI token; public CircleCI workflow/job APIs and retained environment/specs artifacts supplied the missing evidence without credentials. Earlier revision 0650ac6 also passed jobs 51 and 52, but this acceptance uses the latest implementation's jobs 57 and 58.
+Local validation: documentation diff and local Markdown-link checks; Go implementation, tests, dependencies, and CI configuration match the verified revision. No behavioral tests are repeated for this documentation-only follow-up.
+Verification gap register: P02 primary-target creation, both modes, record I/O, polling/deadlines, and lifecycle gap resolved by jobs 57 and 58. Constructor syscall/poller rejection cleanup remains source-reviewed; kernel-producer overflow and exhaustive concurrency schedules remain outside executed coverage. Full amd64 baseline runtime support remains a separate project limitation.
+Refactor: none; documentation accuracy, audience/owner fit, and acceptance-boundary passes found no implementation changes needed.
+Challenge pass: checked exact revision, both Go versions, actual kernel/architecture, eventfd and whole-suite pass/fail/skip counts, successful package results, supported CI commands, and unchanged implementation sources. Runtime evidence, rather than cross-compilation or a green workflow alone, closes this gap.
+Confidence: 97% for P02 completion and this documentation follow-up, based on exact-revision CI artifacts, existing implementation review/local checks, and the challenge pass.
+Next work item and concrete starting point: P03 — timerfd; refine clock/relative/absolute-time semantics in docs/design/timerfd.md and docs/timerfd.md, then implement arming/disarming/state/expiration reads with verified Go polling. Preserve exceptional zero-byte-read semantics; clock-jump tests require an isolated clock-controlled VM.
+```
+
+CI evidence: [workflow](https://app.circleci.com/workflow/f67af340-bc20-4e7d-bab2-60ab4e8ce17a), [build 56](https://circleci.com/gh/alexfalkowski/go-linux/56), [Go 1.27.0 job 57](https://circleci.com/gh/alexfalkowski/go-linux/57), and [Go 1.27.4 job 58](https://circleci.com/gh/alexfalkowski/go-linux/58). Each verification job retains environment.json and JSON/JUnit test reports in its artifacts.
