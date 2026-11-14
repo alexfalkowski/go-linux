@@ -14,6 +14,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. Primary runtime v
 - [mmap](docs/mmap.md): owned anonymous/file mappings, page protection, and memory advice.
 - [pidfd](docs/pidfd.md): process handles, signaling, exit observation, and eligible child reaping.
 - [mount](docs/mount.md): filesystem configuration, detached mount handles, cloning, attributes, and explicit attachment.
+- [epoll](docs/epoll.md): explicit readiness sets, stable registrations, trigger modes, and interruptible waits.
 
 ## 🚀 Setup
 

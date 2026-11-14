@@ -109,6 +109,19 @@ func TempFile(t *testing.T, size int64) *os.File {
 	return file
 }
 
+// Pipe creates a standard-library pipe with cleanup and bounded I/O.
+func Pipe(t *testing.T) (*os.File, *os.File) {
+	t.Helper()
+
+	reader, writer, err := os.Pipe()
+	require.NoError(t, err)
+	Cleanup(t, reader)
+	Cleanup(t, writer)
+	require.NoError(t, reader.SetDeadline(time.Now().Add(5*time.Second)))
+	require.NoError(t, writer.SetDeadline(time.Now().Add(5*time.Second)))
+	return reader, writer
+}
+
 // OpenFile opens an ordinary file or directory read-only and registers cleanup.
 func OpenFile(t *testing.T, path string) *os.File {
 	t.Helper()
