@@ -92,6 +92,8 @@ func New(name string, options Options) (*File, error) {
 // supported. Within a SyscallConn callback, do not close or retain the borrowed
 // descriptor; duplicate it if independent ownership is required.
 type File struct {
+	// File provides standard file operations on the same owned descriptor.
+	// Closing either view closes both; do not replace this pointer.
 	*os.File
 }
 

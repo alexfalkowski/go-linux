@@ -16,30 +16,60 @@ import (
 )
 
 // Options selects verification coverage and optional runner identity checks.
-// Required turns an unavailable selected prerequisite into an error.
 type Options struct {
-	Profile      string
+	// Profile selects rootless (also the empty default) or namespaces coverage.
+	Profile string
+
+	// Architecture optionally requires both Go and uname to match amd64 or arm64.
 	Architecture string
-	Kernel       string
-	Required     bool
+
+	// Kernel selects supported (also the empty default), 7.0, or newer coverage.
+	Kernel string
+
+	// Required turns an unavailable selected prerequisite into an error.
+	Required bool
 }
 
-// Report records observations, including a namespace creation probe. Skip is
-// populated only for an unavailable, optional selected profile.
+// Report records runner observations, including a namespace creation probe.
 type Report struct {
-	Status         map[string]string `json:"status"`
-	Namespaces     map[string]string `json:"namespaces"`
-	Filesystems    map[string]string `json:"filesystems"`
-	Controllers    map[string]string `json:"controllers"`
-	Go             string            `json:"go"`
-	Kernel         string            `json:"kernel"`
-	Machine        string            `json:"machine"`
-	Architecture   string            `json:"architecture"`
-	Profile        string            `json:"profile"`
-	NamespaceProbe string            `json:"namespace_probe"`
-	NamespaceError string            `json:"namespace_error,omitempty"`
-	Skip           string            `json:"skip,omitempty"`
-	UID            int               `json:"uid"`
+	// Status contains CapEff, CapBnd, NoNewPrivs, and Seccomp from procfs.
+	Status map[string]string `json:"status"`
+
+	// Namespaces maps user, mnt, net, and pid to procfs identifiers or read errors.
+	Namespaces map[string]string `json:"namespaces"`
+
+	// Filesystems maps selected mount points to their filesystem type and options.
+	Filesystems map[string]string `json:"filesystems"`
+
+	// Controllers records cgroup v2 controller and subtree-control observations.
+	Controllers map[string]string `json:"controllers"`
+
+	// Go is the executing Go runtime version.
+	Go string `json:"go"`
+
+	// Kernel is the running kernel release read from procfs.
+	Kernel string `json:"kernel"`
+
+	// Machine is the architecture reported by uname -m.
+	Machine string `json:"machine"`
+
+	// Architecture is the executing binary's runtime.GOARCH.
+	Architecture string `json:"architecture"`
+
+	// Profile is the normalized coverage selection used for this check.
+	Profile string `json:"profile"`
+
+	// NamespaceProbe is not-run, available, unavailable, or error.
+	NamespaceProbe string `json:"namespace_probe"`
+
+	// NamespaceError retains a failed creation/mapping probe's error, if any.
+	NamespaceError string `json:"namespace_error,omitempty"`
+
+	// Skip explains an unavailable optional selected profile; otherwise it is empty.
+	Skip string `json:"skip,omitempty"`
+
+	// UID is the executing process's real user ID.
+	UID int `json:"uid"`
 }
 
 // FromEnvironment reads only the four documented GO_LINUX_TEST settings. It
