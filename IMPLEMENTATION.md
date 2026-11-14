@@ -1,6 +1,6 @@
 # Linux APIs for Go: implementation plan
 
-Status: F01 and F02 complete for the available Linux 7.0 arm64 CI target. Phase 0 is complete; Linux API implementations have not started. Revisit the verification target when the runner environment changes.
+Status: F01, F02, and P01 (`memfd`) complete for the available Linux 7.0 arm64 CI target. P02 (`eventfd`) is next. Revisit the verification target when the runner environment changes.
 
 This document is the shared execution plan for Codex, Claude, and human contributors. It is self-contained: an agent should be able to implement the next work item without access to the conversation that produced it.
 
@@ -16,9 +16,9 @@ The initial scope is **21 public packages in one module, across nine domains**. 
 
 | Field | Value |
 | --- | --- |
-| Current work item | None — Phase 0 complete |
-| Next work item | P01 — `memfd` |
-| Completed work items | F01, F02 |
+| Current work item | None — P01 complete |
+| Next work item | P02 — `eventfd` |
+| Completed work items | F01, F02, P01 |
 | Implementation repository | `github.com/alexfalkowski/go-linux`; this plan lives in `IMPLEMENTATION.md` |
 | Module path | `github.com/alexfalkowski/go-linux` |
 | Minimum Linux version | 7.0 |
@@ -180,7 +180,7 @@ Every P-series work item must satisfy this checklist before completion:
 
 - A short `docs/design/<package>.md` note records the resource model, included operations, omitted operations, naming, standard-interface fit, ownership, concurrency, blocking, feature requirements, test prerequisites, and primary references. Use `docs/design/netlink-route.md` for the nested package.
 - Implementation follows the shared API rules and relevant predecessors.
-- Package documentation and at least one useful example demonstrate real use. Examples must compile; privileged examples must identify their requirements.
+- Package documentation, a user guide in `docs/<package>.md` linked from README, and at least one useful executable example demonstrate real use. Keep package-specific usage out of README; design rationale remains in `docs/design/<package>.md`. Examples must compile; privileged examples must identify their requirements.
 - Meaningful tests verify resource lifecycle and kernel behavior, applicable standard interfaces, invalid input, errors, and relevant blocking/concurrency behavior. Do not add tests that merely reproduce implementation details.
 - Verify partial-failure cleanup and descriptor ownership where applicable.
 - Separate ordinary-user coverage from tests requiring capabilities, a delegated resource, namespace support, particular filesystem behavior, or kernel settings. Record verification status per operation or mode, not just per package.
@@ -238,6 +238,7 @@ F02 ran local prerequisite discovery and a disposable user/mount/network namespa
 | F02 / namespace creation and UID/GID mapping | Verified for the foundation probe | None for F02; later facility operations need their own tests | Local optional profile skips on `EPERM` and required profile fails; CI jobs 12–14 report `namespace_probe=available` and pass `TestNamespacePrerequisitePolicy` | Available CircleCI arm64 runner | Resolved 2026-11-14 for creation/mapping only |
 | F02 / Linux 7.0 baseline | Verified | None for F02 | Jobs 14 and 12 execute 15 tests each on actual `7.0.0-1017-aws` arm64 with Go 1.27.0 and 1.27.4 | Available CircleCI Linux 7.0 arm64 runner | Resolved 2026-11-14 |
 | F02 / arm64 CI matrix and isolation | Verified for the available target | No additional kernel lane required; facility-specific privileged success remains with its owning package | Jobs 12–14 pass; diagnostics record kernel, architecture, UID, capabilities, seccomp, and namespace success; both architectures compile at both Go versions | Current CircleCI runner at minimum/latest supported Go versions | Resolved 2026-11-14; revisit when the runner changes |
+| P01 / creation, I/O, six seals, and lifecycle on Linux 7.0 arm64 | Verified on the primary target and local Linux 7.3 amd64 | None for P01 | [Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35) and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36) each pass all 23 memfd tests without failures or skips on actual Linux 7.0.0-1017-aws arm64; both compile architectures pass | Existing CircleCI arm64 Go matrix with permitted memfd/fcntl/mmap and MFD_EXEC policy | Resolved 2026-11-14 for implementation revision 3b9ae31 |
 
 ## Phase 0: foundation
 
@@ -249,7 +250,9 @@ F02 ran local prerequisite discovery and a disposable user/mount/network namespa
 
 ## Phase 1: four packages that establish the conventions
 
-- [ ] **P01 — `memfd`: memory-backed files.** Implement creation, ownership, size management using standard file operations, and seal inspection/application. Prefer existing file methods for ordinary I/O; define how the wrapper exposes the additional sealing behavior. Start with baseline-supported flags and identify newer optional flags separately. **Acceptance:** ordinary Go file I/O works; tests cover read/write, resizing, sealing behavior and failures, close behavior, and constructor cleanup.
+- [x] **P01 — `memfd`: memory-backed files.** Implement creation, ownership, size management using standard file operations, and seal inspection/application. Prefer existing file methods for ordinary I/O; define how the wrapper exposes the additional sealing behavior. Start with baseline-supported flags and identify newer optional flags separately. **Acceptance:** ordinary Go file I/O works; tests cover read/write, resizing, sealing behavior and failures, close behavior, and constructor cleanup.
+
+  **Complete for the available Linux 7.0 arm64 target (2026-11-14).** The [package guide](docs/memfd.md), [design note](docs/design/memfd.md), package documentation, and executable example cover the owned `os.File`, non-executable/sealable default, executable opt-in, all six seals, raw descriptor lifetime, and omissions. Local tests pass at both Go versions; the full regression suite, lint, vet, security checks, and both compile architectures pass. [Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35) and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36) each execute all 23 memfd tests without failures or skips on actual Linux 7.0.0-1017-aws arm64, closing the P01 verification gap. The CI follow-up handoff below records the evidence and revision.
 
 - [ ] **P02 — `eventfd`: event counters.** Implement ordinary and semaphore modes, byte-oriented `Read`/`Write`, typed counter helpers, and `Close`. Preserve fixed-size/native-endian semantics. Establish Go polling/deadline integration for this descriptor and document any explicitly exposed raw nonblocking behavior. **Acceptance:** verify increments, reads and draining semantics, semaphore behavior, invalid buffers/values, blocking or deadlines as offered, and close during a blocked operation. Interface assertions supplement behavioral tests.
 
@@ -333,6 +336,9 @@ Record material changes here with the reason and affected work items. Routine im
 | 2026-11-14 | Record shared conventions and provisional P01–P06 APIs in [docs/design/api.md](docs/design/api.md) | F01: reuse standard file/process facilities, preserve record I/O and clock domains, make ownership/defaults explicit, and retain unresolved runner/runtime constraints for their owning items |
 | 2026-11-14 | Preserve shared gotestsum; add repository-specific Linux discovery, rootless/namespace profiles, both compile architectures, and pinned minimum/latest Go CI jobs | F02: no new Go dependencies or public facility stubs; defer capability/delegation profiles until actual implemented operations need them; leave unavailable runtime cells outstanding |
 | 2026-11-14 | Target the available Linux 7.0 arm64 CircleCI runner; update the target when the environment changes | User scope correction removes the mandatory newer-kernel lane. Current Go 1.27.0/1.27.4 CI execution and namespace probe evidence satisfy F02; future facility-specific privilege checks remain with their packages. |
+| 2026-11-14 | Implement P01 around an embedded `os.File`, atomically close-on-exec and non-executable/sealable by default; pin x/sys v0.50.0 and Testify v1.12.1 | Preserve the pilot API, use lifetime-protected fcntl operations, and retain actual kernel errors. User preferences for require assertions, plain filenames with Linux tags, and related-code grouping/blank lines are recorded in AGENTS.md. |
+| 2026-11-14 | Keep README as a concise package index; put each public package's usage guide in `docs/<package>.md` | User-requested documentation convention prevents README growth; GoDoc, executable examples, and `docs/design/<package>.md` retain their respective API, runnable-usage, and design responsibilities. |
+| 2026-11-14 | Use plain filenames and explicit `//go:build linux` constraints for every repository-owned Go file, including tests and package docs | User selected this convention over `_linux.go` suffixes; preserve `_test.go` and leave dependency/submodule sources unchanged. Apply it to the existing foundation as well as public packages. |
 
 ## Handoff log
 
@@ -452,3 +458,79 @@ Next work item and concrete starting point: P01 — refine docs/design/api.md in
 ```
 
 CI evidence: [build 13](https://circleci.com/gh/alexfalkowski/go-linux/13), [Go 1.27.0 job 14](https://circleci.com/gh/alexfalkowski/go-linux/14), [Go 1.27.4 job 12](https://circleci.com/gh/alexfalkowski/go-linux/12).
+
+### P01 — 2026-11-14, implementation and local verification
+
+```text
+Work item: P01 — memfd
+Status: in progress (implemented; required primary-target verification pending)
+Implementation: ready
+Verification: partial (local Linux 7.3 amd64 verified; Linux 7.0 arm64 CI execution pending)
+Agent and date: Codex, 2026-11-14
+Repository and revision: github.com/alexfalkowski/go-linux, base d3190d0; working-tree changes, no commit/push/PR/remote CI execution
+Changes and relevant files: memfd/file.go implements New, Options, File, Seals and six seal constants; memfd/doc.go owns GoDoc; memfd/file_test.go and example_test.go exercise the public API through real kernel operations. docs/memfd.md provides user guidance linked from the concise README package index; docs/design/memfd.md records the design, operations, omissions, requirements, and primary references. go.mod/go.sum pin x/sys v0.50.0 and Testify v1.12.1, with test-only go.yaml.in/yaml/v3 v3.0.5 selected indirectly; make dep generates ignored vendor/. Updated docs/design/api.md, docs/verification.md, this plan, and AGENTS.md. Shared bin revision/tooling and CI configuration remain unchanged.
+API decisions and primary references: preserve the pilot's embedded os.File owner and standard file operations; creation atomically sets close-on-exec, allows seals, and defaults to MFD_NOEXEC_SEAL. Executable is explicit with no fallback. Seals queries preserve unknown bits, additions reject unknown masks before syscalls, and zero masks preserve kernel semantics. SyscallConn.Control protects descriptor lifetime; normalize its private closing error to os.ErrClosed while preserving actual fcntl errno. Linux 7.0 memfd/fcntl UAPI, mm/memfd.c, kernel noexec documentation, Linux manuals, installed Go os/rawconn/poll sources, and pinned x/sys bindings were inspected; primary links are in the design note.
+User conventions recorded: require assertions for Go tests; plain filenames with explicit Linux tags; group related code and separate distinct steps with blank lines; keep README concise with per-package usage guides in docs/<package>.md. All are in AGENTS.md; the package-guide requirement is also in the common checklist. Existing foundation files/tests outside P01 were preserved.
+Dependency follow-up: checked go.yaml.in/yaml/v3 v3.0.6 against Testify-selected v3.0.5; the source change fixes merge-key classification and tests. Current tests do not call YAML assertions and scans found no vulnerabilities. Kept v3.0.5 for this item. Upstream v4.0.0 uses a separate import path and requires adoption by Testify; adding it directly would not replace Testify’s v3 dependency.
+Checks: make help -> command discovery passed; package=internal/testenv make specs -> existing harness runnable, 15 tests passed before implementation
+Checks: go version; uname -srmo; id -u; selected /proc/self/status fields -> Go 1.27.4, Linux 7.3.4-2-t2-resolute amd64, UID 1000, zero effective/bounding capabilities, NoNewPrivs 1, Seccomp 2
+Checks: GOPATH=/tmp/go-linux-p01-toolchains make dep -> passed with checksum verification enabled; GOPATH=/tmp/go-linux-p01-toolchains GOTOOLCHAIN=go1.27.0 make dep -> passed; module/Go floors unchanged, generated dependency state reproducible
+Checks: make format -> passed; GOPATH=/tmp/go-linux-p01-toolchains GOTOOLCHAIN=go1.27.0 package=memfd make specs -> 23 tests passed, no failures/skips, race enabled
+Checks: package=memfd make specs -> 23 tests passed on Go 1.27.4, no failures/skips, race enabled; make coverage -> memfd statement coverage 100.0%, not a claim of exhaustive state/kernel coverage
+Checks: make specs profile=rootless required=true arch=amd64 kernel=newer -> 38 tests passed with race detection and no skips; make coverage -> combined module statement coverage 83.9%; command main remains 0% in instrumented tests and was exercised separately through Make
+Checks: GOPATH=/tmp/go-linux-p01-toolchains GOTOOLCHAIN=go1.27.0 make vet compile -> passed; make vet compile -> passed on Go 1.27.4; package and test code compile for linux/amd64 and linux/arm64 with no foreign-architecture execution
+Checks: GOLANGCI_LINT_CACHE=/tmp/go-linux-p01-lint package=memfd make lint and GOLANGCI_LINT_CACHE=/tmp/go-linux-p01-lint make lint -> passed, betteralign and golangci-lint ran, 0 issues; focused lint/vet/compile repeated after final test readability edits
+Checks: make sec -> passed; govulncheck scanned package/test dependencies and found no vulnerabilities; Trivy reported go.mod vulnerability count 0 with secret scanning enabled
+Checks: make test-environment arch=amd64 kernel=newer -> passed; diagnostic JSON saved under ignored test/reports/p01-environment.json. The optional namespace creation/mapping probe remains unavailable with EPERM; no memfd test depends on it.
+Checks: make -C bin skills-lint -> passed shared policy checks; local AGENTS preferences reviewed manually. git diff --check and local documentation-link checks passed; user guide checked against the executed example and actual API. No Markdown-specific Make target exists.
+Artifacts: focused Go-version JSON/JUnit/coverage snapshots under ignored test/reports/p01-go1.27.0/ and p01-go1.27.4/; full-suite snapshot under p01-regression-go1.27.4/. JSON counts agree with the observed pass/fail/skip totals.
+Setup/failure classification: initial make dep failed because the default checksum database cache was read-only; reran the same target with a writable temporary GOPATH without disabling checksums. Initial tests exposed raw Control's internal closing error; fixed normalization and reran successfully. Initial lint reported over-complex test scenarios, fatal-after-defer in the example, and a redundant selector; split scenarios, used panic in the example, and made the borrowed-file owner explicit. All applicable checks then passed. Testify version discovery required -mod=mod because vendor mode intentionally blocks @latest queries.
+Environment and prerequisites: ordinary-user memfd_create, fcntl, file I/O, and owned shared mappings all succeeded locally, including explicit MFD_EXEC. No sysctl/security-policy changes, host mutations, namespaces for facility tests, executable payloads, capabilities, or skipped memfd modes. Kernel configuration/policy on the primary CI target still needs its own observation.
+Skipped/unavailable checks and remaining acceptance criteria: required Linux 7.0 arm64 runtime execution of P01 at Go 1.27.0 and 1.27.4 has not run. Historical foundation jobs and successful cross-compilation do not satisfy it. No newer-kernel arm64 lane or full amd64 baseline support is claimed. P01 remains unchecked.
+Verification gap register: added P01 primary-target creation/I/O/sealing/lifecycle runtime gap; no P01 gap resolved by compilation alone
+Refactor: split distinct I/O/default/error scenarios, converted new tests to user-requested require assertions, and separated related steps with blank lines. Local code/test readability, caller-boundary fit, and public-interface/ownership/error/dependency passes found no reason for extra helpers, mutable lifecycle state, interfaces, or shared packages.
+Challenge pass: checked default flag effects, byte-length/NUL boundaries, zero/closed/invalid-mask precedence, all six seal effects, write-versus-future-write mapping behavior, failed additions without mutation, executable implied seals, and descriptor close ownership. Mutation-style scan checked that removing requested flags/seals, skipping syscalls, weakening validation, losing errno, or losing closed-error normalization would fail observable assertions. Unknown future returned seal bits are source-reviewed rather than synthesized through unsupported file construction. Kernel variants, security-policy combinations, and every concurrency schedule remain outside local proof. No independent review agent was used.
+Confidence: 96% for implementation readiness and local validation, based on real-kernel tests at both Go versions, both compile architectures, lint/vet/security checks, documentation review, and the challenge pass. This does not accept P01 completion or primary-target runtime behavior before CI evidence exists.
+If continuing past the deferred item: P02 is independent of missing P01 arm64 runtime results. It can use the pinned syscall dependency and existing harness without relying on unverified memfd behavior; keep P01's gap open.
+Next work item and concrete starting point: P02 — refine docs/design/api.md into docs/design/eventfd.md plus docs/eventfd.md; implement ordinary/semaphore counter records, native-endian typed helpers, atomic nonblocking/close-on-exec creation, os.File polling/deadlines, and close during blocked I/O. Retain record boundaries and the observed raw Control close-error issue. Separately collect P01 runtime reports from the existing CircleCI Linux 7.0 arm64 Go matrix before checking P01 complete.
+```
+
+### Linux filename convention — 2026-11-14
+
+```text
+Work item: Apply the user's chosen Linux-only filename/build-tag convention
+Status: complete for this follow-up; P01 primary-target runtime verification remains pending
+Implementation: ready
+Verification: verified locally for filename/build-selection changes
+Agent and date: Codex, 2026-11-14
+Changes: AGENTS.md explicitly selects plain filenames without _linux suffixes and //go:build linux on every repository-owned Go file, including tests and doc.go. Renamed internal/testenv/environment_linux.go to environment.go, environment_linux_test.go to environment_test.go, and internal/cmd/testenv/main_linux.go to main.go; added explicit Linux tags. Added the same tags to root and both internal doc.go files. All ten owned Go files now follow the convention; dependencies/submodule files were preserved.
+Checks: make help -> command discovery passed; make format -> passed; package=internal/testenv make specs -> 15 tests passed with race detection, no failures/skips; GOLANGCI_LINT_CACHE=/tmp/go-linux-p01-lint make lint -> betteralign and golangci-lint passed, 0 issues; make vet compile -> passed, including package/test compilation for linux/amd64 and linux/arm64; make test-environment arch=amd64 -> passed through the renamed CLI source
+Checks: make -C bin skills-lint -> passed shared policy checks; local AGENTS convention manually reviewed. git diff --check -> passed. One-off inventory confirmed all ten Go files start with the explicit Linux tag and have no _linux suffix. Compared each of the six converted foundation files with its HEAD content after removing the added tag: exact matches.
+Refactor: none beyond the requested renames and equivalent build constraints; local readability, package-boundary, and compatibility passes found no need for logic or assertion changes. Existing tests cover the unchanged behavior; no new tests or harness were added.
+Challenge pass: checked tests, package docs, root package, CLI, and the new memfd package; preserved _test.go selection and package/import identities. No source references required rewriting; historical handoff evidence remains historical. The existing root/documentation scaffold now follows the library's chosen Linux-only build policy explicitly.
+Confidence: 97% for this convention follow-up, supported by the complete owned-file inventory, exact content comparison, runnable tests/CLI, lint/vet, both architecture compile checks, and challenge pass
+Next work item: P02 — eventfd; separately collect P01 Linux 7.0 arm64 CI runtime evidence before marking P01 complete
+```
+
+### P01 — 2026-11-14, primary-target CI acceptance
+
+```text
+Work item: P01 — memfd, CI verification follow-up
+Status: complete for the available Linux 7.0 arm64 target
+Implementation: ready
+Verification: required primary-target runtime evidence verified at Go 1.27.0 and 1.27.4
+Agent and date: Codex, 2026-11-14
+Repository and verified implementation revision: github.com/alexfalkowski/go-linux, 3b9ae3122267e71351e73bc5b6f18a740874897d, PR #3
+CI evidence: workflow a15195a1-be0d-4bc3-88fc-8cbf7808fc04; build 34, verify-go1.27.0 job 35, and verify-go1.27.4 job 36 all passed. GitHub associates these successful checks with the verified implementation revision.
+Runtime evidence: environment.json reports actual kernel 7.0.0-1017-aws, machine aarch64, architecture arm64, rootless profile, and the requested Go version in each verification job. specs.json reports 23 memfd test passes, zero failures, zero skips, and a successful package result in both jobs. The namespace prerequisite probe is also available; memfd tests do not depend on it.
+Checks covered by CI: dependency setup, runner diagnostics, vet, package/test compilation for linux/amd64 and linux/arm64, and the rootless race-enabled regression suite; the quality build additionally passed lint, scripts-lint, security checks, and coverage generation.
+Changes: marked P01 complete in the state table and checkbox, resolved its verification gap, updated current package/API/verification status, and recorded this handoff. This follow-up changes documentation only; prior handoffs remain historical records of their original verification state.
+Local validation: git diff --check and one-off local Markdown-link checks passed for the changed documents. No Markdown-specific Make target exists. Go tests were not repeated for this documentation-only follow-up; implementation sources match the verified revision.
+Verification gap register: P01 primary-target creation, I/O, six seals, and lifecycle runtime gap resolved by jobs 35 and 36. No P01 acceptance gap remains. Full amd64 baseline runtime support remains a separate project limitation.
+Refactor: none; documentation accuracy, audience/owner fit, and acceptance-boundary passes found no implementation changes needed.
+Challenge pass: checked exact implementation revision, both supported Go versions, actual kernel/architecture observations, package/test pass/fail/skip events, and the distinction between compilation and runtime evidence. P01 completion does not claim untested optional modes, every concurrency schedule, or full amd64 baseline support.
+Confidence: 97% for P01 completion and this documentation follow-up, based on the inspected CI artifacts, previously reviewed implementation/local checks, and the challenge pass.
+Next work item and concrete starting point: P02 — refine docs/design/api.md into docs/design/eventfd.md plus docs/eventfd.md; implement ordinary/semaphore counters, native-endian records, atomic nonblocking/close-on-exec creation, Go polling/deadlines, and close during blocked I/O.
+```
+
+CI evidence: [workflow](https://app.circleci.com/workflow/a15195a1-be0d-4bc3-88fc-8cbf7808fc04), [build 34](https://circleci.com/gh/alexfalkowski/go-linux/34), [Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35), and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36). Each verification job retains environment.json and JSON/JUnit test reports in its artifacts.

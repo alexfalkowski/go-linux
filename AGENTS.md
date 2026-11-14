@@ -7,10 +7,14 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 ## Repository
 
 - Follow `IMPLEMENTATION.md` for execution order, acceptance criteria, verification gaps, and handoffs. API conventions are in `docs/design/api.md`.
-- Go library for Linux APIs; currently a scaffold without API implementations.
+- Go library for Linux APIs; implemented packages and verification status are tracked in `IMPLEMENTATION.md`.
 - Check `go.mod` for the module path and Go version.
 - Keep dependencies and packages limited to implemented features.
 - Put package documentation in `doc.go` and document exported identifiers.
+- Use `github.com/stretchr/testify/require` for Go test assertions.
+- Chosen Linux-only convention: use plain Go filenames without a `_linux` suffix and start every repository-owned Go file, including tests and `doc.go`, with `//go:build linux`. Preserve the standard `_test.go` suffix; leave dependency and submodule files unchanged.
+- Group only related code, and separate distinct steps with blank lines for readability.
+- Keep README concise: link each implemented public package to its usage guide in `docs/<package>.md`. Keep design rationale in `docs/design/<package>.md` and executable examples in package tests.
 
 ## Setup and commands
 

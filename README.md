@@ -2,8 +2,13 @@
 
 Linux APIs with idiomatic Go interfaces.
 
-`github.com/alexfalkowski/go-linux` is a Go library scaffold. Linux API
-implementations will be added as packages as the library grows.
+`github.com/alexfalkowski/go-linux` provides focused Linux facilities that compose with standard Go interfaces. Packages are added sequentially through the implementation plan.
+
+The library targets Linux 7.0+ and the Go version in `go.mod`. Primary runtime verification uses arm64 on CircleCI; amd64 compilation and available local execution are checked separately. Package verification status is recorded in the [implementation plan](IMPLEMENTATION.md).
+
+## 📦 Packages
+
+- [memfd](docs/memfd.md): memory-backed files, ordinary Go file I/O, and irreversible seals.
 
 ## 🚀 Setup
 
