@@ -14,6 +14,12 @@ specs: export GOTESTSUM_JSONFILE := test/reports/specs.json
 test-environment:
 	@go run -mod=vendor ./internal/cmd/testenv
 
+# Record namespace prerequisites and run required isolated mount tests (arch optional).
+verify-mount:
+	@mkdir -p test/reports
+	@bash -eo pipefail -c '$(MAKE) --no-print-directory test-environment profile=namespaces required=true | tee test/reports/environment.json'
+	@$(MAKE) --no-print-directory specs package=mount profile=namespaces required=true
+
 # Compile all packages and tests for linux/amd64 and linux/arm64 without execution.
 compile:
 	@bash build/compile

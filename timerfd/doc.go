@@ -12,7 +12,6 @@
 // Read consumes native-endian eight-byte expiration records; ReadExpirations
 // decodes their counts. Reads wait through Go's poller, bounded by
 // SetReadDeadline or Close. I/O deadlines are independent of timer arming.
-// SyscallConn lends the same nonblocking, close-on-exec descriptor.
 //
 // See [timerfd_create(2)] for clock-change, count, and timer semantics.
 //

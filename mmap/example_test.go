@@ -46,8 +46,10 @@ func ExampleMap() {
 	if _, err := file.ReadAt(contents, 0); err != nil {
 		panic(err)
 	}
+
 	// Stop using borrowed views before closing region. This example verifies
 	// visibility through ordinary file I/O, not disk durability.
 	fmt.Println(string(contents))
+
 	// Output: world
 }

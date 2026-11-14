@@ -48,14 +48,12 @@ Linux can apply a new absolute setting and still return `ECANCELED` when acknowl
 
 ## Reads, deadlines, and ownership
 
-`Timer` implements `io.Reader`, `io.Closer`, and `syscall.Conn`. `Read` requires at least eight bytes and normally returns one native-endian eight-byte count, leaving a larger buffer's tail untouched. Smaller buffers, including nil, match `unix.EINVAL` without consumption. `ReadExpirations` handles decoding. This is a record protocol; arbitrary stream copying is unsuitable. There is no write or seek interface.
+`Timer` implements `io.Reader` and `io.Closer`. `Read` requires at least eight bytes and normally returns one native-endian eight-byte count, leaving a larger buffer's tail untouched. Smaller buffers, including nil, match `unix.EINVAL` without consumption. `ReadExpirations` handles decoding. This is a record protocol; arbitrary stream copying is unsuitable. There is no write or seek interface.
 
 Descriptors are atomically nonblocking and close-on-exec, while high-level reads wait through Go's poller. `SetReadDeadline` affects pending and future reads; zero `time.Time{}` clears it. Expired reads match `os.ErrDeadlineExceeded` and retain timeout semantics. Read deadlines do not change arming or prevent state inspection. To interrupt a reader on a disarmed timer, set a deadline or close it.
 
 Always call `Close`. It releases the descriptor and wakes poll-blocked reads with `os.ErrClosed`; repeated close and valid operations after close also match `os.ErrClosed`. The zero `Timer` owns no resource and reports `os.ErrInvalid`. Invalid arguments take precedence after close; the zero value reports `os.ErrInvalid` first. Nil receivers are unsupported. Do not copy a timer after first use. Methods are safe concurrently, but sequences of calls are not transactions. A successful operation can win a race with close. The kernel destroys the timer when its last descriptor closes.
 
-`SyscallConn()` borrows the same descriptor through `syscall.RawConn`. Use its callbacks for external poll registration or Linux-specific operations. Capture a callback's syscall error separately from the raw method's error. A direct read inside `Control` returns `EAGAIN` without expirations; `RawConn.Read` can wait when its callback returns false on `EAGAIN`. Raw methods retain `os.File` raw error behavior, including closing errors that need not match `os.ErrClosed`.
-
-Never close or retain a borrowed descriptor, clear its nonblocking flag, or block indefinitely inside a callback. Duplicate within `Control` for independent ownership, then close that duplicate separately. Duplicates share timer state, counts, and file status flags. Closing one owner does not destroy a timer still referenced by a duplicate.
+The timer keeps its descriptor private; use arming, state, reads, and read deadlines directly. External poll registration is outside the current API.
 
 Kernel failures preserve errno identity through `errors.Is` and `errors.As`; policy denials remain observable. Initial omissions include alarm/wakeup clocks, clock adjustment, tick injection, adoption helpers, contexts, and exported ordinary files. See [GoDoc](../timerfd/doc.go), the [design note](design/timerfd.md), and [verification guidance](verification.md).

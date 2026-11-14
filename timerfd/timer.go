@@ -7,7 +7,6 @@ import (
 	"io"
 	"math"
 	"os"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -52,6 +51,7 @@ func Now(clock Clock) (Instant, error) {
 	if err := unix.ClockGettime(id, &value); err != nil {
 		return Instant{}, &os.PathError{Op: "clock_gettime", Path: "timerfd", Err: err}
 	}
+
 	seconds, nanoseconds := value.Unix()
 	return Instant{Clock: clock, Seconds: seconds, Nanoseconds: nanoseconds}, nil
 }
@@ -137,6 +137,7 @@ func (t *Timer) SetAfter(initial, interval time.Duration) (State, error) {
 	if t.file == nil {
 		return State{}, os.ErrInvalid
 	}
+
 	if initial < 0 || interval < 0 {
 		return State{}, &os.PathError{Op: "timerfd_settime", Path: "timerfd", Err: os.ErrInvalid}
 	}
@@ -162,10 +163,12 @@ func (t *Timer) SetAt(deadline Instant, interval time.Duration, flags SetFlags) 
 	if deadline.Clock != t.clock || interval < 0 || flags & ^CancelOnSet != 0 || (flags != 0 && t.clock != Realtime) {
 		return State{}, &os.PathError{Op: "timerfd_settime", Path: "timerfd", Err: os.ErrInvalid}
 	}
+
 	value, err := duration(deadline.Seconds, deadline.Nanoseconds)
 	if err != nil {
 		return State{}, &os.PathError{Op: "timerfd_settime", Path: "timerfd", Err: err}
 	}
+
 	options := unix.TFD_TIMER_ABSTIME
 	if flags&CancelOnSet != 0 {
 		options |= unix.TFD_TIMER_CANCEL_ON_SET
@@ -213,6 +216,7 @@ func (t *Timer) Read(p []byte) (int, error) {
 	if len(p) < 8 {
 		return 0, &os.PathError{Op: "read", Path: "timerfd", Err: unix.EINVAL}
 	}
+
 	n, err := t.file.Read(p[:8])
 	// os.File turns a successful zero-byte syscall into EOF. A timerfd has
 	// no permanent EOF; restore its exceptional clock-change result.
@@ -238,23 +242,9 @@ func (t *Timer) ReadExpirations() (uint64, error) {
 
 // Close releases the owned descriptor and interrupts poll-blocked reads with
 // os.ErrClosed. Repeated Close also matches os.ErrClosed. The kernel destroys
-// the timer when its last descriptor closes. Close does not cancel an active
-// raw callback; callbacks must return promptly.
+// the timer when its last descriptor closes.
 func (t *Timer) Close() error {
 	return t.file.Close()
-}
-
-// SyscallConn returns the owned file's [syscall.RawConn], implementing
-// syscall.Conn. Callbacks borrow the descriptor: do not close it, retain its
-// number, or clear nonblocking mode. Duplicate it within Control for independent
-// ownership; duplicates share timer state, counts, and file status flags.
-//
-// Direct nonblocking reads in Control return EAGAIN without expirations.
-// RawConn.Read uses Go polling when its callback returns false on EAGAIN.
-// Capture syscall errors separately from callback errors. Raw connection errors
-// retain os.File's behavior and need not match os.ErrClosed after close.
-func (t *Timer) SyscallConn() (syscall.RawConn, error) {
-	return t.file.SyscallConn()
 }
 
 // SetReadDeadline wraps [os.File.SetReadDeadline] for pending and future reads.
@@ -282,12 +272,15 @@ func (t *Timer) set(flags int, initial unix.Timespec, interval time.Duration) (S
 }
 
 func (t *Timer) control(op string, operation func(int) error) error {
-	conn, err := t.SyscallConn()
+	conn, err := t.file.SyscallConn()
 	if err != nil {
 		return err
 	}
+
 	var syscallErr error
-	err = conn.Control(func(fd uintptr) { syscallErr = operation(int(fd)) })
+	err = conn.Control(func(fd uintptr) {
+		syscallErr = operation(int(fd))
+	})
 	if err != nil {
 		// RawControl can fail only to acquire the file's lifetime reference.
 		return &os.PathError{Op: op, Path: "timerfd", Err: os.ErrClosed}
@@ -315,9 +308,11 @@ func duration(seconds, nanoseconds int64) (time.Duration, error) {
 	if seconds < 0 || nanoseconds < 0 || nanoseconds >= 1e9 {
 		return 0, os.ErrInvalid
 	}
+
 	if seconds > math.MaxInt64/int64(time.Second) || (seconds == math.MaxInt64/int64(time.Second) && nanoseconds > math.MaxInt64%int64(time.Second)) {
 		return 0, unix.EOVERFLOW
 	}
+
 	return time.Duration(seconds*1e9 + nanoseconds), nil
 }
 
@@ -326,9 +321,11 @@ func state(op string, value *unix.ItimerSpec) (State, error) {
 	if err != nil {
 		return State{}, &os.PathError{Op: op, Path: "timerfd", Err: err}
 	}
+
 	interval, err := duration(value.Interval.Unix())
 	if err != nil {
 		return State{}, &os.PathError{Op: op, Path: "timerfd", Err: err}
 	}
+
 	return State{Remaining: remaining, Interval: interval}, nil
 }

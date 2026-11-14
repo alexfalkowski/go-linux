@@ -19,14 +19,18 @@ func ExampleTimer() {
 	if err := timer.SetReadDeadline(time.Now().Add(5 * time.Second)); err != nil {
 		panic(err)
 	}
+
 	if _, err := timer.SetAfter(10*time.Millisecond, 0); err != nil {
 		panic(err)
 	}
+
 	count, err := timer.ReadExpirations()
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println("expirations:", count)
+
 	// Output: expirations: 1
 }
 
@@ -41,14 +45,19 @@ func ExampleTimer_SetAt() {
 	if err != nil {
 		panic(err)
 	}
+
 	deadline.Seconds++
+
 	if _, err := timer.SetAt(deadline, 0, 0); err != nil {
 		panic(err)
 	}
+
 	previous, err := timer.Disarm()
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println("one-shot:", previous.Interval == 0)
+
 	// Output: one-shot: true
 }
