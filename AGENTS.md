@@ -11,7 +11,8 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 - Check `go.mod` for the module path and Go version.
 - Keep dependencies and packages limited to implemented features.
 - Put package documentation in `doc.go` and document exported identifiers.
-- Use `github.com/stretchr/testify/require` for Go test assertions.
+- Creation and adoption APIs own failure cleanup: return no resource on error, close everything acquired or consumed, and never require caller error-path cleanup. `Adopt` consumes its input even on failure; borrowing operations leave caller-owned inputs open. See `docs/design/api.md` for ownership contracts.
+- Use `github.com/stretchr/testify/require` for every Go test assertion and explicit failure, including timeout paths; do not use `t.Fatal`, `t.Fatalf`, `t.Error`, `t.Errorf`, `t.Fail`, or `t.FailNow`. Keep `t.Skip` for unavailable optional prerequisites.
 - Chosen Linux-only convention: use plain Go filenames without a `_linux` suffix and start every repository-owned Go file, including tests and `doc.go`, with `//go:build linux`. Preserve the standard `_test.go` suffix; leave dependency and submodule files unchanged.
 - Group only related code, and separate distinct steps with blank lines for readability.
 - Keep README concise: link each implemented public package to its usage guide in `docs/<package>.md`. Keep design rationale in `docs/design/<package>.md` and executable examples in package tests.
