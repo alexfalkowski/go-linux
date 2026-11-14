@@ -6,9 +6,9 @@ The [package guide](../memfd.md) owns installation and user workflows; this note
 
 ## Resource model and caller
 
-`memfd.New(name, memfd.Options{})` returns an owned `*memfd.File` embedding `*os.File`. A caller writes or resizes through standard file methods, applies seals with `AddSeals`, inspects them with `Seals`, and closes the owner. Borrow `file.File` when another Go API requires `*os.File`; it is the same owner, not a duplicate. Do not replace the embedded pointer, wrap an unrelated file manually, or copy the wrapper after use. Dependencies point only to `os` and the pinned `golang.org/x/sys/unix`; no shared descriptor abstraction is needed.
+`memfd.New(name, memfd.Options{})` returns an opaque owned `*memfd.File`. A caller writes or resizes through standard file methods, applies seals with `AddSeals`, inspects them with `Seals`, maps through `Map`, and closes the owner. There is no exported underlying file, `Fd`, or `SyscallConn`. Do not copy the owner after use. A private file *os.File field supplies the selected ordinary file operations directly. Dependencies point to standard Go, the existing mmap package, and pinned x/sys; mmap has no reverse dependency.
 
-The wrapper preserves `io.Reader`, `io.Writer`, `io.ReaderAt`, `io.WriterAt`, `io.Seeker`, and `io.Closer`. The [executable example](../../memfd/example_test.go) freezes a message's contents and size, then reads it with ordinary Go I/O. Offsets, partial I/O, EOF, `Stat`, `Truncate`, and `SyscallConn` retain `os.File` semantics. There is no separate sizing API. Files use plain names and explicit Linux build tags.
+The wrapper preserves `io.Reader`, `io.Writer`, `io.ReaderAt`, `io.WriterAt`, `io.Seeker`, `io.ReaderFrom`, `io.WriterTo`, and `io.Closer`. Offsets, partial I/O, EOF, metadata, sizing, and close follow `os.File`. Copy methods hide the peer's optional copy interface before delegating, because os.File's generic copy views themselves expose raw methods. This keeps the underlying file out of caller callbacks. No zero-copy performance contract is made. `Map` delegates to mmap.Map internally and returns an independently owned Region; it does not expose a file for composition. The [executable examples](../../memfd/example_test.go) cover sealing and shared mappings.
 
 ## Included operations and defaults
 
@@ -18,11 +18,12 @@ The wrapper preserves `io.Reader`, `io.Writer`, `io.ReaderAt`, `io.WriterAt`, `i
 | `Options{Executable: true}` | Replaces `MFD_NOEXEC_SEAL` with `MFD_EXEC`; initially executable and sealable with no seals; policy failures are returned without fallback |
 | `(*File).Seals()` | `fcntl(F_GET_SEALS)` returns a snapshot, retaining unknown bits |
 | `(*File).AddSeals(mask)` | `fcntl(F_ADD_SEALS)` irreversibly adds the supported mask; unknown input bits match `os.ErrInvalid` before the syscall |
-| Embedded file methods | Standard Go I/O, size management, metadata, close, and raw descriptor access |
+| File methods | Selected ordinary Go I/O, size management, metadata, and close |
+| `Map(offset, length, options)` | mmap.Map semantics with private file borrowing and independent mapping ownership |
 
 Names are debugging labels rather than paths. Empty names are permitted; names longer than 249 bytes or containing NUL fail with `EINVAL` through `*os.PathError`. The constructor has one acquisition step: after `MemfdCreate` succeeds, `os.NewFile` accepts the valid descriptor with no fallible setup operation. There is no intermediate descriptor or post-acquisition failure requiring cleanup. Failure tests verify invalid names and repeated kernel rejection without descriptor growth.
 
-Default creation intentionally differs from raw zero flags: sealing is enabled and execute mode bits are cleared and locked. Data remains writable until another seal is applied. Close-on-exec is atomic and has no opt-out; use standard child-process descriptor passing when needed. Neither non-executable creation nor `SealExec` prohibits executable memory mappings or supplies a general execution sandbox.
+Default creation intentionally differs from raw zero flags: sealing is enabled and execute mode bits are cleared and locked. Data remains writable until another seal is applied. Close-on-exec is atomic and has no opt-out; descriptor passing is outside the current typed API. Neither non-executable creation nor `SealExec` prohibits executable memory mappings or supplies a general execution sandbox.
 
 | Seal | Contract |
 | --- | --- |
@@ -37,11 +38,11 @@ Seals belong to the inode and affect all its descriptors. They are cumulative an
 
 ## Lifetime, concurrency, errors, and blocking
 
-Callers explicitly close the file. Closing the embedded `os.File` closes the same owner; repeated close and subsequent sealing/I/O match `os.ErrClosed`. The zero value owns no file; error-returning methods match `os.ErrInvalid`. Nil receiver use is not a separate contract. Validation takes precedence for an unknown seal mask, including after close.
+Callers explicitly close the file. Repeated close and subsequent sealing/I/O match `os.ErrClosed`. The zero value owns no file; error-returning methods match `os.ErrInvalid`. Nil receiver use is not a separate contract. Validation takes precedence for an unknown seal mask, including after close.
 
 Sealing uses `SyscallConn.Control` to protect descriptor lifetime against concurrent close. Go's `os.File` raw control can return a private closing error before invoking the callback; the wrapper normalizes that control failure to `os.ErrClosed`, preserving errors from the actual `fcntl` syscall. This follows source inspection of `os/rawconn.go` and `internal/poll/fd_posix.go` and is covered by closed-file and concurrent sealing/close tests. No extra lock, mutable lifecycle state, private runtime hook, or error-string matching is needed.
 
-Ordinary methods preserve `os.File` concurrency guarantees. Operations are individually safe concurrently; inspect-then-seal and write-then-seal sequences are not transactions. No deadlines or contexts are offered. Kernel allocation and sealing can take time, and close does not cancel an in-flight control callback. Raw callbacks must not close or retain the borrowed descriptor; duplicate within the callback for independent ownership. Raw access changes the same resource.
+Ordinary methods preserve `os.File` concurrency guarantees. Operations are individually safe concurrently; inspect-then-seal and write-then-seal sequences are not transactions. Deadline methods retain os.File behavior and report os.ErrNoDeadline on open files; no context API is offered. Kernel allocation and sealing can take time, and close does not cancel an in-flight control callback. Raw borrowing is internal and protects lifetime during sealing and mapping.
 
 Creation and syscall failures use `os.PathError` with the operation and debugging label, preserving `errors.Is`/`errors.As` and errno identity. Permission, configuration, and unsupported-operation failures are not collapsed into one sentinel. No fallback weakens requested flags or seals.
 
@@ -49,13 +50,13 @@ Creation and syscall failures use `os.PathError` with the operation and debuggin
 
 The selected flags and all six seals are in the upstream Linux 7.0 UAPI. No post-7.0 flag is promised. Ordinary operations need permitted `memfd_create`, `fcntl`, and file I/O and normally need no capabilities. `MFD_EXEC` can be denied by hierarchical `vm.memfd_noexec` policy or other security controls. Tests require its success; a policy denial must remain an explicit verification gap. Tests never change the sysctl, host policy, or namespaces and do not execute a memory-backed program.
 
-Initial omissions: huge pages and page-size encodings, execution helpers, adoption, duplication helpers, mapping APIs, sealing presets, and file-I/O wrappers. Huge-page flags predate the baseline but carry extra resource/privilege requirements. Mapping is used privately in tests to verify sealing; the future `mmap` package is independent.
+Current omissions: huge pages and page-size encodings, execution helpers, adoption, descriptor passing/duplication, and sealing presets. Huge-page flags predate the baseline but carry extra resource/privilege requirements. Mapping is a typed operation using the existing mmap package.
 
 `golang.org/x/sys v0.50.0` supplies maintained syscall bindings and architecture constants without copied UAPI tables or cgo; its Go floor is 1.26.0, below this module's 1.27.0. External Go tests use the user-requested `github.com/stretchr/testify/require` assertions (Testify v1.12.1) through the shared gotestsum harness. Dependencies add module/checksum resolution, generated vendoring via `make dep`, and future updates/security scans; Testify and its transitive dependencies are used only by tests.
 
 ## Verification
 
-`package=memfd make specs` runs real kernel operations with race detection, JSON/JUnit reports, and coverage. It covers stream/random I/O, boundary labels, resizing, descriptor flags, execute-mode locking, each seal's effects and failures, invalid masks without mutation, mapped-file write/future-write distinctions, executable opt-in and implied seals, zero/closed state, borrowed-owner close, constructor failure cleanup, and concurrent sealing/close. Tests have no skips or extra profile. Mapping tests release their owned mappings without accessing unmapped memory. Descriptor-count checks run sequentially within the package.
+`package=memfd make specs` runs real kernel operations with race detection, JSON/JUnit reports, and coverage. It covers stream/random I/O, boundary labels, resizing, descriptor flags, execute-mode locking, each seal's effects and failures, invalid masks without mutation, mapped-file write/future-write distinctions, executable opt-in and implied seals, zero/closed state, mapping ownership after file close, rejected mapping ownership, constructor failure cleanup, and concurrent sealing/close. Tests have no skips or extra profile. Mapping tests release their owned mappings without accessing unmapped memory. Descriptor-count checks run sequentially within the package.
 
 There are no injected constructor failure seams. Unknown returned seal bits cannot be generated on this kernel through the supported API; retention is checked by reviewing the direct mask conversion. No fuzzing or benchmark is warranted for this small syscall boundary with no parser or performance promise.
 

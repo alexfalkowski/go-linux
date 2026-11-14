@@ -4,154 +4,167 @@ package testenv_test
 
 import (
 	"encoding/json"
-	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/alexfalkowski/go-linux/internal/testenv"
+	"github.com/stretchr/testify/require"
 )
 
-func TestConfiguredProfile(t *testing.T) {
+func TestSelectedProfileMeetsRunnerRequirements(t *testing.T) {
 	options, err := testenv.FromEnvironment()
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	report, err := testenv.Check(options)
 	encoded, encodeErr := json.Marshal(report)
-	if encodeErr != nil {
-		t.Fatal(encodeErr)
-	}
+	require.NoError(t, encodeErr)
+
 	t.Log(string(encoded))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	if report.Skip != "" {
 		t.Skip(report.Skip)
 	}
 }
 
-func TestRootlessDiscovery(t *testing.T) {
+func TestDiscoveryIdentifiesTheRunningProcess(t *testing.T) {
 	report, err := testenv.Check(testenv.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if report.Go != runtime.Version() || report.Architecture != runtime.GOARCH || report.UID != os.Getuid() {
-		t.Fatal("discovery did not identify the executing Go process")
-	}
-	for _, observation := range []string{report.Kernel, report.Machine, report.Status["CapEff"], report.Status["CapBnd"]} {
-		if observation == "" {
-			t.Fatal("missing kernel, architecture, or capability observations")
-		}
-	}
-	if report.Profile != "rootless" || report.Skip != "" {
-		t.Fatal("rootless discovery must not skip because an optional namespace probe is unavailable")
+	require.NoError(t, err)
+
+	for _, scenario := range []struct{ name, got, want string }{
+		{name: "Go version", got: report.Go, want: runtime.Version()},
+		{name: "architecture", got: report.Architecture, want: runtime.GOARCH},
+		{name: "user ID", got: strconv.Itoa(report.UID), want: strconv.Itoa(os.Getuid())},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			require.Equal(t, scenario.want, scenario.got)
+		})
 	}
 }
 
-func TestDiscoveryLeavesNamespacesUnchanged(t *testing.T) {
+func TestDiscoveryReportsKernelAndCapabilityPrerequisites(t *testing.T) {
+	report, err := testenv.Check(testenv.Options{})
+	require.NoError(t, err)
+
+	for _, scenario := range []struct{ name, value string }{
+		{name: "kernel release", value: report.Kernel},
+		{name: "machine architecture", value: report.Machine},
+		{name: "effective capabilities", value: report.Status["CapEff"]},
+		{name: "bounding capabilities", value: report.Status["CapBnd"]},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			require.NotEmpty(t, scenario.value)
+		})
+	}
+}
+
+func TestRootlessDiscoveryDoesNotRequireNamespaces(t *testing.T) {
+	report, err := testenv.Check(testenv.Options{})
+	require.NoError(t, err)
+	require.Equal(t, "rootless", report.Profile)
+	require.Empty(t, report.Skip, "an unavailable optional namespace probe must not skip ordinary-user coverage")
+}
+
+func TestDiscoveryLeavesTheCallingMountNamespaceUnchanged(t *testing.T) {
 	before, err := os.Readlink("/proc/self/ns/mnt")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	report, err := testenv.Check(testenv.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	after, err := os.Readlink("/proc/self/ns/mnt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if before != after || report.Namespaces["mnt"] != before {
-		t.Fatal("namespace discovery changed the caller's mount namespace")
-	}
+	require.NoError(t, err)
+	require.Equal(t, before, after)
+	require.Equal(t, before, report.Namespaces["mnt"])
 }
 
-func TestNamespacePrerequisitePolicy(t *testing.T) {
+func TestUnavailableNamespacesSkipOnlyWhenOptional(t *testing.T) {
 	optional, err := testenv.Check(testenv.Options{Profile: "namespaces"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	required, requiredErr := testenv.Check(testenv.Options{Profile: "namespaces", Required: true})
+	require.NoError(t, err)
+
+	required, err := testenv.Check(testenv.Options{Profile: "namespaces", Required: true})
+	require.Empty(t, required.Skip, "required coverage must never report a skip")
+
 	if optional.NamespaceError == "" {
-		if requiredErr != nil || required.Skip != "" || optional.Skip != "" {
-			t.Fatal("a usable namespace prerequisite must run in both optional and required profiles")
-		}
+		require.NoError(t, err, "available namespaces must run in both modes")
+		require.Empty(t, optional.Skip)
 		return
 	}
-	if optional.Skip == "" || requiredErr == nil || required.Skip != "" {
-		t.Fatal("an unavailable prerequisite must skip only when optional and fail when required")
-	}
+
+	require.NotEmpty(t, optional.Skip, "optional coverage must explain the missing prerequisite")
+	require.Error(t, err, "required coverage must fail the same missing prerequisite")
 }
 
-func TestRunnerMismatchFailsEvenWhenOptional(t *testing.T) {
+func TestRunnerArchitectureMismatchFailsEvenWhenOptional(t *testing.T) {
 	architecture := "arm64"
 	if runtime.GOARCH == architecture {
 		architecture = "amd64"
 	}
-	if _, err := testenv.Check(testenv.Options{Architecture: architecture}); err == nil {
-		t.Fatal("a mismatched execution architecture must fail, not skip")
-	}
+	_, err := testenv.Check(testenv.Options{Architecture: architecture})
+	require.Error(t, err)
 }
 
-func TestKernelSelection(t *testing.T) {
+func TestKernelSelectionAcceptsOnlyTheMatchingRunner(t *testing.T) {
 	report, err := testenv.Check(testenv.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, selection := range []string{"7.0", "newer"} {
-		t.Run(selection, func(t *testing.T) {
-			result, err := testenv.Check(testenv.Options{Kernel: selection})
-			baseline := strings.HasPrefix(report.Kernel, "7.0.")
-			matches := baseline == (selection == "7.0")
-			if (err == nil) != matches || result.Skip != "" {
-				t.Fatal("kernel selection must accept only the matching runtime cell and must never skip")
-			}
+	require.NoError(t, err)
+
+	baseline := strings.HasPrefix(report.Kernel, "7.0.")
+	for _, scenario := range []struct {
+		name      string
+		selection string
+		accepted  bool
+	}{
+		{name: "Linux 7.0 baseline", selection: "7.0", accepted: baseline},
+		{name: "newer Linux kernel", selection: "newer", accepted: !baseline},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			result, err := testenv.Check(testenv.Options{Kernel: scenario.selection})
+			require.Equal(t, scenario.accepted, err == nil, "runner kernel: %s; result: %v", report.Kernel, err)
+			require.Empty(t, result.Skip, "a kernel mismatch must fail rather than skip")
 		})
 	}
 }
 
-func TestInvalidSettings(t *testing.T) {
-	for _, name := range []string{"GO_LINUX_TEST_PROFILE", "GO_LINUX_TEST_REQUIRED", "GO_LINUX_TEST_ARCH", "GO_LINUX_TEST_KERNEL"} {
-		t.Run(name, func(t *testing.T) {
-			t.Setenv(name, "invalid-setting")
-			if _, err := testenv.FromEnvironment(); err == nil {
-				t.Fatal("invalid verification settings must fail before any probe runs")
-			}
+func TestInvalidVerificationSettingsFailBeforeProbing(t *testing.T) {
+	for _, scenario := range []struct{ name, setting string }{
+		{name: "profile", setting: "GO_LINUX_TEST_PROFILE"},
+		{name: "required prerequisites", setting: "GO_LINUX_TEST_REQUIRED"},
+		{name: "architecture", setting: "GO_LINUX_TEST_ARCH"},
+		{name: "kernel", setting: "GO_LINUX_TEST_KERNEL"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			t.Setenv(scenario.setting, "invalid-setting")
+			_, err := testenv.FromEnvironment()
+			require.Error(t, err)
 		})
 	}
 }
 
-func TestUnexpectedProbeFailureDoesNotSkip(t *testing.T) {
+func TestMissingProbeExecutableFailsInsteadOfSkipping(t *testing.T) {
 	uname, err := exec.LookPath("uname")
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
+
 	directory := t.TempDir()
-	if err := os.Symlink(uname, filepath.Join(directory, "uname")); err != nil {
-		t.Fatal(err)
-	}
-	// Discovery can run uname, but the namespace probe's executable is absent.
+	require.NoError(t, os.Symlink(uname, filepath.Join(directory, "uname")))
+
+	// uname remains available; the namespace probe's true executable does not.
 	t.Setenv("PATH", directory)
 	report, err := testenv.Check(testenv.Options{Profile: "namespaces"})
-	if !errors.Is(err, exec.ErrNotFound) || report.Skip != "" || report.NamespaceProbe != "error" {
-		t.Fatal("a missing probe executable must fail, not become a prerequisite skip")
-	}
+	require.ErrorIs(t, err, exec.ErrNotFound)
+	require.Empty(t, report.Skip)
+	require.Equal(t, "error", report.NamespaceProbe)
 }
 
-func TestDefaultSettings(t *testing.T) {
+func TestUnsetVerificationSettingsSelectOptionalRootlessCoverage(t *testing.T) {
 	for _, name := range []string{"GO_LINUX_TEST_PROFILE", "GO_LINUX_TEST_REQUIRED", "GO_LINUX_TEST_ARCH", "GO_LINUX_TEST_KERNEL"} {
 		t.Setenv(name, "")
 	}
 	options, err := testenv.FromEnvironment()
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := testenv.Options{Profile: "rootless", Kernel: "supported"}
-	if options != want {
-		t.Fatalf("default settings: got %+v, want %+v", options, want)
-	}
+	require.NoError(t, err)
+	require.Equal(t, testenv.Options{Profile: "rootless", Kernel: "supported"}, options)
 }

@@ -3,10 +3,9 @@
 // Package memfd creates Linux memory-backed files with irreversible file seals.
 // It requires Linux 7.0 or later and permitted memfd_create and fcntl syscalls.
 //
-// New returns a sealable, non-executable file by default. Use the embedded
-// [os.File] for ordinary I/O, seeking, sizing, metadata, and descriptor access.
-// Close the file explicitly when done. The embedded file is the same owner;
-// borrowing it does not transfer ownership or duplicate the descriptor.
+// New returns a sealable, non-executable file by default. File supports ordinary
+// Go I/O, seeking, sizing, and metadata without exposing its descriptor. Map
+// creates an independently owned memory region. Close each owner explicitly.
 //
 // Seals affect the underlying inode, including other descriptors and mappings
 // referring to it. They cannot be removed. SealExec locks execute permission

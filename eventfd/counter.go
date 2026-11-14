@@ -5,7 +5,6 @@ package eventfd
 import (
 	"encoding/binary"
 	"os"
-	"syscall"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -131,29 +130,14 @@ func (c *Counter) Add(value uint64) error {
 }
 
 // Close releases the owned descriptor and interrupts poll-blocked I/O with an
-// error matching os.ErrClosed. Repeated Close also matches os.ErrClosed. Close
-// does not cancel an active descriptor callback; callbacks must return promptly.
+// error matching os.ErrClosed. Repeated Close also matches os.ErrClosed.
 func (c *Counter) Close() error {
 	return c.file.Close()
 }
 
-// SyscallConn returns os.File's [syscall.RawConn] for the same descriptor.
-// Within callbacks, do not close, retain, or clear nonblocking mode on the
-// borrowed descriptor. Duplicate it within Control if independent ownership
-// is needed; duplicates still share the count and file status flags.
-//
-// A direct nonblocking syscall inside Control can return EAGAIN. RawConn.Read
-// and Write integrate with Go polling when their callback returns false on
-// EAGAIN; callback syscall errors must be captured separately. RawConn methods
-// preserve os.File's raw error behavior, including internal closing errors
-// that need not match os.ErrClosed.
-func (c *Counter) SyscallConn() (syscall.RawConn, error) {
-	return c.file.SyscallConn()
-}
-
 // SetDeadline wraps [os.File.SetDeadline] for both reads and writes. It affects
 // pending and future I/O; zero clears both deadlines. Expired I/O matches
-// os.ErrDeadlineExceeded. Deadlines do not cancel SyscallConn.Control callbacks.
+// os.ErrDeadlineExceeded.
 func (c *Counter) SetDeadline(deadline time.Time) error {
 	return c.deadlineError(c.file.SetDeadline(deadline))
 }

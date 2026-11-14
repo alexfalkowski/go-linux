@@ -10,7 +10,6 @@
 //
 // Descriptors are nonblocking and close-on-exec, but Counter I/O waits through
 // Go's poller until it can proceed, a deadline expires, or Close interrupts it.
-// SyscallConn provides borrowed access to the same nonblocking descriptor.
 //
 // See [eventfd(2)] for Linux counter semantics.
 //

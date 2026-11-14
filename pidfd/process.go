@@ -9,9 +9,9 @@ import (
 	"os"
 	"sync/atomic"
 	"syscall"
+	"time"
 	"unsafe"
 
-	"github.com/alexfalkowski/go-linux/eventfd"
 	"golang.org/x/sys/unix"
 )
 
@@ -37,6 +37,34 @@ func Open(pid int) (*Process, error) {
 	return Adopt(os.NewFile(uintptr(fd), "pidfd"))
 }
 
+// OpenProcess acquires an independently owned handle to process. It borrows
+// process only during this call and duplicates its stable native handle while
+// os.Process.WithHandle protects its lifetime. It never looks up a numeric PID,
+// signals, reaps, releases, or otherwise consumes process. The caller must close
+// the result and retain the original wait owner.
+//
+// A nil process matches os.ErrInvalid. Unavailable handles match os.ErrNoHandle;
+// released or waited processes preserve WithHandle's errors. There is no PID
+// fallback. Acquisition failures return nil and close every acquired descriptor.
+func OpenProcess(process *os.Process) (*Process, error) {
+	if process == nil {
+		return nil, os.ErrInvalid
+	}
+
+	var fd int
+	var duplicateErr error
+	err := process.WithHandle(func(handle uintptr) {
+		fd, duplicateErr = unix.FcntlInt(handle, unix.F_DUPFD_CLOEXEC, 0)
+	})
+	if err != nil {
+		return nil, err
+	}
+	if duplicateErr != nil {
+		return nil, os.NewSyscallError("fcntl", duplicateErr)
+	}
+	return Adopt(os.NewFile(uintptr(fd), "pidfd"))
+}
+
 // Adopt takes exclusive ownership of file immediately, including on failure.
 // If validation or construction fails, it closes file before returning the
 // error. The caller must not use or close file after calling Adopt, or use it
@@ -49,10 +77,8 @@ func Open(pid int) (*Process, error) {
 // Blocking and nonblocking pidfds are accepted; their status flags and any
 // preexisting file deadlines are left unchanged. Waits use separate polling.
 //
-// Duplicate borrowed os.Process.WithHandle descriptors with F_DUPFD_CLOEXEC
-// inside the callback before wrapping the duplicate with os.NewFile. Never
-// adopt the borrowed handle itself. Adoption grants no additional reaping or
-// signaling rights. See [pidfd_open(2)] for process-handle semantics.
+// Use OpenProcess to borrow an os.Process safely. Never adopt a borrowed
+// descriptor. Adoption grants no additional reaping or signaling rights. See [pidfd_open(2)] for process-handle semantics.
 //
 // [pidfs]: https://github.com/torvalds/linux/blob/v7.0/fs/pidfs.c
 // [pidfd_open(2)]: https://man7.org/linux/man-pages/man2/pidfd_open.2.html
@@ -69,6 +95,7 @@ func Adopt(file *os.File) (*Process, error) {
 		if stat.Type != unix.PID_FS_MAGIC {
 			return os.ErrInvalid
 		}
+
 		flags, err := unix.FcntlInt(uintptr(fd), unix.F_GETFL, 0)
 		if err != nil {
 			return err
@@ -90,7 +117,7 @@ func Adopt(file *os.File) (*Process, error) {
 		return nil, err
 	}
 
-	wake, err := eventfd.New(0, eventfd.Default)
+	wake, err := newWakeFile()
 	if err != nil {
 		file.Close()
 		return nil, err
@@ -103,8 +130,7 @@ func Adopt(file *os.File) (*Process, error) {
 // Its methods are safe for concurrent use; do not copy a Process after first
 // use. The zero value owns nothing and its methods match os.ErrInvalid. Nil
 // receivers are unsupported. Closing a handle neither signals nor reaps its
-// process. Signal and waits after Close match os.ErrClosed; SyscallConn retains
-// os.File's raw connection semantics.
+// process. Signal and waits after Close match os.ErrClosed.
 //
 // WaitReady observers may all succeed. Wait callers compete with each other
 // and external reapers: only one can consume child status, and the others
@@ -112,7 +138,7 @@ func Adopt(file *os.File) (*Process, error) {
 // overlaps it; Close cannot undo a signal or a completed reap.
 type Process struct {
 	file   *os.File
-	wake   *eventfd.Counter
+	wake   *os.File
 	closed atomic.Bool
 }
 
@@ -166,12 +192,15 @@ func (p *Process) WaitReady() error {
 				if errors.Is(pollErr, unix.EINTR) {
 					continue
 				}
+
 				if p.closed.Load() {
 					pollErr = os.ErrClosed
 				}
+
 				if pollErr == nil && fds[0].Revents&(unix.POLLIN|unix.POLLHUP) == 0 {
 					pollErr = unix.EIO
 				}
+
 				return
 			}
 		})
@@ -225,6 +254,7 @@ func (p *Process) Wait() (Exit, error) {
 			}
 			return Exit{Code: -1, Signal: syscall.Signal(status), CoreDump: info.Code == 3}, nil // CLD_DUMPED
 		}
+
 		if err := p.WaitReady(); err != nil {
 			return Exit{}, err
 		}
@@ -232,8 +262,7 @@ func (p *Process) Wait() (Exit, error) {
 }
 
 // Close releases both owned descriptors and interrupts pending waits. Repeated
-// Close matches os.ErrClosed. It neither kills nor reaps the process. Raw
-// callbacks must return promptly: Close cannot interrupt caller-owned syscalls.
+// Close matches os.ErrClosed. It neither kills nor reaps the process.
 func (p *Process) Close() error {
 	if p.file == nil {
 		return os.ErrInvalid
@@ -241,24 +270,13 @@ func (p *Process) Close() error {
 	if p.closed.Swap(true) {
 		return os.ErrClosed
 	}
-	// Leave the wake record unread so every concurrent poll waiter sees it.
-	err := p.wake.Add(1)
-	return errors.Join(err, p.file.Close(), p.wake.Close())
-}
 
-// SyscallConn exposes borrowed [syscall.RawConn] access to the pidfd,
-// implementing syscall.Conn. Do not close or retain the descriptor, change
-// shared status flags, or reap behind Wait's owner. Duplicate within Control
-// with F_DUPFD_CLOEXEC when independent ownership is needed. Raw connection
-// errors retain os.File semantics and need not match os.ErrClosed.
-//
-// Blocking and nonblocking adopted files retain their original Go polling
-// registration; do not rely on RawConn.Read/Write for exit waiting. Use
-// WaitReady instead. See [pidfd_open(2)] for available descriptor operations.
-//
-// [pidfd_open(2)]: https://man7.org/linux/man-pages/man2/pidfd_open.2.html
-func (p *Process) SyscallConn() (syscall.RawConn, error) {
-	return p.file.SyscallConn()
+	// Leave the wake record unread so every concurrent poll waiter sees it.
+	var record [8]byte
+	binary.NativeEndian.PutUint64(record[:], 1)
+
+	_, err := p.wake.Write(record[:])
+	return errors.Join(err, p.file.Close(), p.wake.Close())
 }
 
 func (p *Process) control(op string, operation func(int) error) error {
@@ -268,12 +286,16 @@ func (p *Process) control(op string, operation func(int) error) error {
 	if p.closed.Load() {
 		return &os.PathError{Op: op, Path: "pidfd", Err: os.ErrClosed}
 	}
+
 	conn, err := p.file.SyscallConn()
 	if err != nil {
 		return err
 	}
+
 	var syscallErr error
-	err = conn.Control(func(fd uintptr) { syscallErr = operation(int(fd)) })
+	err = conn.Control(func(fd uintptr) {
+		syscallErr = operation(int(fd))
+	})
 	if err != nil {
 		return &os.PathError{Op: op, Path: "pidfd", Err: os.ErrClosed}
 	}
@@ -293,4 +315,20 @@ type Exit struct {
 	// CoreDump reports Linux's CLD_DUMPED status. It does not guarantee that
 	// a core file was written or made accessible to the caller.
 	CoreDump bool
+}
+
+// newWakeFile owns acquisition cleanup and verifies polling before the wake
+// file can participate in the process owner's wait/close protocol.
+func newWakeFile() (*os.File, error) {
+	fd, err := unix.Eventfd(0, unix.EFD_CLOEXEC|unix.EFD_NONBLOCK)
+	if err != nil {
+		return nil, &os.PathError{Op: "eventfd2", Path: "eventfd", Err: err}
+	}
+
+	file := os.NewFile(uintptr(fd), "eventfd")
+	if err := file.SetDeadline(time.Time{}); err != nil {
+		file.Close()
+		return nil, err
+	}
+	return file, nil
 }

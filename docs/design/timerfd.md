@@ -6,7 +6,7 @@ Status: P03 complete for the available Linux 7.0 arm64 target; isolated clock-ch
 
 The caller creates `timerfd.New(timerfd.Monotonic)`, arms with `SetAfter`, consumes `ReadExpirations`, and closes the owned `*timerfd.Timer`. For absolute scheduling, `Now(clock)` returns a tagged Linux `Instant` for `SetAt`. `Timer` holds a private `*os.File` and immutable clock selection. Dependencies point to standard Go packages and the existing pinned `golang.org/x/sys/unix`; no new dependency, public descriptor superclass, future `epoll` dependency, lock, or background worker is needed.
 
-The private owner exposes `io.Reader`, `io.Closer`, `syscall.Conn`, typed expiration reads, and a read deadline. Embedding `os.File` would expose unsupported writes and misleading generic file operations. The shape follows `eventfd` while keeping timer-specific arming and clock semantics local. Shared internals remain deferred until P04 demonstrates a useful common boundary.
+The private owner exposes `io.Reader`, `io.Closer`, typed expiration reads, and a read deadline. Embedding `os.File` would expose unsupported writes and misleading generic file operations. The shape follows `eventfd` while keeping timer-specific arming and clock semantics local. A direct private file *os.File field keeps storage opaque without an embedded alias or shared accessor. Timer-specific control, arming, and errors remain local.
 
 ## Included operations and naming
 
@@ -19,7 +19,7 @@ The private owner exposes `io.Reader`, `io.Closer`, `syscall.Conn`, typed expira
 | `State()` | `timerfd_gettime`; relative remaining time and repeat interval without consuming counts |
 | `Disarm()` | Set both initial expiration and interval to zero, clearing unread counts |
 | `Read` / `ReadExpirations` | One native-endian expiration record, preserving clock cancellation and zero-byte results |
-| `SetReadDeadline`, `Close`, `SyscallConn` | Go polling, deterministic local ownership, and borrowed descriptor access |
+| `SetReadDeadline`, `Close` | Go polling and deterministic local ownership |
 
 `Clock` is an exclusive enum, with zero selecting `Monotonic`; values map explicitly to Linux clock IDs. Realtime uses the Unix epoch; Monotonic excludes suspend time and Boottime includes it. Neither monotonic domain is Go's private `time.Time` monotonic origin. `Instant` keeps the Linux clock tag and normalized seconds/nanoseconds rather than suggesting interchangeability with wall-clock time. Clock readings must belong to the timer's time namespace. Initial clocks and flags predate the Linux 7.0 floor and use the maintained amd64/arm64 syscall bindings.
 
@@ -41,7 +41,7 @@ State and setting syscalls run inside `RawConn.Control`, protecting against desc
 
 Methods are safe concurrently through `os.File` lifetime protection and atomic kernel timer operations. Readers compete; multi-call sequences are not transactions. Close releases the owned descriptor and wakes poll-blocked reads. Repeated close and valid calls after close match `os.ErrClosed`; invalid arguments take precedence on a previously constructed owner. Zero `Timer` methods report `os.ErrInvalid`; nil receivers and copying a used owner are unsupported.
 
-Disarming does not wake a waiting reader. Read deadlines and close do; arming/state operations are independent of those deadlines. `SyscallConn` retains standard raw error semantics. Raw callbacks must return promptly and must not close, retain, or clear nonblocking mode on the borrowed descriptor. A duplicate has independent ownership but shared settings, counts, and file flags. Kernel destruction occurs when the last descriptor closes.
+Disarming does not wake a waiting reader. Read deadlines and close do; arming/state operations are independent of those deadlines. Descriptor access stays internal; arming/state calls pin lifetime without caller callbacks. Kernel destruction occurs when the last descriptor closes.
 
 Initial omissions: Realtime/Boottime alarm clocks and `CAP_WAKE_ALARM` policy, host clock changes, suspend/wakeup guarantees, checkpoint/restore tick injection, raw-mode construction, adoption/duplication helpers, contexts, write/seek methods, and wait-many orchestration. No automatic scheduler, goroutine cancellation shim, or future namespace package is introduced. Files use plain names and Linux build tags.
 

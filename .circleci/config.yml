@@ -82,6 +82,36 @@ jobs:
       - store_artifacts:
           path: test/reports
     resource_class: arm.large
+  verify-mount:
+    parameters:
+      toolchain:
+        type: string
+    machine:
+      image: ubuntu-2604:current
+    resource_class: arm.medium
+    working_directory: ~/go-linux
+    environment:
+      GOTOOLCHAIN: << parameters.toolchain >>
+    steps:
+      - checkout-submodules
+      - run:
+          name: Verify isolated mount operations
+          command: |
+            docker run --rm --privileged --user root \
+              --env GOTOOLCHAIN \
+              --mount "type=bind,src=$PWD,dst=/home/circleci/go-linux" \
+              --workdir /home/circleci/go-linux \
+              alexfalkowski/go:5.23 \
+              bash -eo pipefail -c '
+                git config --global --add safe.directory /home/circleci/go-linux
+                make dep
+                printf "executor=machine image=ubuntu-2604:current resource_class=arm.medium container=alexfalkowski/go:5.23 privileged=true\n"
+                make verify-mount arch=arm64
+              '
+      - store_test_results:
+          path: test/reports
+      - store_artifacts:
+          path: test/reports
   sync:
     executor: release
     working_directory: ~/go-linux
@@ -114,10 +144,17 @@ workflows:
             alias: verify-go
             parameters:
               toolchain: [go1.27.0, go1.27.4]
+      - verify-mount:
+          name: verify-mount-<< matrix.toolchain >>
+          matrix:
+            alias: verify-mount-go
+            parameters:
+              toolchain: [go1.27.0, go1.27.4]
       - sync:
           requires:
             - build
             - verify-go
+            - verify-mount-go
           filters: 'pipeline.git.branch != "master"'
       - version:
           context: gh
@@ -125,10 +162,12 @@ workflows:
           requires:
             - build
             - verify-go
+            - verify-mount-go
           filters: 'pipeline.git.branch == "master"'
       - wait-all:
           requires:
             - build
             - verify-go
+            - verify-mount-go
             - sync
             - version

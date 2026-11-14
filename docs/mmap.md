@@ -27,7 +27,7 @@ The caller owns `Region` and must close it. Zero options mean `Private` and `NoA
 
 ## Map a file
 
-`mmap.Map(file, offset, length, options)` borrows `*os.File` during the call and returns an independent mapping owner. Use a positive length and a nonnegative offset divisible by `os.Getpagesize()`; the length need not be page-aligned. Closing the file after success leaves the mapping valid, and closing the region leaves the file open. An embedded `memfd.File` can supply its standard `File` field here.
+`mmap.Map(file, offset, length, options)` borrows `*os.File` during the call and returns an independent mapping owner. Use a positive length and a nonnegative offset divisible by `os.Getpagesize()`; the length need not be page-aligned. Closing the file after success leaves the mapping valid, and closing the region leaves the file open. For a `memfd.File`, call `file.Map(offset, length, options)` directly; its descriptor stays private.
 
 Select `mmap.Shared` to make changes visible to other shared mappings and ordinary file I/O. The source must be readable; shared writable mappings also require a writable source. `mmap.Private` (the default) permits private copy-on-write modifications without changing the file, even with a read-only source. Later file modifications have unspecified visibility in private mappings. Shared visibility does not establish synchronization or disk durability, and Close does not flush data for persistence.
 

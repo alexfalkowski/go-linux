@@ -34,16 +34,12 @@ The descriptor is atomically nonblocking and close-on-exec. Counter methods wait
 
 Always call `Close`. It interrupts poll-blocked reads and writes with errors matching `os.ErrClosed`. Repeated close, valid I/O after close, and deadline setters after close also match `os.ErrClosed`. The zero `Counter` owns nothing; its error-returning methods match `os.ErrInvalid`. Do not copy a counter after first use or use a nil receiver.
 
-Methods are safe concurrently. Readers compete for records rather than receiving broadcasts. Individual operations are atomic at the kernel counter boundary, but sequences such as add-then-read are not transactions. Close cannot cancel an active raw control callback, so callbacks must return promptly.
+Methods are safe concurrently. Readers compete for records rather than receiving broadcasts. Individual operations are atomic at the kernel counter boundary, but sequences such as add-then-read are not transactions.
 
-## Byte records and raw access
+## Byte records
 
-`Counter` implements `io.Reader`, `io.Writer`, `io.Closer`, and `syscall.Conn`. Reads require at least eight bytes and return exactly one native-endian eight-byte record, leaving a larger buffer's tail untouched. Writes require exactly eight bytes containing one native-endian value. Smaller reads and non-eight-byte writes, including empty buffers, match `unix.EINVAL` without changing the count. Buffer validation precedes closed-state checks; valid records use Go's deadline/closed-state checks before kernel value validation. Counter I/O is a record protocol; arbitrary stream utilities such as `io.Copy` are unsuitable.
+`Counter` implements `io.Reader`, `io.Writer`, and `io.Closer`. Reads require at least eight bytes and return exactly one native-endian eight-byte record, leaving a larger buffer's tail untouched. Writes require exactly eight bytes containing one native-endian value. Smaller reads and non-eight-byte writes, including empty buffers, match `unix.EINVAL` without changing the count. Buffer validation precedes closed-state checks; valid records use Go's deadline/closed-state checks before kernel value validation. Counter I/O is a record protocol; arbitrary stream utilities such as `io.Copy` are unsuitable.
 
-Use `counter.SyscallConn()` for borrowed access to the same descriptor through Go's standard `syscall.RawConn`. The [raw-access example](../eventfd/example_test.go) shows a lifetime-protected flag query. Borrowing does not create a new owner.
-
-A direct syscall inside `RawConn.Control` sees nonblocking behavior: an empty read or an overflowing addition returns `EAGAIN`. Capture syscall errors separately from the callback method's own error. `RawConn.Read` and `Write` can wait through Go polling when their callbacks return false on `EAGAIN`. Raw connection methods preserve `os.File` raw errors; their internal closing errors need not match `os.ErrClosed`.
-
-Never close, retain, or clear nonblocking mode on a borrowed descriptor. Duplicate within a `Control` callback if independent ownership is needed, then close the duplicate separately. Duplicates still share the count and file status flags; changing those flags can break Go polling for the original owner. There is no raw-mode constructor, exported `*os.File`, adoption API, context API, or seek interface.
+The counter keeps its descriptor private. Use typed I/O and deadlines; external poll registration and kernel-producer integration require a facility-specific operation and are outside the current API.
 
 Kernel errors retain their errno through `errors.Is` and `errors.As`. Policy denials are returned without a fallback or blanket unsupported classification. See the [package documentation](../eventfd/doc.go), [design note](design/eventfd.md), and [verification commands](verification.md).
