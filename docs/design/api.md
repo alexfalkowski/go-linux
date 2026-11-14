@@ -4,6 +4,8 @@ Status: F01 design record with implementation follow-ups, 2026-11-14. This docum
 
 Implementation follow-up: [memfd](memfd.md) owns the accepted P01 API; [eventfd](eventfd.md) owns the accepted P02 API and verified primary-target runtime behavior. The original sketches and F01 evidence below remain design history where refined by those notes.
 
+P03 implementation follow-up: [timerfd](timerfd.md) refines the timer pilot with a private pollable owner, clock-tagged absolute instants, checked signed-64-bit-nanosecond limits, state/arming operations, and exceptional read preservation. Local and Linux 7.0 arm64 CI kernel tests verify ordinary operations at both supported Go versions; P03 is complete for the available target, with isolated clock-change evidence still required for R01. `Read` restores Go's synthesized EOF to the Linux zero-byte result, so a separate raw read loop is unnecessary. The original P03 sketch below remains design history.
+
 ## Standard-library overlap
 
 The caller is a Go program that needs a Linux facility while retaining normal Go I/O and resource management. Ordinary application work should continue through the standard library. The inventory uses the installed Go 1.27.4 documentation and source, including the API history for features available before the module's Go 1.27.0 floor; minimum-version execution remains F02 work.
