@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Compile each package's tests to unique temporary paths; never execute them.
+
+set -eo pipefail
+
+compile_dir=$(mktemp -d)
+trap 'rm -rf -- "$compile_dir"' EXIT
+
+for compile_arch in amd64 arm64; do
+  compile_packages=$(CGO_ENABLED=0 GOOS=linux GOARCH="$compile_arch" go list -mod=vendor ./...)
+  compile_index=0
+
+  while IFS= read -r compile_package; do
+    printf 'compile-only linux/%s %s\n' "$compile_arch" "$compile_package"
+    CGO_ENABLED=0 GOOS=linux GOARCH="$compile_arch" go test -mod=vendor -vet=off -c \
+      -o "$compile_dir/$compile_arch-$compile_index.test" "$compile_package"
+    compile_index=$((compile_index + 1))
+  done <<< "$compile_packages"
+done
