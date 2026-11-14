@@ -1,6 +1,8 @@
 # API decisions
 
-Status: F01 design record, 2026-11-14. These are implementation conventions and provisional sketches for P01–P06, not available packages or verified runtime behavior. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns scope, execution order, acceptance, and verification status. Each package item must refine its sketch in its own design note and supply executable examples and kernel tests before claiming completion.
+Status: F01 design record with implementation follow-ups, 2026-11-14. This document owns shared conventions and the original provisional sketches for P01–P06; sketches alone do not establish package availability or runtime verification. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns scope, execution order, acceptance, and verification status. Each package item must refine its sketch in its own design note and supply executable examples and kernel tests before claiming completion.
+
+Implementation follow-up: [memfd](memfd.md) owns the accepted P01 API; [eventfd](eventfd.md) owns the accepted P02 API and verified primary-target runtime behavior. The original sketches and F01 evidence below remain design history where refined by those notes.
 
 ## Standard-library overlap
 
@@ -104,6 +106,8 @@ Default creation requests `MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_NOEXEC_SEAL`; e
 Initial omissions: huge-page allocation/size encodings and execution helpers. Huge-page and execute controls are already present in the selected baseline, not post-7.0 requirements; their extra policy/resource requirements are distinct from kernel age. No post-7.0 flag is initially promised. Inspect the exact chosen flags/seals against the [7.0 memfd header](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/memfd.h) and fcntl definitions during P01. References: [memfd_create](https://man7.org/linux/man-pages/man2/memfd_create.2.html), [seals](https://man7.org/linux/man-pages/man2/F_GET_SEALS.2const.html), and [non-executable memfd policy](https://docs.kernel.org/userspace-api/mfd_noexec.html). P01 must verify size/I/O, each included seal's failure behavior, lifecycle, and constructor cleanup without elevated privileges when permitted.
 
 ### P02: eventfd
+
+P02 refines this sketch in [eventfd.md](eventfd.md), with a [package guide](../eventfd.md) and executable kernel tests. `Mode` is a `uint8` enum with `Default = 0` and `Semaphore = 1`. Borrowed access uses the standard `SyscallConn() (syscall.RawConn, error)` interface. Linux 7.0 arm64 CI and local Linux 7.3 amd64 execution verify polling, deadlines, and close interruption at both supported Go versions; the P02 primary-target runtime gap is closed. Deadline setters normalize Go's private closing error; returned descriptors preserve `os.File` raw error behavior.
 
 Caller flow: create `eventfd.Counter`, optionally set a deadline, call `Add`, then consume `ReadValue`, and close. A private `os.File` supplies lifetime/polling; do not expose seek or file-copy methods that imply an arbitrary byte stream.
 
