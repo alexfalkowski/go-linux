@@ -23,4 +23,4 @@ The shared tooling uses `betteralign` and `golangci-lint` for linting,
 image supplies these tools; install them locally to run the corresponding
 targets.
 
-See [AGENTS.md](AGENTS.md) for contributor commands.
+See [AGENTS.md](AGENTS.md) for contributor commands, the [implementation plan](IMPLEMENTATION.md) for work order, and [verification guidance](docs/verification.md) for profiles, reports, and runner requirements.

@@ -1,6 +1,6 @@
 # Linux APIs for Go: implementation plan
 
-Status: repository scaffold established; Linux API implementations have not started.
+Status: F01 and F02 complete for the available Linux 7.0 arm64 CI target. Phase 0 is complete; Linux API implementations have not started. Revisit the verification target when the runner environment changes.
 
 This document is the shared execution plan for Codex, Claude, and human contributors. It is self-contained: an agent should be able to implement the next work item without access to the conversation that produced it.
 
@@ -16,9 +16,9 @@ The initial scope is **21 public packages in one module, across nine domains**. 
 
 | Field | Value |
 | --- | --- |
-| Current work item | None |
-| Next work item | F01 |
-| Completed work items | None |
+| Current work item | None — Phase 0 complete |
+| Next work item | P01 — `memfd` |
+| Completed work items | F01, F02 |
 | Implementation repository | `github.com/alexfalkowski/go-linux`; this plan lives in `IMPLEMENTATION.md` |
 | Module path | `github.com/alexfalkowski/go-linux` |
 | Minimum Linux version | 7.0 |
@@ -27,15 +27,15 @@ The initial scope is **21 public packages in one module, across nine domains**. 
 | Minimum Go version | 1.27.0, declared in `go.mod` |
 | Observed development kernel | `7.3.4-2-t2-resolute`, `x86_64` |
 | Observed userspace | Ubuntu 26.04.1 LTS |
-| User-reported CircleCI kernel | `7.0.0-1017-aws` |
-| User-reported CircleCI architecture | `arm64` |
-| CircleCI executor/image/resource class | Docker / `alexfalkowski/go:5.23` / `arm.large`, configured in `.circleci/config.yml`; runtime observations pending F02 |
+| Observed CircleCI kernel | `7.0.0-1017-aws` |
+| Observed CircleCI architecture | `arm64` (`aarch64`) |
+| CircleCI executor/image/resource class | Docker / configured image `alexfalkowski/go:5.23` / `arm.large`; current jobs 12–14 and their runner diagnostics verified |
 | Observed local execution privileges | UID 1000; effective and bounding capability sets are empty |
-| Observed local execution restrictions | `NoNewPrivs: 1`; `Seccomp: 2` (filter mode); allowed syscalls not yet probed |
-| CircleCI execution privileges and restrictions | Unknown; probe independently in F02 |
-| Environment observation date | 2026-11-13 |
+| Observed local execution restrictions | `NoNewPrivs: 1`; `Seccomp: 2` (filter mode); user/mount/network namespace creation plus UID/GID mapping probe returns `EPERM`; no facility-specific success coverage inferred |
+| CircleCI execution privileges and restrictions | UID 3434; `CapEff: 00000000a0040400`; `CapBnd: 00000000a00405fb`; `NoNewPrivs: 0`; `Seccomp: 2`; user/mount/network namespace creation and UID/GID mapping probe succeeds |
+| Environment observation date | 2026-11-14 |
 
-The observed kernel came from `uname -srmo`; userspace came from `/etc/os-release`. The CircleCI kernel and architecture were supplied by the user and must be confirmed by CI startup diagnostics. These observations are not proof that every syscall is permitted or every optional feature is configured. Linux 6.x compatibility is outside the selected scope.
+The observed development kernel came from `uname -srmo`; userspace came from `/etc/os-release`. CircleCI kernel, architecture, privileges, and namespace observations are confirmed by the F02 job diagnostics linked below. These observations are not proof that every syscall is permitted or every optional feature is configured. Linux 6.x compatibility is outside the selected scope.
 
 | Phase | Work items, in order | Result |
 | --- | --- | --- |
@@ -151,7 +151,7 @@ Consult [os.NewFile](https://pkg.go.dev/os#NewFile) and [syscall.Conn](https://p
 
 The selection rule is **prefer supported, extensible interfaces with the required semantics; omit superseded interfaces when they add no needed capability**. Age alone does not establish obsolescence.
 
-- Baseline: Linux **7.0+**, with **arm64 as the primary runtime target**. The user's CircleCI runner reports `7.0.0-1017-aws` on arm64; local development reports a newer 7.3 kernel on amd64. Keep amd64 compilation working and record available local execution separately. Advertise full amd64 runtime support only after the required baseline checks exist. Record changes to this policy explicitly; do not raise the floor implicitly. This choice excludes Linux 6.x and does not claim that every 7.x series is a long-term release. See the [kernel release policy](https://www.kernel.org/category/releases.html).
+- Baseline: Linux **7.0+**, with **arm64 as the primary runtime target**. Verified CircleCI jobs run `7.0.0-1017-aws` on arm64; local development reports a newer 7.3 kernel on amd64. Required runtime verification targets the available Linux 7.0 arm64 runner; update this target when the environment changes rather than requiring unavailable newer-kernel runners. Keep amd64 compilation working and record available local execution separately. Advertise full amd64 runtime support only after the required baseline checks exist. Record changes to this policy explicitly; do not raise the floor implicitly. This choice excludes Linux 6.x and does not claim that every 7.x series is a long-term release. See the [kernel release policy](https://www.kernel.org/category/releases.html).
 - Keep the minimum Go version declared in `go.mod` aligned with the [Go support policy](https://go.dev/doc/devel/release#policy). Pin the syscall dependency when an implementation first needs it.
 - Newer optional features may require newer kernels. Document requirements per operation or flag and use feature/ABI queries where available. Version strings alone are insufficient; kernel configuration and distribution backports matter.
 - Check baseline operations against the upstream Linux 7.0 UAPI as well as the actual runners. Success on an AWS kernel with backports or the local 7.3 kernel must not silently turn a vendor-specific or newer feature into a baseline requirement. Revisit API choices for this floor instead of carrying forward compatibility code needed only for older kernels.
@@ -195,8 +195,8 @@ Every P-series work item must satisfy this checklist before completion:
 - Privileged/feature-specific tests use explicit tags or opt-in configuration. Record exact prerequisites and skip reasons. Required CI lanes must fail or remain outstanding when their prerequisites are missing; they cannot pass by skipping the entire facility.
 - For code changes, run `gofmt` on touched Go files, `go vet ./...`, relevant package tests, and `go test ./...` where the runner supports the default suite. Run targeted `go test -race` for meaningful concurrency behavior and after changing shared synchronization. Broaden checks when the change warrants it.
 - F02 must add a reproducible compile-only check for amd64 and arm64 that covers both package code and test code. Do not try to execute foreign-architecture test binaries directly. Cross-compilation is recorded separately from execution.
-- Required primary CI matrix: execute on Linux 7.0.x arm64 with the declared minimum and latest supported Go versions; also execute on a newer kernel on arm64. Confirm the CircleCI kernel, architecture, executor, image, and resource class in job output. A container image cannot by itself pin the host kernel.
-- Keep compile checks for both amd64 and arm64. Record local Linux 7.3 amd64 execution when available. To advertise full amd64 support, add the corresponding 7.0.x and newer-kernel runtime matrix; compile success alone is insufficient.
+- Required primary CI matrix: execute on the available CircleCI arm64 runner with the declared minimum and latest supported Go versions. Its verified kernel is currently Linux 7.0.x. Confirm the actual kernel, architecture, executor, image, and resource class in job output. CircleCI manages the Docker executor's host kernel; per-job or per-organization kernel selection is unavailable. Additional kernel versions are optional while unavailable; they are not a completion requirement. When CircleCI changes the runner kernel, update the documented verification target using the new observations; do not implicitly raise the library's minimum Linux version. A container image cannot by itself pin the host kernel. See [CircleCI's Docker kernel policy](https://discuss.circleci.com/t/circleci-response-to-cve-2026-43499-ghostlock-linux-kernel-vulnerability/54758).
+- Keep compile checks for both amd64 and arm64. Record local Linux 7.3 amd64 execution when available. To advertise full amd64 support, verify its promised runtime behavior on a matching baseline runner; compile success alone is insufficient.
 - Run required privileged lanes on capable isolated runners. Inspect the CircleCI executor's actual capabilities and restrictions instead of inferring them from `uname`. If another runner is needed, leave that lane outstanding until it exists. Document the executed matrix and newer-feature requirements.
 
 ### Test prerequisites and restricted environments
@@ -231,17 +231,21 @@ F02 must establish the following test-runner behavior:
 
 ### Verification gap register
 
-No operation-level probes have run yet. The observed local UID/capability/seccomp state is recorded above; CircleCI privileges remain unknown. Add rows when a specific required check is attempted and cannot run. Reassess these rows in R01.
+F02 ran local prerequisite discovery and a disposable user/mount/network namespace creation/mapping probe. Rootless foundation tests ran on Linux 7.3 amd64 and CircleCI Linux 7.0 arm64 with Go 1.27.0 and 1.27.4; these are not pilot-package syscall tests. The [F02 CircleCI workflow](https://app.circleci.com/workflow/29e0f43d-2801-47ba-bdd0-d2c09719de50) passed for commit `156738dd828681ba1375ed7a66c7e8ff1f26c374`. Its job diagnostics confirm namespace creation/mapping succeeds on CI. The user limited required kernel coverage to the available Linux 7.0 runner; revise the matrix when that environment changes. Reassess operation-specific prerequisites during their package items and in R01.
 
 | Work item / operation | Implementation status | Verification missing | Evidence / unmet prerequisite | Required runner or profile | Resolution |
 | --- | --- | --- | --- | --- | --- |
-| None recorded yet | Not started | Prerequisite discovery planned in F02 | Local privilege inspection only; no facility probes | Local and CircleCI discovery | Pending F02 |
+| F02 / namespace creation and UID/GID mapping | Verified for the foundation probe | None for F02; later facility operations need their own tests | Local optional profile skips on `EPERM` and required profile fails; CI jobs 12–14 report `namespace_probe=available` and pass `TestNamespacePrerequisitePolicy` | Available CircleCI arm64 runner | Resolved 2026-11-14 for creation/mapping only |
+| F02 / Linux 7.0 baseline | Verified | None for F02 | Jobs 14 and 12 execute 15 tests each on actual `7.0.0-1017-aws` arm64 with Go 1.27.0 and 1.27.4 | Available CircleCI Linux 7.0 arm64 runner | Resolved 2026-11-14 |
+| F02 / arm64 CI matrix and isolation | Verified for the available target | No additional kernel lane required; facility-specific privileged success remains with its owning package | Jobs 12–14 pass; diagnostics record kernel, architecture, UID, capabilities, seccomp, and namespace success; both architectures compile at both Go versions | Current CircleCI runner at minimum/latest supported Go versions | Resolved 2026-11-14; revisit when the runner changes |
 
 ## Phase 0: foundation
 
-- [ ] **F01 — Record API decisions.** Inventory standard-library overlap and existing Go libraries as design references. Write `docs/design/api.md` with naming, ownership, byte-I/O, typed-helper, errors, deadlines, and compatibility conventions. **Acceptance:** decisions and unresolved external constraints are explicit; the six pilot packages have documented provisional API sketches. API review is part of implementation; this item does not require a new user approval gate.
+- [x] **F01 — Record API decisions.** Inventory standard-library overlap and existing Go libraries as design references. Write `docs/design/api.md` with naming, ownership, byte-I/O, typed-helper, errors, deadlines, and compatibility conventions. **Acceptance:** decisions and unresolved external constraints are explicit; the six pilot packages have documented provisional API sketches. API review is part of implementation; this item does not require a new user approval gate. **Evidence:** [API decisions](docs/design/api.md) and the 2026-11-14 handoff below; sketches remain provisional, with no package runtime acceptance claimed.
 
-- [ ] **F02 — Extend verification commands.** Extend the existing CircleCI pipeline with supported Go version coverage, architecture compilation, and the kernel/privilege matrix where runners are available. Inspect the configured arm64 executor's actual kernel and available isolation; adjust job settings when evidence requires it. Build a minimal subprocess test helper only when immediately needed. Implement prerequisite discovery, test profiles, precise skip reporting, and required-profile failure behavior described above. Record rootless and capability-requiring coverage separately; do not assume CircleCI grants root. List missing runners as outstanding work; do not claim they exist. **Acceptance:** a minimal Go example/test runs, dependency resolution is reproducible, contributor commands work, and both agent entry points refer to this plan. No empty public-package stubs or speculative shared framework.
+- [x] **F02 — Extend verification commands.** Extend the existing CircleCI pipeline with supported Go version coverage, architecture compilation, and the kernel/privilege matrix where runners are available. Inspect the configured arm64 executor's actual kernel and available isolation; adjust job settings when evidence requires it. Build a minimal subprocess test helper only when immediately needed. Implement prerequisite discovery, test profiles, precise skip reporting, and required-profile failure behavior described above. Record rootless and capability-requiring coverage separately; do not assume CircleCI grants root. List missing operation-specific runners with their owning packages; do not claim they exist. **Acceptance:** a minimal Go example/test runs, dependency resolution is reproducible, contributor commands work, and both agent entry points refer to this plan. No empty public-package stubs or speculative shared framework.
+
+  **Complete for the available Linux 7.0 arm64 target (2026-11-14).** [Verification guidance](docs/verification.md) documents commands, rootless/namespace profiles, JSON/JUnit reports, and required-profile failure behavior. Local checks passed; current CircleCI build and both Go verification jobs passed with actual runner diagnostics and namespace creation/mapping success. The verified job links and scope revision are recorded in the follow-up handoff below. Additional kernel versions are not required until the environment changes; future package-specific privileged operations still require their own evidence.
 
 ## Phase 1: four packages that establish the conventions
 
@@ -326,6 +330,9 @@ Record material changes here with the reason and affected work items. Routine im
 | 2026-11-13 | Primary runtime verification on CircleCI arm64 | User reported arm64; amd64 gets compilation and available local checks until full runtime support is verified |
 | 2026-11-13 | Execute packages sequentially with shared handoff records | Support continuation by Codex, Claude, or human contributors |
 | 2026-11-13 | Track implementation and verification separately | Root/capability/configuration restrictions may defer integration checks; independent work may continue without claiming completion |
+| 2026-11-14 | Record shared conventions and provisional P01–P06 APIs in [docs/design/api.md](docs/design/api.md) | F01: reuse standard file/process facilities, preserve record I/O and clock domains, make ownership/defaults explicit, and retain unresolved runner/runtime constraints for their owning items |
+| 2026-11-14 | Preserve shared gotestsum; add repository-specific Linux discovery, rootless/namespace profiles, both compile architectures, and pinned minimum/latest Go CI jobs | F02: no new Go dependencies or public facility stubs; defer capability/delegation profiles until actual implemented operations need them; leave unavailable runtime cells outstanding |
+| 2026-11-14 | Target the available Linux 7.0 arm64 CircleCI runner; update the target when the environment changes | User scope correction removes the mandatory newer-kernel lane. Current Go 1.27.0/1.27.4 CI execution and namespace probe evidence satisfy F02; future facility-specific privilege checks remain with their packages. |
 
 ## Handoff log
 
@@ -350,4 +357,98 @@ If continuing past a deferred item: dependency assessment and reason
 Next work item and concrete starting point:
 ```
 
-No implementation handoffs yet. Start with F01.
+### F01 — 2026-11-14
+
+```text
+Work item: F01 — Record API decisions
+Status: complete
+Implementation: ready (design documentation only)
+Verification: verified (F01 documentation acceptance only; no package runtime claims)
+Agent and date: Codex, 2026-11-14
+Repository and revision, if available: github.com/alexfalkowski/go-linux, base ee8074c; working-tree changes, no commit created
+Changes and relevant files: added docs/design/api.md; updated IMPLEMENTATION.md state, completion evidence, decision record, and handoff
+API decisions and primary references: standard-library overlap inventory; selected existing-library comparisons; shared naming, ownership, zero/closed state, byte/typed I/O, errors, polling/deadlines, compatibility, and dependency direction; provisional memfd/eventfd/timerfd/mmap/pidfd/mount sketches with included/omitted operations and prerequisites. Primary Go/Linux references are linked next to decisions in the design note.
+Checks: make help -> passed; confirmed shared Make commands and CI wiring
+Checks: go version -> go1.27.4 linux/amd64; inspected installed Go source and API history, including os.Process.WithHandle and record-I/O/polling behavior
+Checks: uname -srmo -> Linux 7.3.4-2-t2-resolute x86_64 GNU/Linux
+Checks: id -u -> 1000; rg '^(CapEff|CapBnd|NoNewPrivs|Seccomp):' /proc/self/status -> effective/bounding sets zero, NoNewPrivs 1, Seccomp 2
+Checks: make lint -> passed, exit 0, betteralign and golangci-lint ran, 0 issues; golangci-lint warned that facts could not be persisted to its read-only /home/alex/.cache/golangci-lint cache. This checks the existing Go scaffold, not Markdown semantics.
+Checks: git diff --check -> passed; git diff --no-index --check /dev/null docs/design/api.md -> exit 1 for the new-file difference, no whitespace diagnostics
+Checks: documentation self-review -> six pilot sketches and required convention sections present; relative plan link resolves; compared decisions with primary references and challenged record sizes, zero/closed behavior, standard-library overlap, clock domains, ownership, and claims of verification
+Environment: Go 1.27.4, Linux 7.3.4 amd64, UID 1000, no effective/bounding capabilities, no-new-privileges, seccomp filter; no facility syscall probes or remote CI runs
+Required profile, namespace/delegation/configuration prerequisites: none for F01 documentation; public documentation access used for research. Runtime profiles and actual prerequisites remain F02/P-series work.
+Skipped/unavailable checks and remaining acceptance criteria: no F01 acceptance criteria remain. The common package checklist applies to P-series items; no public package/example/test was added or marked complete. make specs, race tests, minimum-Go execution, architecture compilation, privileged checks, and the runtime matrix were not run for this documentation-only change. No Markdown-specific validation target exists; semantic review is manual.
+Verification gap register entries added or resolved: none; no operation-level check was attempted. Future external constraints remain explicit in docs/design/api.md and existing plan requirements.
+Unresolved issues or scope changes: sketches are provisional. P02/P03/P05 must prove polling/close behavior; P03 must resolve duration-conversion side effects and obtain clock-jump evidence; P05/P06 must resolve adoption/reaping and diagnostic sizing. No dependencies, shared tooling, existing APIs, or support floors changed.
+Refactor: none (local readability, test-layer fit, and public-boundary passes found no production code or tests to refactor; only the requested design record and plan changed)
+Confidence: 96% for F01 documentation acceptance, based on repository/source inspection, primary references, the challenge pass, and observed checks; this is not confidence in unimplemented runtime behavior
+If continuing past a deferred item: not applicable; F01 is complete, no deferred prerequisite was bypassed
+Next work item and concrete starting point: F02 — inspect .circleci/config.yml and bin/build/make/go.mak/bin/build/go/test; establish prerequisite diagnostics, profiles/required-profile behavior, reproducible setup, compilation of code and tests for both architectures, an executable minimal test/example, and consistent plan pointers in AGENTS.md and CLAUDE.md. Confirm actual CircleCI runner evidence and keep unavailable lanes outstanding.
+```
+
+### F02 — 2026-11-14, initial implementation
+
+This initial handoff records the evidence available before the draft PR ran on CI. Its pending status and newer-kernel requirement are superseded by the completion handoff below.
+
+```text
+Work item: F02 — Extend verification commands
+Status: in progress (implementation ready; verification pending)
+Implementation: ready
+Verification: partial / environment-blocked (required CI/kernel/namespace success evidence outstanding)
+Agent and date: Codex, 2026-11-14
+Repository and revision, if available: github.com/alexfalkowski/go-linux, base ee8074c; F01 changes preserved; no commit, push, PR, or remote CI execution performed
+Changes and relevant files: build/verify.mak and build/compile expose environment discovery, vet, scripts-lint, ci-validate, and compilation of packages/tests for amd64 and arm64; Makefile includes local rules before shared fragments to preserve BIN_ROOT resolution. internal/testenv and internal/cmd/testenv implement bounded discovery, runner/profile validation, namespace creation/mapping probes, precise optional skips and required failures, and JSON diagnostics. External Go tests cover these caller contracts through the shared gotestsum harness. .circleci/config.yml adds Go 1.27.0/1.27.4 verification jobs and makes sync/version wait for them. .gocov now excludes /test/ rather than every path containing test, retaining environment-checker coverage. AGENTS.md and CLAUDE.md point to this plan; README.md links docs/verification.md.
+API decisions and primary references: internal verification tool only, no public Linux API or dependencies added. Namespace creation is attempted in an exec child with standard SysProcAttr; no host policy, mount, route, or controller mutation. Profile selection is distinct from actual UID/privileges. Docs link Go toolchain and official CircleCI configuration/Arm references. Existing shared bin files/submodule revision unchanged.
+Checks: make help -> passed; new commands discoverable
+Checks: make dep -> passed, no module dependencies to download/vendor; GOPATH=/tmp/go-linux-f02-toolchains GOTOOLCHAIN=go1.27.0 make dep -> passed with checksum verification enabled; go.mod unchanged and no go.sum required
+Checks: GOPATH=/tmp/go-linux-f02-toolchains GOTOOLCHAIN=go1.27.0 package=internal/testenv make specs -> passed, 15 tests, race enabled, no skips
+Checks: GOPATH=/tmp/go-linux-f02-toolchains GOTOOLCHAIN=go1.27.0 make vet compile -> passed; both linux/amd64 and linux/arm64 compile, no test binaries executed
+Checks: make specs profile=rootless required=true arch=amd64 kernel=newer -> passed on Go 1.27.4, 15 tests, race enabled, no skips
+Checks: package=internal/testenv make specs profile=namespaces -> command passed with 1 explicit prerequisite skip among 15 tests; TestConfiguredProfile reports the clone/mapping operation, observed EPERM, required prerequisite, and profile. Not namespace success coverage.
+Checks: package=internal/testenv make specs profile=namespaces required=true -> expected nonzero exit, 1 failed test among 15; the required profile does not pass by skipping
+Checks: make test-environment kernel=7.0 -> expected nonzero exit on actual 7.3.4; namespace probe explicitly not-run after identity rejection
+Checks: make test-environment -> passed rootless discovery, with the optional namespace EPERM observation retained; make compile and make vet -> passed on Go 1.27.4, both compile architectures, no foreign execution
+Checks: make format; GOLANGCI_LINT_CACHE=/tmp/go-linux-f02-lint make lint; make scripts-lint -> passed, lint 0 issues; make -C bin skills-lint -> passed shared policy checks (local plan pointers also reviewed manually)
+Checks: make coverage -> passed, HTML/function reports generated, total 79.8% statement coverage of verification code; command main remains 0% in instrumented tests and was exercised separately via Make. Coverage does not establish namespace success.
+Checks: make sec -> passed; govulncheck found no vulnerabilities and Trivy reported no findings (go.mod vulnerability count 0; secret scanning enabled)
+Checks: PATH="/tmp/go-linux-f02-tools:$PATH" XDG_CONFIG_HOME=/tmp/go-linux-f02-circleci-config DO_NOT_TRACK=1 make ci-validate -> passed using official CircleCI CLI 1.15.0; configuration accepted by the validator. Temporary binary downloaded from its official release and SHA-256 checked; no tool dependency added to go.mod.
+Checks: git diff --check -> passed; JSON and JUnit artifacts inspected and agree on pass/skip/fail for TestConfiguredProfile; optional/required namespace and minimum-Go results archived separately under ignored test/reports/ directories
+Setup/failure classification: initial local Make include placement changed recursive BIN_ROOT resolution and caused a harness path error before tests ran; corrected include ordering, then tests passed. Initial lint found complexity issues; split observation responsibilities and simplified validation, then lint passed. Default lint/toolchain caches were read-only; reran the same targets using writable temporary caches without disabling checksums. CircleCI CLI initially absent and its module is not go-installable because of replace directives; used its verified official release binary and retried the same validation target.
+CI inspection: GitHub commit status and CircleCI workflow/job APIs confirm historical build 7 succeeded on 2026-11-13 with Docker/arm-large; startup image log confirms alexfalkowski/go:5.23. This predates F02 and does not verify the new jobs, host kernel, capabilities, or namespace availability. Initial job lookup by UUID returned 404; workflow lookup supplied the numeric job 7. Signed log URLs are excluded from repository records.
+Environment: local Go 1.27.0 and 1.27.4, Linux 7.3.4-2-t2-resolute amd64, UID 1000, zero effective/bounding capabilities, NoNewPrivs 1, Seccomp 2; /sys and cgroup2 mount observed read-only; controller visibility does not prove writable delegation
+Required profile, namespace/delegation/configuration prerequisites: rootless verified locally; user/mount/network namespace creation plus UID/GID mapping denied with EPERM. Required success needs a runner permitting that exact operation. Baseline/newer arm64 cells need corresponding real kernels; no VM or delegated cgroup subtree assumed available.
+Skipped/unavailable checks and remaining acceptance criteria: successful namespace profile and changed CircleCI matrix execution unavailable; actual CI kernel/privilege diagnostics and all required arm64 runtime cells remain open. No facility-specific capability/delegation success tests implemented ahead of their packages. P-series common package checklist does not apply to this foundation item; no package checkbox marked complete.
+Verification gap register entries added or resolved: added F02 namespace creation/mapping, Linux 7.0 baseline, and arm64 CI matrix/isolation gaps; none resolved by compilation, historical CI success, or skips
+Refactor: local code/test readability pass split distinct observation responsibilities and reduced branching; boundary pass retained direct standard subprocess operations and the shared harness; compatibility/security pass checked bounded children, temporary-path cleanup, allowlisted settings/diagnostics, and no host mutations. No broader refactor needed.
+Challenge pass: exercised malformed settings, wrong architecture/kernel selection, missing probe executable (must fail rather than skip), optional versus required namespace denial, and caller mount-namespace preservation. Reviewed report/CI claims against actual execution evidence. No independent review agent used.
+Confidence: 96% for implementation and local validation, supported by both Go versions, both compile architectures, actual report behavior, lint/vet/security results, and official config validation. Required remote/privileged success remains unverified; F02 and Phase 0 are not complete.
+If continuing past a deferred item: P01 memfd creation/I/O/seals are independent of unavailable namespace success and arm64 runner provisioning. The default harness, reports, and compile checks work locally; P01 must still pin its syscall dependency and verify its own exact operations. No later package implementation started in this turn.
+Next work item and concrete starting point: P01 — refine docs/design/api.md into docs/design/memfd.md, inspect Linux 7.0 memfd/fcntl UAPI, pin a compatible x/sys version, and implement creation/file ownership/seals with the common package checklist. Separately, run the Phase 0 draft PR on CI to collect F02 environment.json and Go-matrix results; obtain missing baseline/newer/namespace runners before closing F02.
+```
+
+### F02 — 2026-11-14, CI evidence and target update
+
+```text
+Work item: F02 — Extend verification commands
+Status: complete for the available Linux 7.0 arm64 CI target
+Implementation: ready
+Verification: verified for the revised F02 scope
+Agent and date: Codex, 2026-11-14
+Repository and revision: github.com/alexfalkowski/go-linux, CI-tested commit 156738dd828681ba1375ed7a66c7e8ff1f26c374, PR #2; documentation-only follow-up
+Changes and relevant files: IMPLEMENTATION.md and docs/verification.md now target the available Linux 7.0 arm64 runner and record current CI evidence. Additional kernel versions are optional until the environment changes. Current state and F02 acceptance reflect the revised scope; the earlier implementation handoff remains historical.
+API decisions: no public package API or support floor changes; future package operations must still prove their own prerequisites and behavior
+Checks: read-only CircleCI job metadata and selected diagnostic/test logs for jobs 12, 13, and 14 -> all success at the exact tested commit; Go verification jobs each report DONE 15 tests with no skips
+Checks: job 14 (Go 1.27.0) and job 12 (Go 1.27.4) -> dependency setup, environment discovery, vet, amd64/arm64 compilation, and make specs profile=rootless required=true arch=arm64 passed
+Checks: build 13 -> dependency setup, diagnostics, lint, scripts-lint, security scans, specs, and coverage passed
+Checks: make help and git diff --check -> passed for the documentation follow-up; all five relative links in the two changed documents resolve
+Environment: actual Linux 7.0.0-1017-aws, aarch64/arm64, Docker/arm-large, configured image alexfalkowski/go:5.23, UID 3434, CapEff 00000000a0040400, CapBnd 00000000a00405fb, NoNewPrivs 0, Seccomp 2
+Required profile and prerequisites: rootless tests pass; actual user/mount/network namespace creation plus UID/GID mapping reports available and the namespace prerequisite policy test passes. Local EPERM skip/required-failure evidence remains valid for that restricted local environment.
+Verification gap register entries resolved: F02 namespace creation/mapping, Linux 7.0 baseline, and current arm64 Go matrix. Newer-kernel execution is no longer a required gap under the user's revised target.
+Skipped/unavailable checks and remaining acceptance criteria: no F02 criteria remain under the revised scope. No newer-kernel arm64 execution, full amd64 support, writable cgroup delegation, clock mutation, or future package-specific privileged success is claimed.
+Refactor: none (documentation-only update; local consistency, boundary ownership, and compatibility/evidence passes preserve executable behavior)
+Challenge pass: checked the revision, both actual Go versions and kernel/architecture observations, namespace probe scope, successful test totals, current versus historical status, and future package obligations
+Confidence: 97% for F02 completion under the revised scope, based on exact-commit CI metadata/logs, prior local validation, and the scope/evidence challenge pass
+Next work item and concrete starting point: P01 — refine docs/design/api.md into docs/design/memfd.md, inspect the Linux 7.0 UAPI, pin a compatible x/sys version, and implement creation/ownership/seals with the common package checklist
+```
+
+CI evidence: [build 13](https://circleci.com/gh/alexfalkowski/go-linux/13), [Go 1.27.0 job 14](https://circleci.com/gh/alexfalkowski/go-linux/14), [Go 1.27.4 job 12](https://circleci.com/gh/alexfalkowski/go-linux/12).

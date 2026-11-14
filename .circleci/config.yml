@@ -35,7 +35,13 @@ jobs:
             - go-linux-go-cache-v1-{{ checksum "go.mod" }}-{{ checksum "~/.go-version" }}-{{ checksum "~/.go-lint-version" }}-{{ checksum ".source-key" }}
             - go-linux-go-cache-v1-
       - run: make dep
+      - run:
+          name: Observe the actual Linux runner
+          command: |
+            printf 'executor=docker image=alexfalkowski/go:5.23 resource_class=arm.large\n'
+            make test-environment arch=arm64 | tee test/reports/environment.json
       - run: make lint
+      - run: make scripts-lint
       - run: make sec
       - run: make specs
       - save_cache:
@@ -51,6 +57,30 @@ jobs:
       - store_artifacts:
           path: test/reports
       - run: make codecov-upload
+    resource_class: arm.large
+  verify:
+    parameters:
+      toolchain:
+        type: string
+    executor: go
+    working_directory: ~/go-linux
+    environment:
+      GOTOOLCHAIN: << parameters.toolchain >>
+    steps:
+      - checkout-submodules
+      - run: make dep
+      - run:
+          name: Observe the actual Linux runner and namespace prerequisites
+          command: |
+            printf 'executor=docker image=alexfalkowski/go:5.23 resource_class=arm.large\n'
+            make test-environment arch=arm64 | tee test/reports/environment.json
+      - run: make vet
+      - run: make compile
+      - run: make specs profile=rootless required=true arch=arm64
+      - store_test_results:
+          path: test/reports
+      - store_artifacts:
+          path: test/reports
     resource_class: arm.large
   sync:
     executor: release
@@ -78,18 +108,27 @@ workflows:
     max_auto_reruns: 3
     jobs:
       - build
+      - verify:
+          name: verify-<< matrix.toolchain >>
+          matrix:
+            alias: verify-go
+            parameters:
+              toolchain: [go1.27.0, go1.27.4]
       - sync:
           requires:
             - build
+            - verify-go
           filters: 'pipeline.git.branch != "master"'
       - version:
           context: gh
           serial-group: << pipeline.project.slug >>/version
           requires:
             - build
+            - verify-go
           filters: 'pipeline.git.branch == "master"'
       - wait-all:
           requires:
             - build
+            - verify-go
             - sync
             - version
