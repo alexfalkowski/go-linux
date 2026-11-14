@@ -88,6 +88,8 @@ The following tables are signature sketches, not compilable examples or exported
 
 ### P01: memfd
 
+P01 refines this provisional sketch in [memfd.md](memfd.md); that note and the package documentation own the implemented API. The plan records completed runtime acceptance on the available Linux 7.0 arm64 target.
+
 Caller flow: `memfd.New` → standard `Truncate`/`WriteAt`/`ReadAt` → `AddSeals` → `Close`. `File` embeds `*os.File` so ordinary interfaces, offsets, and sizing stay standard; its additional responsibility is seal inspection/application. The embedded file is the same owner: callers may pass it to file operations but must not replace it or independently assume ownership.
 
 | Sketch | Contract |
