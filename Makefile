@@ -47,6 +47,16 @@ verify-mount-container: export image := $(value image)
 verify-mount-container:
 	@bash scripts/mount "$$image" "$$GO_LINUX_TEST_ARCH"
 
+# Record prerequisites and run required isolated descriptor/permission fanotify tests (arch optional).
+verify-fanotify:
+	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
+	@$(MAKE) specs package=fanotify profile=namespaces required=true
+
+# Run fanotify verification in privileged Docker (image and arch required).
+verify-fanotify-container: export image := $(value image)
+verify-fanotify-container:
+	@bash scripts/fanotify "$$image" "$$GO_LINUX_TEST_ARCH"
+
 # Run clock-changing timerfd tests only on a disposable VM (set clock_change=true).
 verify-timerfd: export GO_LINUX_TEST_CLOCK_CHANGE := $(clock_change)
 verify-timerfd: override export GOFLAGS := $(GOFLAGS) -tags=clockchange
@@ -68,7 +78,7 @@ vet:
 
 # Check repository-owned Bash scripts with ShellCheck.
 scripts-lint:
-	@shellcheck scripts/coverage scripts/rootless scripts/mount scripts/timerfd
+	@shellcheck -x scripts/coverage scripts/rootless scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
 
 # Validate CircleCI configuration with the official CLI (requires CircleCI API access).
 ci-validate:

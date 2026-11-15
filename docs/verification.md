@@ -33,8 +33,8 @@ The inotify overflow fixture fills only its own instance queue and never changes
 
 | Setting | Meaning |
 | --- | --- |
-| `profile=rootless` | Default; tests intended for ordinary users. Mount success tests require the namespace profile. |
-| `profile=namespaces` | Also request namespace creation/mapping and isolated mount integration. |
+| `profile=rootless` | Default; tests intended for ordinary users. Mount and descriptor-based fanotify success tests require the namespace profile. |
+| `profile=namespaces` | Also request namespace creation/mapping and isolated integration. Fanotify additionally requires initial-user-namespace CAP_SYS_ADMIN. |
 | `required=true` | Fail known unavailable selected prerequisites; the default `false` permits precise skips. Unexpected errors fail in either mode. |
 | `arch=amd64` or `arch=arm64` | Require both the Go binary and host machine to match; omit for an unselected native run. |
 | `kernel=supported` | Default; Linux 7.0 or later. Use `7.0` for the exact baseline major/minor or `newer` for a later kernel. Mismatches always fail. |
@@ -74,6 +74,18 @@ The launcher runs dependency setup and `make verify-mount`, which records `envir
 
 With tools installed directly, `make verify-mount arch=amd64` runs the same discovery and mount suite.
 
+## Fanotify verification
+
+Use a native Linux host with a rootful Docker daemon and initial-user-namespace `CAP_SYS_ADMIN`. The host kernel must provide `CONFIG_FANOTIFY` and `CONFIG_FANOTIFY_ACCESS_PERMISSIONS`. Rootless Docker cannot supply the required initial-namespace privilege, including with `--privileged`; the launcher rejects that environment before running setup.
+
+```sh
+make verify-fanotify-container image=alexfalkowski/go:5.23 arch=amd64
+```
+
+The launcher uses the configured Go image and runs dependency setup followed by `make verify-fanotify`. That target records the environment and runs `package=fanotify profile=namespaces required=true` through the ordinary race/coverage harness. Each live fixture reexecutes in a private mount namespace without creating a user namespace, preserving the required initial-namespace privilege. It makes mount propagation private and uses only test-owned files and private tmpfs instances; no host files or mounts receive marks. Tests verify notification files, inode/mount/filesystem marks, permission responses and shutdown, iterator cleanup, deadlines, and concurrent close. Examples run in the same isolated fixtures. The `build-fanotify` CI matrix requires these operations on native amd64 and arm64; capabilities and successful namespace creation alone do not count as fanotify evidence.
+
+With the configured tools installed on a suitable privileged Linux runner, use `make verify-fanotify arch=amd64`. Ordinary rootless package tests execute parser, cleanup, and invalid-input scenarios while skipping the unselected live fixtures. Selecting `profile=namespaces required=true` fails on missing privilege; errors after entering the fixture always fail rather than becoming blanket skips. A failed required run is not runtime coverage. Remaining evidence is tracked in [IMPLEMENTATION.md](../IMPLEMENTATION.md#open-verification-gaps).
+
 ## Clock-changing tests
 
 > [!WARNING]
@@ -92,15 +104,18 @@ With tools installed directly, use `make verify-timerfd arch=amd64 clock_change=
 
 ## Verified environments
 
-The [workflow for e1d6c4f](https://app.circleci.com/workflow/eb175e2b-377b-480f-a8b8-ae4d60a36f3c) passed the required matrix using Go 1.27.4 from `alexfalkowski/go:5.23`:
+The [workflow for e1d6c4f](https://app.circleci.com/workflow/eb175e2b-377b-480f-a8b8-ae4d60a36f3c) verified the ordinary-user, mount, and clock-change lanes using Go 1.27.4 from `alexfalkowski/go:5.23`. The [workflow for 6fc658c](https://app.circleci.com/workflow/033edb8c-dcc2-4c21-a8ec-62670776b8ef) additionally verified fanotify with the same image and toolchain:
 
 | Lane | Native architectures | Observed kernel | CI evidence: arm64 / amd64 |
 | --- | --- | --- | --- |
 | Ordinary user | arm64, amd64 | 7.0.0-1004-aws | [408](https://circleci.com/gh/alexfalkowski/go-linux/408) / [409](https://circleci.com/gh/alexfalkowski/go-linux/409) |
 | Isolated mount | arm64, amd64 | 7.0.0-1004-aws | [406](https://circleci.com/gh/alexfalkowski/go-linux/406) / [410](https://circleci.com/gh/alexfalkowski/go-linux/410) |
+| Isolated fanotify | arm64, amd64 | 7.0.0-1004-aws | [525](https://circleci.com/gh/alexfalkowski/go-linux/525) / [523](https://circleci.com/gh/alexfalkowski/go-linux/523) |
 | Disposable-VM clock changes | arm64, amd64 | 7.0.0-1004-aws | [411](https://circleci.com/gh/alexfalkowski/go-linux/411) / [407](https://circleci.com/gh/alexfalkowski/go-linux/407) |
 
 Both ordinary-user jobs ran as UID 1001 with zero effective/bounding capabilities, NoNewPrivs=1, and seccomp mode 2. All 27 xattr tests/examples passed without skips on each architecture, including real-filesystem attribute operations; the pidfd cross-user signal-permission test also passed on both.
+
+Both fanotify jobs ran as UID 0 with initial-user-namespace CAP_SYS_ADMIN and passed all 36 tests without skips, including the isolated notification, permission, lifetime, deadline, concurrent-close, and iterator scenarios and examples.
 
 These results establish the recorded revision and scenarios, not exhaustive kernel behavior or later revisions. CI runs the configured image toolchain rather than a separate minimum-Go-version matrix. Inspect the retained environment and test reports when accepting a new revision; compilation alone, image names, privileges, or source inspection do not establish runtime coverage. Remaining gaps and source-reviewed paths are tracked in the implementation plan.
 
@@ -110,3 +125,4 @@ Additional local ordinary-user evidence covers a newer kernel:
 | --- | --- | --- | --- |
 | `xattr` real-filesystem behavior, examples, and rootless container launcher | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection directly and through the launcher with the pinned Moby profile; this is not Linux 7.0 or arm64 evidence. Namespace creation fails with EPERM and is not needed by these tests. |
 | `inotify` lifecycle, decoding, examples, and actual queue overflow | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes directly with race detection and no skips; decoder fuzzing also passes. Native Linux 7.0 amd64/arm64 evidence remains pending. Namespace creation fails with EPERM and is not needed by these tests. |
+| `fanotify` decoder and resource cleanup | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; Docker daemon is rootless | Parser/ABI cleanup and invalid-input tests run with race detection, and decoder fuzzing passes; selected live fixtures fail for missing CAP_SYS_ADMIN. This is not notification or permission-operation evidence. |

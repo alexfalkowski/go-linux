@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Run required fanotify tests with initial-user-namespace privilege and private mounts.
+
+set -eo pipefail
+
+# shellcheck source=scripts/container.sh
+source "$(dirname "$0")/container.sh"
+
+if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
+  printf 'usage: make verify-fanotify-container image=<tag> arch=<amd64|arm64>\n' >&2
+  exit 2
+fi
+
+fanotify_image=$1
+fanotify_arch=$2
+
+if [[ $(docker info --format '{{json .SecurityOptions}}') == *'name=rootless'* ]]; then
+  printf 'fanotify descriptor verification requires a rootful Docker daemon with initial-user-namespace CAP_SYS_ADMIN; rootless Docker cannot supply it\n' >&2
+  exit 2
+fi
+
+printf 'executor=machine container=%s arch=%s privileged=true\n' "$fanotify_image" "$fanotify_arch"
+
+run_privileged_container "$fanotify_image" fanotify "$fanotify_arch"

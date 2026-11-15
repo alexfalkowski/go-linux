@@ -3,6 +3,9 @@
 
 set -eo pipefail
 
+# shellcheck source=scripts/container.sh
+source "$(dirname "$0")/container.sh"
+
 if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
   printf 'usage: make verify-rootless-container image=<tag> arch=<amd64|arm64> [package=<path>]\n' >&2
   exit 2
@@ -28,21 +31,7 @@ printf '%s  %s\n' 3320527d4568265ac97a077609b1bfd4cfd0d789eeb9239b7e094b15266754
 
 printf 'executor=machine container=%s arch=%s privileged=false uid=%s seccomp=moby-f862455\n' "$rootless_image" "$rootless_arch" "$(id -u)"
 
-# Keep a root init for cross-UID permission checks and signal forwarding;
-# setpriv below removes every capability from the test process.
-docker run --quiet --rm --init --user root \
-  --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
-  --cap-add SETUID --cap-add SETGID --cap-add SETPCAP --cap-add KILL \
-  --security-opt no-new-privileges --security-opt "seccomp=$rootless_profile" \
-  --mount "type=bind,src=$PWD,dst=/work" --workdir /work \
-  --env HOME=/home/circleci \
+run_nonroot_container "$rootless_image" rootless \
+  --security-opt "seccomp=$rootless_profile" \
   --env package --env GO_LINUX_TEST_KERNEL \
-  -- "$rootless_image" \
-  bash -eo pipefail -c '
-    # Remap only the image home, outside /work, so the invoking UID can use
-    # preinstalled tools without changing ownership of the mounted checkout.
-    usermod --uid "$1" circleci
-    exec setpriv --reuid="$1" --regid="$2" --clear-groups \
-      --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
-      make verify-rootless arch="$3" kernel="$GO_LINUX_TEST_KERNEL"
-  ' rootless "$(id -u)" "$(id -g)" "$rootless_arch"
+  -- make verify-rootless "arch=$rootless_arch" "kernel=${GO_LINUX_TEST_KERNEL:-}"
