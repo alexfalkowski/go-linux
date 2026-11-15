@@ -1,3 +1,9 @@
+![Gopher](assets/gopher.png?v=163x174)
+[![CircleCI](https://circleci.com/gh/alexfalkowski/go-linux.svg?style=svg)](https://circleci.com/gh/alexfalkowski/go-linux)
+[![codecov](https://codecov.io/gh/alexfalkowski/go-linux/graph/badge.svg)](https://codecov.io/gh/alexfalkowski/go-linux)
+[![Go Reference](https://pkg.go.dev/badge/github.com/alexfalkowski/go-linux.svg)](https://pkg.go.dev/github.com/alexfalkowski/go-linux)
+[![Stability: Active](https://masterminds.github.io/stability/active.svg)](https://masterminds.github.io/stability/active.html)
+
 # go-linux
 
 Linux APIs with idiomatic Go interfaces.
