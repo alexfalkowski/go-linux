@@ -9,6 +9,7 @@ import (
 
 	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/eventfd"
+	"github.com/alexfalkowski/go-linux/inotify"
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mount"
 	"github.com/alexfalkowski/go-linux/pidfd"
@@ -23,6 +24,7 @@ func TestResourcesKeepDescriptorAccessPrivate(t *testing.T) {
 	}{
 		{name: "memory file", owner: &memfd.File{}},
 		{name: "event counter", owner: &eventfd.Counter{}},
+		{name: "filesystem watcher", owner: &inotify.Watcher{}},
 		{name: "timer", owner: &timerfd.Timer{}},
 		{name: "process", owner: &pidfd.Process{}},
 		{name: "filesystem configuration", owner: &mount.Config{}},

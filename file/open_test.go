@@ -35,6 +35,44 @@ func TestOpenReturnsAnIndependentStandardFile(t *testing.T) {
 	require.ErrorIs(t, opened.Close(), os.ErrClosed)
 }
 
+func TestOpenSelectsOneAccessMode(t *testing.T) {
+	for _, scenario := range []struct {
+		name     string
+		flags    file.OpenFlags
+		readErr  error
+		writeErr error
+	}{
+		{name: "read only", flags: file.ReadOnly, writeErr: unix.EBADF},
+		{name: "write only", flags: file.WriteOnly, readErr: unix.EBADF},
+		{name: "read write", flags: file.ReadWrite},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			root := t.TempDir()
+			dir := test.OpenFile(t, root)
+			require.NoError(t, os.WriteFile(filepath.Join(root, "data"), []byte("before"), 0o600))
+			opened, err := file.Open(dir, "data", file.OpenOptions{Flags: scenario.flags})
+			require.NoError(t, err)
+			test.Cleanup(t, opened)
+
+			value := make([]byte, 1)
+			_, err = opened.ReadAt(value, 0)
+			require.ErrorIs(t, err, scenario.readErr)
+			if scenario.readErr == nil {
+				require.Equal(t, []byte("b"), value)
+			}
+			_, err = opened.WriteAt([]byte("after!"), 0)
+			require.ErrorIs(t, err, scenario.writeErr)
+			contents, err := os.ReadFile(filepath.Join(root, "data"))
+			require.NoError(t, err)
+			if scenario.writeErr == nil {
+				require.Equal(t, "after!", string(contents))
+			} else {
+				require.Equal(t, "before", string(contents), "read-only access must not modify the file")
+			}
+		})
+	}
+}
+
 func TestOpenPreservesAppendTruncateAndExclusiveSemantics(t *testing.T) {
 	root := t.TempDir()
 	dir := test.OpenFile(t, root)
@@ -102,6 +140,7 @@ func TestOpenEnforcesResolutionAndPreservesPathSemantics(t *testing.T) {
 		{name: "ordinary absolute", path: filepath.Join(anchor, "data"), want: "inside"},
 		{name: "beneath regular", path: "data", want: "inside", options: file.OpenOptions{Resolve: file.Beneath | file.NoXDev}},
 		{name: "beneath safe link", path: "link", want: "inside", options: file.OpenOptions{Resolve: file.Beneath}},
+		{name: "beneath with no symlinks", path: "link", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.Beneath | file.NoSymlinks}},
 		{name: "no magic permits ordinary link", path: "link", want: "inside", options: file.OpenOptions{Resolve: file.NoMagicLinks}},
 		{name: "beneath parent escape", path: "../outside", wantErr: unix.EXDEV, options: file.OpenOptions{Resolve: file.Beneath}},
 		{name: "beneath link escape", path: "escape", wantErr: unix.EXDEV, options: file.OpenOptions{Resolve: file.Beneath}},
@@ -109,6 +148,7 @@ func TestOpenEnforcesResolutionAndPreservesPathSemantics(t *testing.T) {
 		{name: "in root absolute", path: "/data", want: "inside", options: file.OpenOptions{Resolve: file.InRoot}},
 		{name: "in root clamps parent", path: "../../data", want: "inside", options: file.OpenOptions{Resolve: file.InRoot}},
 		{name: "in root absolute link", path: "absolute", want: "inside", options: file.OpenOptions{Resolve: file.InRoot}},
+		{name: "in root with no symlinks", path: "absolute", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.InRoot | file.NoSymlinks}},
 		{name: "no symlinks final", path: "link", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.NoSymlinks}},
 		{name: "no symlinks intermediate", path: "linkdir/../data", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.NoSymlinks}},
 		{name: "nofollow final", path: "link", wantErr: unix.ELOOP, options: file.OpenOptions{Flags: file.NoFollow}},
@@ -203,6 +243,8 @@ func TestCachedLookupPreservesItsRequestedGuarantee(t *testing.T) {
 
 func TestOpenRejectsInvalidOptionsBeforeAcquiringAResource(t *testing.T) {
 	dir := test.OpenFile(t, t.TempDir())
+	closed := test.OpenFile(t, t.TempDir())
+	require.NoError(t, closed.Close())
 	for _, scenario := range []struct {
 		name    string
 		options file.OpenOptions
@@ -214,12 +256,15 @@ func TestOpenRejectsInvalidOptionsBeforeAcquiringAResource(t *testing.T) {
 		{name: "mode without creation", options: file.OpenOptions{Perm: 0o600}},
 		{name: "nonpermission mode", options: file.OpenOptions{Flags: file.Create, Perm: os.ModeDir}},
 		{name: "path with write", options: file.OpenOptions{Flags: file.Path | file.WriteOnly}},
+		{name: "path with read write", options: file.OpenOptions{Flags: file.ReadWrite | file.Path}},
 		{name: "path with create", options: file.OpenOptions{Flags: file.Path | file.Create}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
-			opened, err := file.Open(dir, "data", scenario.options)
-			require.ErrorIs(t, err, os.ErrInvalid)
-			require.Nil(t, opened)
+			for _, anchor := range []*os.File{dir, closed} {
+				opened, err := file.Open(anchor, "data", scenario.options)
+				require.ErrorIs(t, err, os.ErrInvalid, "option validation must precede borrowing even a closed anchor")
+				require.Nil(t, opened)
+			}
 		})
 	}
 	_, err := dir.Stat()

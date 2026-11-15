@@ -27,6 +27,8 @@ package=file make specs profile=rootless required=true arch=amd64
 
 The gotestsum harness runs with race detection and coverage. Reports are written under `test/reports/`: `specs.json` retains test events and skips, `specs.xml` is JUnit, and `profile.cov` is the coverage input. `make coverage` creates `final.cov` and `coverage.html` from that run. A later test run replaces the reports, so retain any results you need before changing package or profile. CI stores each job's reports separately.
 
+The inotify overflow fixture fills only its own instance queue and never changes host limits. It bounds generation at `max_queued_events <= 65536`; a larger existing host limit skips the fixture in optional mode and fails with `required=true`. Decoder fixtures still cover the overflow record independently.
+
 ## Profiles and prerequisites
 
 | Setting | Meaning |
@@ -107,3 +109,4 @@ Additional local ordinary-user evidence covers a newer kernel:
 | Scope | Go / kernel / architecture | Observed prerequisites | Evidence and limits |
 | --- | --- | --- | --- |
 | `xattr` real-filesystem behavior, examples, and rootless container launcher | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection directly and through the launcher with the pinned Moby profile; this is not Linux 7.0 or arm64 evidence. Namespace creation fails with EPERM and is not needed by these tests. |
+| `inotify` lifecycle, decoding, examples, and actual queue overflow | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes directly with race detection and no skips; decoder fuzzing also passes. Native Linux 7.0 amd64/arm64 evidence remains pending. Namespace creation fails with EPERM and is not needed by these tests. |

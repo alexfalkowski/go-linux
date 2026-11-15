@@ -6,7 +6,7 @@ These conventions govern the library's public Go APIs. Package design notes expl
 
 Add Linux mechanisms that the standard library does not express; reuse ordinary Go I/O, process startup, and resource management. Prefer the maintained `golang.org/x/sys/unix` bindings over copied syscall numbers or ABI layouts. Packages depend on implemented facilities only; shared internals need demonstrated reuse rather than a planned family of future packages.
 
-Use familiar resource names and operations: `New` creates, `Open` acquires by identity, `Adopt` consumes ownership, and `Close` releases a local resource. Independent flag bits use typed masks; mutually exclusive modes use enums. Document zero options and reject unknown input bits or contradictory combinations. Preserve unknown output bits so inspection does not silently discard newer kernel information.
+Use familiar resource names and operations: `New` creates, `Open` acquires by identity, `Adopt` consumes ownership, and `Close` releases a local resource. Independent flag bits use typed masks; standalone mutually exclusive modes use enums. Use named option fields when they clarify settings of different kinds. Preserve conventional Go/Linux flag combinations rather than replacing masks solely to avoid `|`. Document zero options and reject unknown input bits or contradictory combinations. Preserve unknown output bits so inspection does not silently discard newer kernel information.
 
 Facility owners keep descriptors private. Typed operations perform borrowing, duplication, and polling internally; exported raw callbacks, descriptor accessors, and embedded files would make those implementation details permanent caller responsibilities. Selected standard interfaces remain available where their contracts fit. The `file` package deliberately borrows and returns standard files because it adds individual file operations rather than another resource owner.
 
@@ -23,6 +23,8 @@ Owned wrapper types are used through pointers and must not be copied after use. 
 ## Interfaces, records, and clocks
 
 Expose standard interfaces only when their behavioral contracts fit. Files support ordinary streams; counters and timers preserve one native-endian eight-byte record per read. Validate record sizes before generic file I/O, which can otherwise treat empty buffers or partial writes as stream operations. Typed helpers use `encoding/binary.NativeEndian`; their results are values or counts, not byte lengths. Readiness sets and process handles do not become byte streams merely because Linux represents them with descriptors.
+
+Use synchronous `iter.Seq2[Event, error]` sequences when a facility benefits from individual event iteration. Document read-ahead ownership, early exit and resumption, terminal errors, and concurrent-use limits. Keep scheduling, channel buffering, and session cancellation under caller ownership unless a concrete facility contract requires otherwise.
 
 Use `time.Duration` for relative intervals and `time.Time` for Go I/O deadlines. Absolute Linux timer values carry their clock domain explicitly rather than borrowing Go's wall-clock or private monotonic representation. Keep kernel timer arming separate from the deadline that bounds reading its records.
 

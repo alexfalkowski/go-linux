@@ -1,6 +1,6 @@
 # Linux APIs for Go: remaining implementation
 
-Next: **P10 — `inotify`: file and directory events**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
+Next: **P11 — `fanotify`: filesystem notifications and permission events**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
 
 This file contains unfinished work only. Delete finished items and resolved gaps instead of marking them done. Keep a short resume note only while work is incomplete; replace it when circumstances change and remove it when finished. Do not append completed handoffs, historical command logs, resolved findings, or an archive of deleted entries.
 
@@ -33,15 +33,14 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 | Scope | Missing evidence | Required environment or next action |
 | --- | --- | --- |
+| R01 / `inotify` native baseline coverage | Runtime evidence for inotify on Linux 7.0 amd64 and arm64. Local ordinary-user coverage is native amd64 on 7.3.4-3-t2-resolute; requesting `kernel=7.0` fails the runner check. | Run the required rootless lane with the configured Go image on native Linux 7.0 amd64 and arm64, retaining environment and test reports. No container image can supply the missing host kernel or native architecture. |
 | R01 / `xattr` defensive read paths | Concurrent value and list mutation runs do not deterministically establish ERANGE retry/exhaustion, the oversized query guard, or malformed kernel-list rejection. | Reconcile using supported public/kernel scenarios where reproducible; retain source-reviewed limits rather than adding production injection hooks. |
-| R01 / source-reviewed paths | Direct execution remains absent for defensive timerfd zero-byte conversion, file block-device conversion/remote synchronization/automount/positive attributes, eventfd poller-registration rejection, oversized/malformed mount diagnostics, and rare acquisition, cleanup, or partial-application failures. | Reconcile during R01 using supported public/kernel scenarios and suitable isolated runners; retain explicit limits where execution is not feasible. |
+| R01 / source-reviewed paths | Direct execution remains absent for defensive timerfd zero-byte conversion, file block-device conversion/remote synchronization/automount/positive attributes, eventfd/inotify poller-registration rejection, inotify unmount notifications, oversized/malformed mount diagnostics, and rare acquisition, cleanup, or partial-application failures. | Reconcile during R01 using supported public/kernel scenarios and suitable isolated runners; retain explicit limits where execution is not feasible. |
 | R01 / `pidfd` positive core-dump status | Actual CLD_DUMPED and `CoreDump=true` on the Linux 7.0 arm64 target | A runner whose existing core policy produces CLD_DUMPED for the test-owned child. The current test compares with nonconsuming kernel status; CLD_KILLED verifies only the false flag. Do not change host core policy to force this case. |
 
 ## Remaining work
 
 ### Filesystem notifications
-
-- **P10 — `inotify`: file and directory events.** Implement watch lifecycle, raw reads where useful, and typed event decoding. Preserve watch identifiers, rename cookies, ignored events, and queue-overflow reporting. Document that watches are not recursively installed by the kernel. **Acceptance:** verify watch addition/removal, event decoding, rename pairing information, shutdown, and malformed/truncated input handling. Do not promise a lossless event stream or hide overflow behind an automatic rescan.
 
 - **P11 — `fanotify`: filesystem notifications and permission events.** Define the initial supported modes and event record types. Expose event-owned descriptors and permission responses with explicit lifetime rules. Document capabilities, configuration, and filesystem requirements by mode. **Acceptance:** isolated integration tests exercise the promised notification and permission paths; parser tests handle variable records and unknown types. Verify descriptor cleanup on abandoned events, malformed records, and errors.
 
