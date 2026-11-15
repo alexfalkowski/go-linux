@@ -37,6 +37,15 @@ codecov-upload-container: export image := $(value image)
 codecov-upload-container:
 	@bash scripts/coverage "$$image"
 
+# Stage the raw CI coverage profile in its facility/architecture workspace partition.
+coverage-workspace-stage: export partition := $(value partition)
+coverage-workspace-stage:
+	@bash scripts/coverage-workspace stage "$$partition"
+
+# Merge all eight CI workspace profiles into profile.cov before running coverage.
+coverage-workspace-merge:
+	@bash scripts/coverage-workspace merge
+
 # Record namespace prerequisites and run required isolated mount tests (arch optional).
 verify-mount:
 	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
@@ -78,7 +87,7 @@ vet:
 
 # Check repository-owned Bash scripts with ShellCheck.
 scripts-lint:
-	@shellcheck -x scripts/coverage scripts/rootless scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
+	@shellcheck -x scripts/coverage scripts/coverage-workspace scripts/rootless scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
 
 # Validate CircleCI configuration with the official CLI (requires CircleCI API access).
 ci-validate:

@@ -30,6 +30,10 @@ executors:
   mount-amd64:
     <<: *mount
     resource_class: medium
+  coverage:
+    docker:
+      - image: *go-image
+    resource_class: arm.medium
   release:
     docker:
       - image: alexfalkowski/release:8.49
@@ -52,7 +56,11 @@ jobs:
           path: test/reports
       - store_artifacts:
           path: test/reports
-      - run: make codecov-upload-container image="$GO_LINUX_CI_IMAGE"
+      - run: make coverage-workspace-stage partition=rootless-<< parameters.arch >>
+      - persist_to_workspace:
+          root: /tmp/go-linux-reports
+          paths:
+            - rootless-<< parameters.arch >>
   build-mount:
     parameters:
       arch:
@@ -67,6 +75,11 @@ jobs:
           path: test/reports
       - store_artifacts:
           path: test/reports
+      - run: make coverage-workspace-stage partition=mount-<< parameters.arch >>
+      - persist_to_workspace:
+          root: /tmp/go-linux-reports
+          paths:
+            - mount-<< parameters.arch >>
   build-fanotify:
     parameters:
       arch:
@@ -81,6 +94,11 @@ jobs:
           path: test/reports
       - store_artifacts:
           path: test/reports
+      - run: make coverage-workspace-stage partition=fanotify-<< parameters.arch >>
+      - persist_to_workspace:
+          root: /tmp/go-linux-reports
+          paths:
+            - fanotify-<< parameters.arch >>
   build-timerfd:
     parameters:
       arch:
@@ -98,6 +116,23 @@ jobs:
           path: test/reports
       - store_artifacts:
           path: test/reports
+      - run: make coverage-workspace-stage partition=timerfd-<< parameters.arch >>
+      - persist_to_workspace:
+          root: /tmp/go-linux-reports
+          paths:
+            - timerfd-<< parameters.arch >>
+  coverage:
+    executor: coverage
+    working_directory: ~/go-linux
+    steps:
+      - checkout-submodules
+      - attach_workspace:
+          at: /tmp/go-linux-reports
+      - run: make coverage-workspace-merge
+      - run: make coverage
+      - store_artifacts:
+          path: test/reports
+      - run: make codecov-upload
   sync:
     executor: release
     working_directory: ~/go-linux
@@ -142,27 +177,24 @@ workflows:
           matrix:
             parameters:
               arch: [arm64, amd64]
-      - sync:
+      - coverage:
           requires:
             - build
             - build-mount
             - build-fanotify
             - build-timerfd
+      - sync:
+          requires:
+            - coverage
           filters: 'pipeline.git.branch != "master"'
       - version:
           context: gh
           serial-group: << pipeline.project.slug >>/version
           requires:
-            - build
-            - build-mount
-            - build-fanotify
-            - build-timerfd
+            - coverage
           filters: 'pipeline.git.branch == "master"'
       - wait-all:
           requires:
-            - build
-            - build-mount
-            - build-fanotify
-            - build-timerfd
+            - coverage
             - sync
             - version
