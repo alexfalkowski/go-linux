@@ -88,6 +88,7 @@ func TestMappingWritesAreSharedOnlyWhenRequested(t *testing.T) {
 			file := test.TempFile(t, 2*offset)
 
 			test.WriteAt(t, file, offset, "source")
+
 			view := test.Mapping(t, file, offset, 6, mmap.Options{Mode: scenario.mode, Protection: mmap.Read | mmap.Write})
 			peer := test.Mapping(t, file, offset, 6, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
 			type contents struct{ view, peer, file string }
@@ -113,12 +114,14 @@ func TestSourceFileAndMappingHaveIndependentLifetimes(t *testing.T) {
 	file := test.TempFile(t, int64(os.Getpagesize()))
 	region := test.Mapping(t, file, 0, 7, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
 	require.NoError(t, region.Close())
+
 	_, err := file.WriteAt([]byte("message"), 0)
 	require.NoError(t, err, "closing the region must leave the file open")
 
 	region = test.Mapping(t, file, 0, 7, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
 	require.NoError(t, file.Close())
 	require.Equal(t, "message", string(region.Bytes()), "closing the file must leave the mapping valid")
+
 	copy(region.Bytes(), "changed")
 	require.Equal(t, "changed", string(region.Bytes()))
 }
@@ -133,7 +136,9 @@ func TestClosingARegionUnmapsItsEntireOriginalAllocation(t *testing.T) {
 	mappings, err := os.ReadFile("/proc/self/maps")
 	require.NoError(t, err)
 	require.Contains(t, string(mappings), file.Name(), "live file mapping must be present")
+
 	require.NoError(t, region.Close())
+
 	mappings, err = os.ReadFile("/proc/self/maps")
 	require.NoError(t, err)
 	require.NotContains(t, string(mappings), file.Name(), "Close must remove the entire original mapping despite escaped subslices")
@@ -168,17 +173,20 @@ func TestReadOnlyFilesAllowPrivateWritesAndRejectSharedWrites(t *testing.T) {
 
 	copy(private.Bytes(), "copy")
 	require.Equal(t, "data", string(shared.Bytes()), "a read-only source still permits private writable copies")
+
 	require.ErrorIs(t, shared.Protect(mmap.Read|mmap.Write), unix.EACCES)
 	require.Equal(t, "data", string(shared.Bytes()), "failed permission upgrade must retain the readable view")
 
 	region, err := mmap.Map(reader, 0, 4, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
 	test.NoResource(t, region, err, unix.EACCES)
+
 	test.PathError(t, err, "mmap", reader.Name())
 }
 
 func TestProtectionChangesCoverTheLastPageAndPreserveContents(t *testing.T) {
 	region := test.Anonymous(t, os.Getpagesize()+1, mmap.Options{})
 	require.Len(t, region.Bytes(), os.Getpagesize()+1, "NoAccess must still return the sized borrowed view")
+
 	require.NoError(t, region.Protect(mmap.Read|mmap.Write))
 
 	data := region.Bytes()
@@ -186,6 +194,7 @@ func TestProtectionChangesCoverTheLastPageAndPreserveContents(t *testing.T) {
 
 	require.NoError(t, region.Protect(mmap.Read))
 	require.Equal(t, [2]byte{17, 23}, [2]byte{data[0], data[len(data)-1]}, "protection preserves both endpoints")
+
 	require.NoError(t, region.Protect(mmap.NoAccess))
 	require.NoError(t, region.Protect(mmap.Write))
 
@@ -198,6 +207,7 @@ func TestProtectionChangesCoverTheLastPageAndPreserveContents(t *testing.T) {
 func TestUnknownProtectionLeavesTheMappingWritable(t *testing.T) {
 	region := test.Anonymous(t, 1, mmap.Options{Protection: mmap.Read | mmap.Write})
 	require.ErrorIs(t, region.Protect(mmap.Protection(4)), os.ErrInvalid)
+
 	region.Bytes()[0] = 99
 	require.Equal(t, byte(99), region.Bytes()[0])
 }
@@ -242,6 +252,7 @@ func TestDontNeedDiscardsPrivateChangesAndRetainsSharedContents(t *testing.T) {
 	file := test.TempFile(t, int64(os.Getpagesize()))
 	_, err := file.WriteAt([]byte("source"), 0)
 	require.NoError(t, err)
+
 	private := test.Mapping(t, file, 0, 6, mmap.Options{Protection: mmap.Read | mmap.Write})
 	copy(private.Bytes(), "secret")
 	require.NoError(t, private.Advise(mmap.DontNeed))
@@ -312,6 +323,7 @@ func TestImpossibleAnonymousAllocationsReturnENOMEMWithoutAnOwner(t *testing.T) 
 	region, err := mmap.Anonymous(math.MaxInt, mmap.Options{Protection: mmap.Read | mmap.Write})
 	require.Nil(t, region, "an impossible address-space request must not return an owner")
 	require.ErrorIs(t, err, unix.ENOMEM)
+
 	test.PathError(t, err, "mmap", "anonymous")
 }
 
@@ -409,6 +421,7 @@ func TestMappingSafelyRacesWithClosingTheSourceFile(t *testing.T) {
 
 		if err == nil {
 			require.Zero(t, region.Bytes()[0], "successful mapping must survive concurrent source closure")
+
 			require.NoError(t, region.Close())
 		} else {
 			require.ErrorIs(t, err, os.ErrClosed)
@@ -442,6 +455,7 @@ func checkMemoryFault(t *testing.T, scenario string) {
 	// instead of accepting any subprocess failure as evidence of enforcement.
 	previous := debug.SetPanicOnFault(true)
 	defer debug.SetPanicOnFault(previous)
+
 	region := test.Anonymous(t, os.Getpagesize()+1, mmap.Options{})
 	view := region.Bytes()
 

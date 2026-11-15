@@ -21,6 +21,7 @@ func TestClosingTheSourceRetainsTheRegistrationUntilRemoval(t *testing.T) {
 	registration := test.Registration(t, poller, writer, epoll.Writable)
 
 	require.NoError(t, writer.Close())
+
 	events := make([]epoll.Event, 1)
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err)
@@ -32,6 +33,7 @@ func TestClosingTheSourceRetainsTheRegistrationUntilRemoval(t *testing.T) {
 	})
 
 	require.NoError(t, registration.Close())
+
 	result := test.Receive(t, pending)
 	require.ErrorIs(t, result.Err, io.EOF, "removal must close the last writer reference")
 	require.Zero(t, result.Value)
@@ -48,24 +50,31 @@ func TestDescriptorReuseCannotRetargetAnExistingRegistration(t *testing.T) {
 
 	replacement, newWriter := test.Pipe(t)
 	require.Equal(t, originalFD, test.FileDescriptor(t, replacement), "fixture must reuse the original descriptor number")
+
 	newRegistration := test.Registration(t, poller, replacement, epoll.Readable)
 	events := make([]epoll.Event, 2)
 
 	_, err := oldWriter.WriteString("old")
 	require.NoError(t, err)
+
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: oldRegistration, Events: epoll.Readable}}, events[:n])
+
 	oldEvent := events[0]
 
 	require.NoError(t, oldRegistration.Modify(epoll.Readable|epoll.OneShot))
+
 	require.NoError(t, oldRegistration.Close())
+
 	_, err = newWriter.WriteString("new")
 	require.NoError(t, err)
+
 	n, err = poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: newRegistration, Events: epoll.Readable}}, events[:n])
 	require.Same(t, oldRegistration, oldEvent.Registration, "already returned identity must remain stable")
+
 	require.ErrorIs(t, oldEvent.Registration.Modify(epoll.Readable), os.ErrClosed)
 }
 
@@ -83,10 +92,12 @@ func TestRegistrationPreservesSourceFlagsAndDeadlines(t *testing.T) {
 
 	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
+
 	events := make([]epoll.Event, 1)
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err, "source deadlines must not affect explicit readiness")
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
+
 	var value [1]byte
 	_, err = reader.Read(value[:])
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded, "registration must preserve the source deadline")
@@ -131,9 +142,12 @@ func TestSourceClosureCanRaceWithRegistrationWithoutLeaking(t *testing.T) {
 		} else {
 			require.NoError(t, registration.Close())
 		}
+
 		require.NoError(t, test.Receive(t, closed))
+
 		require.NoError(t, writer.Close())
 	}
+
 	require.Equal(t, before, test.Descriptors(t))
 }
 
@@ -142,6 +156,7 @@ func TestPollerDescriptorsHaveAtomicCloseOnExecAndAreReleased(t *testing.T) {
 	before := test.Descriptors(t)
 	poller := test.Poller(t)
 	test.CloseOnExec(t, test.NewEpollDescriptor(t, before))
+
 	wakeFD := test.NewEventfdDescriptor(t, before)
 	test.CloseOnExec(t, wakeFD)
 	require.NotZero(t, test.Fcntl(t, wakeFD, unix.F_GETFL)&unix.O_NONBLOCK, "close wakeups must not block")
@@ -157,12 +172,16 @@ func TestRepeatedRegistrationLifecyclesReleaseEveryDescriptor(t *testing.T) {
 	for range 25 {
 		poller, err := epoll.New()
 		require.NoError(t, err)
+
 		registration, err := poller.Add(reader, epoll.Readable)
 		require.NoError(t, err)
+
 		require.NoError(t, registration.Modify(epoll.Readable|epoll.EdgeTriggered))
+
 		require.NoError(t, registration.Close())
 		require.NoError(t, poller.Close())
 	}
+
 	require.Equal(t, before, test.Descriptors(t))
 }
 
@@ -178,9 +197,11 @@ func TestAcquisitionFailuresReleaseDescriptorsAndRetainBorrowedFiles(t *testing.
 	if argument := os.Args[len(os.Args)-1]; strings.HasPrefix(argument, "epoll-limit=") {
 		scenario, ok := scenarios[strings.TrimPrefix(argument, "epoll-limit=")]
 		require.True(t, ok, "resource-limit subprocess must select a known scenario")
+
 		checkAcquisitionFailure(t, scenario.addSource, scenario.releaseSlot)
 		return
 	}
+
 	for name := range scenarios {
 		t.Run(name, func(t *testing.T) {
 			ctx, command := test.Command(t, "TestAcquisitionFailuresReleaseDescriptorsAndRetainBorrowedFiles", "-test.v", "--", "epoll-limit="+name)
@@ -200,26 +221,34 @@ func checkAcquisitionFailure(t *testing.T, addSource, releaseSlot bool) {
 	if addSource {
 		poller = test.Poller(t)
 	}
+
 	freeSlot := test.ExhaustDescriptors(t)
 
 	if poller != nil {
 		registration, err := poller.Add(reader, epoll.Readable)
 		test.NoResource(t, registration, err, unix.EMFILE)
+
 		_, err = writer.WriteString("x")
 		require.NoError(t, err)
+
 		var value [1]byte
 		_, err = io.ReadFull(reader, value[:])
 		require.NoError(t, err, "failed registration must leave borrowed input usable")
 	} else {
-		slot := -1
+		var slot int
 		if releaseSlot {
 			slot = freeSlot()
+		} else {
+			slot = -1
 		}
+
 		created, err := epoll.New()
 		test.NoResource(t, created, err, unix.EMFILE)
+
 		if slot >= 0 {
 			require.Equal(t, slot, test.DescriptorSlot(t), "wake allocation failure must release the epoll descriptor")
 		}
 	}
+
 	t.Log("verified acquisition failure cleanup")
 }

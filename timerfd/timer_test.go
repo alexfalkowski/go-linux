@@ -42,6 +42,7 @@ func TestNowReturnsANormalizedReadingOfTheSelectedClock(t *testing.T) {
 
 			now, err := timerfd.Now(scenario.Clock)
 			require.NoError(t, err)
+
 			require.NoError(t, unix.ClockGettime(scenario.ID, &after))
 			require.Equal(t, scenario.Clock, now.Clock)
 
@@ -95,6 +96,7 @@ func TestAbsoluteOneShotTimersUseTheSelectedClockOrigin(t *testing.T) {
 
 			old, err := timer.SetAt(deadline, 0, 0)
 			require.NoError(t, err)
+
 			test.ArmedTimer(t, old, 5*time.Second, 7*time.Second)
 
 			state := test.Value(t, timer.State)
@@ -114,6 +116,7 @@ func TestPeriodicReadsIncludeMissedExpirationsAndKeepRunning(t *testing.T) {
 	started := time.Now()
 	_, err := timer.SetAfter(period, period)
 	require.NoError(t, err)
+
 	time.Sleep(65 * time.Millisecond)
 
 	// Inspection must preserve accumulated expirations, including overruns.
@@ -133,7 +136,7 @@ func TestAbsolutePeriodicTimersRetainTheirArmingFlags(t *testing.T) {
 		t.Run(scenario.Name, func(t *testing.T) {
 			clock := scenario.Clock
 			timer, fd := test.TimerDescriptor(t, clock)
-			flags := timerfd.SetFlags(0)
+			var flags timerfd.SetFlags
 			if clock == timerfd.Realtime {
 				flags = timerfd.CancelOnSet
 			}
@@ -168,11 +171,13 @@ func TestRearmingReturnsThePreviousSchedule(t *testing.T) {
 	old, err := timer.SetAfter(5*time.Second, 7*time.Second)
 	require.NoError(t, err)
 	require.Equal(t, timerfd.State{}, old)
+
 	before := test.Value(t, timer.State)
 	test.ArmedTimer(t, before, 5*time.Second, 7*time.Second)
 
 	old, err = timer.SetAfter(6*time.Second, 8*time.Second)
 	require.NoError(t, err)
+
 	test.ArmedTimer(t, old, before.Remaining, 7*time.Second)
 	test.ArmedTimer(t, test.Value(t, timer.State), 6*time.Second, 8*time.Second)
 }
@@ -219,6 +224,7 @@ func TestZeroInitialTimeDisarmsWhileRetainingTheInterval(t *testing.T) {
 
 			_, err := timer.SetAfter(time.Nanosecond, 0)
 			require.NoError(t, err)
+
 			test.Readable(t, fd)
 
 			if scenario.absolute {
@@ -226,6 +232,7 @@ func TestZeroInitialTimeDisarmsWhileRetainingTheInterval(t *testing.T) {
 			} else {
 				_, err = timer.SetAfter(0, time.Second)
 			}
+
 			require.NoError(t, err)
 
 			state := test.Value(t, timer.State)
@@ -240,6 +247,7 @@ func TestRearmingOrDisarmingClearsUnreadExpirations(t *testing.T) {
 
 	_, err := timer.SetAfter(time.Nanosecond, 0)
 	require.NoError(t, err)
+
 	test.Readable(t, fd)
 
 	state := test.Value(t, timer.State)
@@ -251,6 +259,7 @@ func TestRearmingOrDisarmingClearsUnreadExpirations(t *testing.T) {
 
 	_, err = timer.SetAfter(time.Nanosecond, 0)
 	require.NoError(t, err)
+
 	test.Readable(t, fd)
 
 	_ = test.Value(t, timer.Disarm)
@@ -283,6 +292,7 @@ func TestShortReadsFailWithoutConsumingExpirations(t *testing.T) {
 
 			_, err := timer.SetAfter(time.Nanosecond, 0)
 			require.NoError(t, err)
+
 			test.Readable(t, fd)
 
 			n, err := timer.Read(make([]byte, size))
@@ -370,6 +380,7 @@ func TestPastNormalizedInstantsExpireImmediately(t *testing.T) {
 	timer := test.Timer(t, timerfd.Monotonic)
 	_, err := timer.SetAt(timerfd.Instant{Seconds: 1, Nanoseconds: 999999999}, 0, 0)
 	require.NoError(t, err)
+
 	count := test.Value(t, timer.ReadExpirations)
 	require.Equal(t, uint64(1), count)
 }
@@ -378,6 +389,7 @@ func TestMaximumRelativeDurationsDoNotWrap(t *testing.T) {
 	timer := test.Timer(t, timerfd.Monotonic)
 	_, err := timer.SetAfter(time.Duration(math.MaxInt64), time.Duration(math.MaxInt64))
 	require.NoError(t, err)
+
 	state := test.Value(t, timer.State)
 	require.Positive(t, state.Remaining)
 	require.Equal(t, time.Duration(math.MaxInt64), state.Interval)
@@ -399,8 +411,10 @@ func TestBoottimeRejectsClockChangeCancellation(t *testing.T) {
 	timer := test.Timer(t, timerfd.Boottime)
 	_, err := timer.SetAfter(5*time.Second, 7*time.Second)
 	require.NoError(t, err)
+
 	_, err = timer.SetAt(timerfd.Instant{Clock: timerfd.Boottime}, 0, timerfd.CancelOnSet)
 	require.ErrorIs(t, err, os.ErrInvalid)
+
 	checkUnchangedTimer(t, timer)
 }
 
@@ -414,12 +428,14 @@ func TestCreatedTimersAreNonblockingAndClosedOnExec(t *testing.T) {
 func TestClearingAReadDeadlineRestoresUnreadExpirations(t *testing.T) {
 	timer, fd := test.TimerDescriptor(t, timerfd.Monotonic)
 	require.NoError(t, timer.SetReadDeadline(time.Now().Add(30*time.Millisecond)))
+
 	count, err := timer.ReadExpirations()
 	require.Zero(t, count)
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 
 	_, err = timer.SetAfter(time.Nanosecond, 0)
 	require.NoError(t, err, "read deadlines must not prevent arming")
+
 	test.Readable(t, fd)
 
 	_, err = timer.State()
@@ -428,6 +444,7 @@ func TestClearingAReadDeadlineRestoresUnreadExpirations(t *testing.T) {
 	count, err = timer.ReadExpirations()
 	require.Zero(t, count)
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded, "expired deadlines persist even when expirations are available")
+
 	require.NoError(t, timer.SetReadDeadline(time.Time{}))
 
 	count = test.Value(t, timer.ReadExpirations)
@@ -452,6 +469,7 @@ func TestExpiredDeadlinesInterruptPendingExpirationReads(t *testing.T) {
 	timer := test.Timer(t, timerfd.Monotonic)
 	done := test.StartRead(t, timer.ReadExpirations)
 	require.NoError(t, timer.SetReadDeadline(time.Now().Add(-time.Second)))
+
 	result := test.Receive(t, done)
 	require.Zero(t, result.Value)
 	require.ErrorIs(t, result.Err, os.ErrDeadlineExceeded)
@@ -466,6 +484,7 @@ func TestClosingATimerInterruptsPendingExpirationReads(t *testing.T) {
 	result := test.Receive(t, done)
 	require.Zero(t, result.Value)
 	require.ErrorIs(t, result.Err, os.ErrClosed)
+
 	require.ErrorIs(t, timer.Close(), os.ErrClosed)
 }
 
@@ -555,6 +574,7 @@ func TestInvalidClocksAndClosedTimersLeaveNoDescriptorsBehind(t *testing.T) {
 
 		_, err := timer.SetAfter(time.Second, time.Second)
 		require.NoError(t, err)
+
 		require.NoError(t, timer.Close())
 	}
 
@@ -602,5 +622,6 @@ func checkUnavailableTimer(t *testing.T, timer *timerfd.Timer, expected error) {
 	}
 
 	require.ErrorIs(t, timer.SetReadDeadline(time.Time{}), expected, "read deadline")
+
 	require.ErrorIs(t, timer.Close(), expected, "close")
 }

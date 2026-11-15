@@ -181,12 +181,14 @@ func checkKernel(release, selection string) error {
 	if _, err := fmt.Sscanf(release, "%d.%d", &major, &minor); err != nil {
 		return errors.New("cannot determine kernel major/minor")
 	}
-	accepted := major >= 7
+	var accepted bool
 	switch selection {
 	case "7.0":
 		accepted = major == 7 && minor == 0
 	case "newer":
 		accepted = major > 7 || (major == 7 && minor > 0)
+	default:
+		accepted = major >= 7
 	}
 	if !accepted {
 		return fmt.Errorf("kernel %s does not satisfy requested %s coverage (minimum Linux 7.0)", release, selection)

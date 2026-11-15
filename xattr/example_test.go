@@ -21,14 +21,17 @@ func ExampleSet() {
 	if err := xattr.Set(opened, "user.content_type", []byte("text/plain"), xattr.Create); err != nil {
 		panic(err)
 	}
+
 	value, err := xattr.Get(opened, "user.content_type")
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println(string(value))
 	if err := xattr.Remove(opened, "user.content_type"); err != nil {
 		panic(err)
 	}
+
 	// Output: text/plain
 }
 
@@ -38,9 +41,11 @@ func ExampleGetAt() {
 		panic(err)
 	}
 	defer os.RemoveAll(root)
+
 	if err := os.WriteFile(filepath.Join(root, "data"), nil, 0o600); err != nil {
 		panic(err)
 	}
+
 	dir, err := os.Open(root)
 	if err != nil {
 		panic(err)
@@ -51,10 +56,13 @@ func ExampleGetAt() {
 	if err := xattr.SetAt(dir, "data", "user.status", []byte("ready"), xattr.Upsert, options); err != nil {
 		panic(err)
 	}
+
 	value, err := xattr.GetAt(dir, "data", "user.status", options)
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println(string(value))
+
 	// Output: ready
 }

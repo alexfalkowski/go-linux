@@ -101,10 +101,13 @@ func TestUnavailableNamespacesSkipOnlyWhenOptional(t *testing.T) {
 }
 
 func TestRunnerArchitectureMismatchFailsEvenWhenOptional(t *testing.T) {
-	architecture := "arm64"
-	if runtime.GOARCH == architecture {
+	var architecture string
+	if runtime.GOARCH == "arm64" {
 		architecture = "amd64"
+	} else {
+		architecture = "arm64"
 	}
+
 	_, err := testenv.Check(testenv.Options{Architecture: architecture})
 	require.Error(t, err)
 }
@@ -164,6 +167,7 @@ func TestUnsetVerificationSettingsSelectOptionalRootlessCoverage(t *testing.T) {
 	for _, name := range []string{"GO_LINUX_TEST_PROFILE", "GO_LINUX_TEST_REQUIRED", "GO_LINUX_TEST_ARCH", "GO_LINUX_TEST_KERNEL"} {
 		t.Setenv(name, "")
 	}
+
 	options, err := testenv.FromEnvironment()
 	require.NoError(t, err)
 	require.Equal(t, testenv.Options{Profile: "rootless", Kernel: "supported"}, options)

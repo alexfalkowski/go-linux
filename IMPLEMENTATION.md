@@ -1,6 +1,6 @@
 # Linux APIs for Go: remaining implementation
 
-Next: **P12 — `socket`: Linux socket extensions**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
+Next: **P13 — `netlink`: kernel messaging**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
 
 This file contains unfinished work only. Delete finished items and resolved gaps instead of marking them done. Keep a short resume note only while work is incomplete; replace it when circumstances change and remove it when finished. Do not append completed handoffs, historical command logs, resolved findings, or an archive of deleted entries.
 
@@ -33,6 +33,8 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 | Scope | Missing evidence | Required environment or next action |
 | --- | --- | --- |
+| P12 / `socket` (implemented; native baseline verification pending) | Runtime evidence on Linux 7.0 amd64 and arm64. Local required ordinary-user coverage passes on native amd64 with Linux 7.3.4-3-t2-resolute; the exact-baseline runner check rejects this kernel. | Run the required rootless lane with the configured Go image on native Linux 7.0 amd64 and arm64, retaining environment and test reports. Socket message behavior, file passing, deadlines, and cleanup are implemented; this outstanding runner evidence does not prevent independent P13 implementation. |
+| R01 / `socket` defensive paths | Direct execution remains absent for poller-registration rejection, malformed kernel address/control headers, interrupted syscall retries, address-inspection failure, and rare allocation/cleanup failures. | Reconcile using supported public/kernel scenarios and appropriate isolated runners; retain source-reviewed limits where execution is not feasible without production injection hooks. |
 | R01 / `inotify` native baseline coverage | Runtime evidence for inotify on Linux 7.0 amd64 and arm64. Local ordinary-user coverage is native amd64 on 7.3.4-3-t2-resolute; requesting `kernel=7.0` fails the runner check. | Run the required rootless lane with the configured Go image on native Linux 7.0 amd64 and arm64, retaining environment and test reports. No container image can supply the missing host kernel or native architecture. |
 | R01 / `xattr` defensive read paths | Concurrent value and list mutation runs do not deterministically establish ERANGE retry/exhaustion, the oversized query guard, or malformed kernel-list rejection. | Reconcile using supported public/kernel scenarios where reproducible; retain source-reviewed limits rather than adding production injection hooks. |
 | R01 / source-reviewed paths | Direct execution remains absent for defensive timerfd zero-byte conversion, file block-device conversion/remote synchronization/automount/positive attributes, eventfd/inotify/fanotify poller-registration rejection, inotify unmount notifications, oversized/malformed mount diagnostics, and rare acquisition, response, cleanup, or partial-application failures. | Reconcile during R01 using supported public/kernel scenarios and suitable isolated runners; retain explicit limits where execution is not feasible. |
@@ -41,8 +43,6 @@ The bounded first release comprises 21 facility-focused public packages in one m
 ## Remaining work
 
 ### Socket and Netlink facilities
-
-- **P12 — `socket`: Linux socket extensions.** Keep the initial API focused on socket operations needed by Netlink and useful Linux extensions beyond `net`: lifecycle, message I/O, selected options, and ancillary data handling. Establish polling/deadlines and standard interface fit per socket mode. Preserve datagram boundaries and expose truncation. **Acceptance:** socket-pair or local-socket tests cover lifecycle, message boundaries, descriptor passing, deadlines, concurrent close, and cleanup. Reuse supported `net`/`os` integration rather than building a second TCP stack.
 
 - **P13 — `netlink`: kernel messaging.** Implement message/attribute encoding and decoding, request sequencing, acknowledgements, extended errors, multipart dumps, and multicast reception. Include bounded Generic Netlink family discovery and attribute policies as needed. State whether requests can share a connection concurrently. **Acceptance:** parser/fuzz tests handle malformed lengths/alignment and unknown attributes; live read-only tests verify discovery, response matching, dump completion/interruption, and errors. Report truncated or interrupted results.
 

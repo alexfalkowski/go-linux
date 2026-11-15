@@ -48,7 +48,7 @@ func Watcher(t *testing.T) *inotify.Watcher {
 // inotify_event layout, independently of the production decoder. Names are
 // padded to sixteen bytes as in Linux 7.0's copy_event_to_user.
 func InotifyRecord(event inotify.Event) []byte {
-	length := 0
+	var length int
 	if event.Name != "" {
 		length = (len(event.Name) + 16) &^ 15
 	}

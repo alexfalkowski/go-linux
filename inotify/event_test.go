@@ -25,8 +25,10 @@ func TestParsingPreservesWatchIDsCookiesNamesAndUnknownBits(t *testing.T) {
 	for _, event := range expected {
 		batch = append(batch, test.InotifyRecord(event)...)
 	}
+
 	actual, err := inotify.ParseEvents(batch)
 	require.NoError(t, err)
+
 	clear(batch)
 	require.Equal(t, expected, actual, "decoded names must survive buffer reuse")
 }

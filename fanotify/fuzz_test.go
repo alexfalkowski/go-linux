@@ -16,6 +16,7 @@ func FuzzDecode(f *testing.F) {
 	f.Add(test.FanotifyRecord(-1, 0, uint64(QueueOverflow), nil))
 	f.Add(test.FanotifyRecord(-1, 0, uint64(QueueOverflow), []byte{255, 0, 7, 0, 1, 2, 3}))
 	f.Add([]byte{1, 2, 3})
+
 	f.Fuzz(func(t *testing.T, p []byte) {
 		p = append([]byte(nil), p...)
 		for tail := p; len(tail) >= 24; {
@@ -25,17 +26,21 @@ func FuzzDecode(f *testing.F) {
 			if length < 24 || length > uint64(len(tail)) {
 				break
 			}
+
 			tail = tail[int(length):] //nolint:gosec // Bounded by len(tail) above.
 		}
+
 		events, err := new(Group).decode(p)
 		if err != nil {
 			require.Nil(t, events)
 			return
 		}
+
 		for _, event := range events {
 			require.NotZero(t, event.Mask&QueueOverflow)
 			require.Zero(t, event.Mask&permissions)
 			require.Nil(t, event.file)
+
 			require.NoError(t, event.Close())
 		}
 	})

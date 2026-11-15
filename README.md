@@ -25,6 +25,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests
 - [xattr](docs/xattr.md): whole extended attributes, atomic set modes, and explicit file/path/symlink selection.
 - [inotify](docs/inotify.md): file and directory watches, record decoding, rename cookies, and explicit queue-overflow events.
 - [fanotify](docs/fanotify.md): event-owned file inspection and explicit filesystem permission decisions.
+- [socket](docs/socket.md): Unix and Netlink message sockets, deadlines, typed file passing, and credentials.
 
 ## 🚀 Setup
 

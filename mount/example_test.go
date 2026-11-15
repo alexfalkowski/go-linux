@@ -54,6 +54,7 @@ func ExampleHandle_Attach() { //nolint:testableexamples // Executed by the isola
 	}
 
 	defer os.RemoveAll(path)
+
 	config, err := mount.Open("tmpfs")
 	if err != nil {
 		panic(err)
