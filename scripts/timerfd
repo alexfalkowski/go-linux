@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Change a disposable VM's clock from its privileged timerfd test container.
+
+set -eo pipefail
+
+if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
+  printf 'usage: make verify-timerfd-container image=<tag> arch=<amd64|arm64> clock_change=true\n' >&2
+  exit 2
+fi
+
+if [[ ${GO_LINUX_TEST_CLOCK_CHANGE:-} != true ]]; then
+  printf 'clock changes affect the Docker host; require clock_change=true on a disposable VM\n' >&2
+  exit 2
+fi
+
+timerfd_image=$1
+timerfd_arch=$2
+
+printf 'executor=machine container=%s arch=%s privileged=true clock_change=true\n' "$timerfd_image" "$timerfd_arch"
+
+docker run --rm --privileged --user root \
+  --mount "type=bind,src=$PWD,dst=/home/circleci/go-linux" \
+  --workdir /home/circleci/go-linux \
+  -- "$timerfd_image" \
+  bash -eo pipefail -c '
+    git config --global --add safe.directory /home/circleci/go-linux
+    make dep
+    make verify-timerfd arch="$1" clock_change=true
+  ' timerfd "$timerfd_arch"

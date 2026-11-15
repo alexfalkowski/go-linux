@@ -12,9 +12,24 @@ commands:
       - sync-submodules
 
 executors:
-  go:
+  go-arm64: &go
     docker:
-      - image: alexfalkowski/go:5.23
+      - image: &go-image alexfalkowski/go:5.23
+    environment:
+      GO_LINUX_CI_IMAGE: *go-image
+    resource_class: arm.large
+  go-amd64:
+    <<: *go
+    resource_class: large
+  mount-arm64: &mount
+    machine:
+      image: ubuntu-2604:current
+    environment:
+      GO_LINUX_CI_IMAGE: *go-image
+    resource_class: arm.medium
+  mount-amd64:
+    <<: *mount
+    resource_class: medium
   release:
     docker:
       - image: alexfalkowski/release:8.49
@@ -24,7 +39,11 @@ executors:
 
 jobs:
   build:
-    executor: go
+    parameters:
+      arch:
+        type: enum
+        enum: [arm64, amd64]
+    executor: go-<< parameters.arch >>
     working_directory: ~/go-linux
     steps:
       - checkout-submodules
@@ -32,82 +51,79 @@ jobs:
       - restore_cache:
           name: restore go cache
           keys:
-            - go-linux-go-cache-v1-{{ checksum "go.mod" }}-{{ checksum "~/.go-version" }}-{{ checksum "~/.go-lint-version" }}-{{ checksum ".source-key" }}
-            - go-linux-go-cache-v1-
+            - go-linux-go-cache-{{ checksum "go.sum" }}-{{ checksum "~/.go-version" }}
+            - go-linux-go-cache-
+      - run: make clean
       - run: make dep
+      - save_cache:
+          name: save go cache
+          key: go-linux-go-cache-{{ checksum "go.sum" }}-{{ checksum "~/.go-version" }}
+          paths:
+            - ~/go/pkg/mod
+      - restore_cache:
+          name: restore go build cache
+          keys:
+            - go-linux-go-build-cache-{{ arch }}-{{ checksum "go.sum" }}-{{ checksum "~/.go-version" }}-{{ checksum ".source-key" }}
+            - go-linux-go-build-cache-{{ arch }}-
+      - restore_cache:
+          name: restore go lint cache
+          keys:
+            - go-linux-go-lint-cache-{{ arch }}-{{ checksum "go.sum" }}-{{ checksum "~/.go-lint-version" }}-{{ checksum ".source-key" }}
+            - go-linux-go-lint-cache-{{ arch }}-
+      - run: make clean
       - run:
           name: Observe the actual Linux runner
           command: |
-            printf 'executor=docker image=alexfalkowski/go:5.23 resource_class=arm.large\n'
-            make test-environment arch=arm64 | tee test/reports/environment.json
+            printf 'executor=docker image=%s arch=<< parameters.arch >>\n' "$GO_LINUX_CI_IMAGE"
+            make test-environment arch=<< parameters.arch >> | tee test/reports/environment.json
       - run: make lint
+      - save_cache:
+          name: save go lint cache
+          key: go-linux-go-lint-cache-{{ arch }}-{{ checksum "go.sum" }}-{{ checksum "~/.go-lint-version" }}-{{ checksum ".source-key" }}
+          paths:
+            - ~/.cache/golangci-lint
       - run: make scripts-lint
       - run: make sec
-      - run: make specs
+      - run: make vet
+      - run: make specs profile=rootless required=true arch=<< parameters.arch >>
       - save_cache:
-          name: save go cache
-          key: go-linux-go-cache-v1-{{ checksum "go.mod" }}-{{ checksum "~/.go-version" }}-{{ checksum "~/.go-lint-version" }}-{{ checksum ".source-key" }}
+          name: save go build cache
+          key: go-linux-go-build-cache-{{ arch }}-{{ checksum "go.sum" }}-{{ checksum "~/.go-version" }}-{{ checksum ".source-key" }}
           paths:
-            - ~/go/pkg/mod
             - ~/.cache/go-build
-            - ~/.cache/golangci-lint
       - run: make coverage
       - store_test_results:
           path: test/reports
       - store_artifacts:
           path: test/reports
       - run: make codecov-upload
-    resource_class: arm.large
-  verify:
+  build-mount:
     parameters:
-      toolchain:
-        type: string
-    executor: go
+      arch:
+        type: enum
+        enum: [arm64, amd64]
+    executor: mount-<< parameters.arch >>
     working_directory: ~/go-linux
-    environment:
-      GOTOOLCHAIN: << parameters.toolchain >>
     steps:
       - checkout-submodules
-      - run: make dep
-      - run:
-          name: Observe the actual Linux runner and namespace prerequisites
-          command: |
-            printf 'executor=docker image=alexfalkowski/go:5.23 resource_class=arm.large\n'
-            make test-environment arch=arm64 | tee test/reports/environment.json
-      - run: make vet
-      - run: make compile
-      - run: make specs profile=rootless required=true arch=arm64
+      - run: make verify-mount-container image="$GO_LINUX_CI_IMAGE" arch=<< parameters.arch >>
       - store_test_results:
           path: test/reports
       - store_artifacts:
           path: test/reports
-    resource_class: arm.large
-  verify-mount:
+  build-timerfd:
     parameters:
-      toolchain:
-        type: string
-    machine:
-      image: ubuntu-2604:current
-    resource_class: arm.medium
+      arch:
+        type: enum
+        enum: [arm64, amd64]
+    executor: mount-<< parameters.arch >>
     working_directory: ~/go-linux
-    environment:
-      GOTOOLCHAIN: << parameters.toolchain >>
     steps:
       - checkout-submodules
       - run:
-          name: Verify isolated mount operations
-          command: |
-            docker run --rm --privileged --user root \
-              --env GOTOOLCHAIN \
-              --mount "type=bind,src=$PWD,dst=/home/circleci/go-linux" \
-              --workdir /home/circleci/go-linux \
-              alexfalkowski/go:5.23 \
-              bash -eo pipefail -c '
-                git config --global --add safe.directory /home/circleci/go-linux
-                make dep
-                printf "executor=machine image=ubuntu-2604:current resource_class=arm.medium container=alexfalkowski/go:5.23 privileged=true\n"
-                make verify-mount arch=arm64
-              '
+          name: Disable clock synchronization in this disposable VM
+          command: sudo timedatectl set-ntp false
+      - run: make verify-timerfd-container image="$GO_LINUX_CI_IMAGE" arch=<< parameters.arch >> clock_change=true
       - store_test_results:
           path: test/reports
       - store_artifacts:
@@ -135,39 +151,40 @@ jobs:
 
 workflows:
   go-linux:
-    max_auto_reruns: 3
     jobs:
-      - build
-      - verify:
-          name: verify-<< matrix.toolchain >>
+      - build:
+          name: build-<< matrix.arch >>
           matrix:
-            alias: verify-go
             parameters:
-              toolchain: [go1.27.0, go1.27.4]
-      - verify-mount:
-          name: verify-mount-<< matrix.toolchain >>
+              arch: [arm64, amd64]
+      - build-mount:
+          name: build-mount-<< matrix.arch >>
           matrix:
-            alias: verify-mount-go
             parameters:
-              toolchain: [go1.27.0, go1.27.4]
+              arch: [arm64, amd64]
+      - build-timerfd:
+          name: build-timerfd-<< matrix.arch >>
+          matrix:
+            parameters:
+              arch: [arm64, amd64]
       - sync:
           requires:
             - build
-            - verify-go
-            - verify-mount-go
+            - build-mount
+            - build-timerfd
           filters: 'pipeline.git.branch != "master"'
       - version:
           context: gh
           serial-group: << pipeline.project.slug >>/version
           requires:
             - build
-            - verify-go
-            - verify-mount-go
+            - build-mount
+            - build-timerfd
           filters: 'pipeline.git.branch == "master"'
       - wait-all:
           requires:
             - build
-            - verify-go
-            - verify-mount-go
+            - build-mount
+            - build-timerfd
             - sync
             - version

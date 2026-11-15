@@ -1,6 +1,6 @@
 # memfd
 
-Status: P01 complete with Linux 7.0 arm64 CI execution and local Linux 7.3 amd64 verification at Go 1.27.0 and 1.27.4. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns acceptance and verification evidence. The shared [API conventions](api.md) apply.
+Status: P01 complete with Linux 7.0 arm64 CI execution and local Linux 7.3 amd64 verification at Go 1.27.0 and 1.27.4. The [verification guide](../verification.md) records runtime evidence. The shared [API conventions](api.md) apply.
 
 The [package guide](../memfd.md) owns installation and user workflows; this note records design decisions and verification boundaries.
 
@@ -60,7 +60,7 @@ Current omissions: huge pages and page-size encodings, execution helpers, adopti
 
 There are no injected constructor failure seams. Unknown returned seal bits cannot be generated on this kernel through the supported API; retention is checked by reviewing the direct mask conversion. No fuzzing or benchmark is warranted for this small syscall boundary with no parser or performance promise.
 
-Local commands/results and primary-target CI evidence are recorded in the P01 handoffs. [Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35) and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36) each execute all 23 memfd tests with zero failures or skips on actual Linux 7.0.0-1017-aws arm64 for implementation revision `3b9ae31`. Both jobs also pass vet and package/test compilation for amd64 and arm64; compilation remains separate from runtime acceptance. This closes the required P01 primary-target verification gap. Full amd64 baseline support remains a separate project limitation.
+[Go 1.27.0 job 35](https://circleci.com/gh/alexfalkowski/go-linux/35) and [Go 1.27.4 job 36](https://circleci.com/gh/alexfalkowski/go-linux/36) each execute all 23 memfd tests with zero failures or skips on actual Linux 7.0.0-1017-aws arm64 for implementation revision `3b9ae31`. Both jobs also pass vet and package/test compilation for amd64 and arm64; compilation remains separate from runtime acceptance. This closes the required P01 primary-target verification gap. Full amd64 baseline support remains a separate project limitation.
 
 ## Primary references
 

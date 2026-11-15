@@ -1,6 +1,6 @@
 # Mapped regions
 
-Import `github.com/alexfalkowski/go-linux/mmap` for anonymous or file-backed mapped memory. Linux 7.0+ is the baseline; see [verification status](../IMPLEMENTATION.md), [executable examples](../mmap/example_test.go), and [design decisions](design/mmap.md).
+Import `github.com/alexfalkowski/go-linux/mmap` for anonymous or file-backed mapped memory. Linux 7.0+ is the baseline; see [verification status](verification.md), [executable examples](../mmap/example_test.go), and [design decisions](design/mmap.md).
 
 ## Create and use a region
 
@@ -43,4 +43,4 @@ Errors preserve errno and standard identities through `errors.Is`/`errors.As`, w
 
 A zero Region returns nil from Bytes and `os.ErrInvalid` from other methods. After successful Close, Bytes returns nil and other methods, including repeated Close, match `os.ErrClosed` before validating method arguments. A failed Close retains ownership for retry. Kernel protection/advice errors may follow partial application. Do not copy a Region after use; nil receivers are unsupported.
 
-Run `package=mmap make specs` for ordinary-user integration coverage, including bounded subprocess protection/lifetime faults. The package has no privileged profile. P04 is complete for the available Linux 7.0 arm64 target: [Go 1.27.0 job 92](https://circleci.com/gh/alexfalkowski/go-linux/92) and [Go 1.27.4 job 90](https://circleci.com/gh/alexfalkowski/go-linux/90) each pass all 36 mmap test events without failures/skips. See the plan for the exact revision and retained runtime evidence; cross-compilation remains distinct from runtime verification.
+Run `package=mmap make specs` for ordinary-user integration coverage, including bounded subprocess protection/lifetime faults. The package has no privileged profile. P04 is complete for the available Linux 7.0 arm64 target: [Go 1.27.0 job 92](https://circleci.com/gh/alexfalkowski/go-linux/92) and [Go 1.27.4 job 90](https://circleci.com/gh/alexfalkowski/go-linux/90) each pass all 36 mmap test events without failures/skips. See the [verification guide](verification.md) for the exact revision and retained runtime evidence; cross-compilation remains distinct from runtime verification.

@@ -1,6 +1,6 @@
 # mount
 
-`github.com/alexfalkowski/go-linux/mount` provides filesystem configuration contexts and owned mount handles through the modern Linux mount API. It requires Linux 7.0+ and the Go version in `go.mod`. Implementation and verification are tracked separately in [the plan](../IMPLEMENTATION.md); P06 is complete for the observed Linux 7.0 arm64 target. Required isolated integration passes at Go 1.27.0 and Go 1.27.4; see the [verification evidence](verification.md#ci-and-outstanding-runners).
+`github.com/alexfalkowski/go-linux/mount` provides filesystem configuration contexts and owned mount handles through the modern Linux mount API. It requires Linux 7.0+ and the Go version in `go.mod`. Runtime evidence is recorded in the [verification guide](verification.md); P06 is complete for the observed Linux 7.0 arm64 target. Required isolated integration passes at Go 1.27.0 and Go 1.27.4; see the [verification evidence](verification.md#ci-and-outstanding-runners).
 
 ## Configure, create, and acquire
 

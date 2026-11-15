@@ -1,6 +1,6 @@
 # eventfd
 
-Status: P02 complete for the available Linux 7.0 arm64 target at Go 1.27.0 and 1.27.4, with additional local Linux 7.3 amd64 checks. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns acceptance and evidence. Shared [API conventions](api.md) apply; the [package guide](../eventfd.md) owns user workflows.
+Status: P02 complete for the available Linux 7.0 arm64 target at Go 1.27.0 and 1.27.4, with additional local Linux 7.3 amd64 checks. The [verification guide](../verification.md) records runtime evidence. Shared [API conventions](api.md) apply; the [package guide](../eventfd.md) owns user workflows.
 
 ## Resource model and caller
 
@@ -47,7 +47,7 @@ Initial omissions: raw-mode construction, adoption/duplication helpers, descript
 
 The dominant harness is external Go tests using `require` assertions, launched by `package=eventfd make specs` with race detection and JSON/JUnit/coverage reports. The executable example exercises typed accumulation and deadlines. Tests cover both modes, the full initial-value width, 64-bit accumulation, draining, byte encoding and unused buffer tails, every undersized read, invalid write lengths and values without mutation, zero/maximum values, close-on-exec and nonblocking flags, empty-record kernel `EAGAIN`, pending read/write wakeups, overflow backpressure, deadline expiry/reset/direction independence, pending deadline changes, close during blocked I/O, repeated close, zero/closed states, descriptor ownership, invalid modes, and concurrent additions.
 
-Wait tests use short observation windows and five-second safety bounds, with real kernel operations rather than mocks. They verify consumer-visible wakeups under the observed scheduler; they cannot prove every concurrency schedule. Refactor and challenge passes, exact commands, reports, failures, and limitations are recorded in the P02 handoff. No fuzzing or benchmark is justified for this fixed-size syscall adapter without a parser or performance promise.
+Wait tests use short observation windows and five-second safety bounds, with real kernel operations rather than mocks. They verify consumer-visible wakeups under the observed scheduler; they cannot prove every concurrency schedule. No fuzzing or benchmark is justified for this fixed-size syscall adapter without a parser or performance promise.
 
 Required Linux 7.0 arm64 execution is verified by [Go 1.27.0 job 57](https://circleci.com/gh/alexfalkowski/go-linux/57) and [Go 1.27.4 job 58](https://circleci.com/gh/alexfalkowski/go-linux/58) for revision `1c5b6f8`. Each job's environment artifact reports actual Linux 7.0.0-1017-aws arm64; its JSON test report records 38 eventfd and 76 total test passes without failures/skips. Both jobs pass vet and amd64/arm64 compilation. This closes P02's primary-target runtime gap; full amd64 baseline runtime support remains a separate project limitation. P03 is next.
 

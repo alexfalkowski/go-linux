@@ -1,6 +1,6 @@
 # epoll
 
-Status: P07 complete on the available Linux 7.0 arm64 target. At 5e42c6f, required ordinary-user [Go 1.27.0 job 236](https://circleci.com/gh/alexfalkowski/go-linux/236) and [Go 1.27.4 job 238](https://circleci.com/gh/alexfalkowski/go-linux/238) each pass all 41 epoll events without failures/skips on actual Linux 7.0.0-1017-aws arm64. Local Linux 7.3 amd64 verification remains separate. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns acceptance and exact evidence. The [usage guide](../epoll.md) owns caller workflows; shared [API conventions](api.md) apply.
+Status: P07 complete on the available Linux 7.0 arm64 target. At 5e42c6f, required ordinary-user [Go 1.27.0 job 236](https://circleci.com/gh/alexfalkowski/go-linux/236) and [Go 1.27.4 job 238](https://circleci.com/gh/alexfalkowski/go-linux/238) each pass all 41 epoll events without failures/skips on actual Linux 7.0.0-1017-aws arm64. Local Linux 7.3 amd64 verification remains separate. The [verification guide](../verification.md) records runtime evidence. The [usage guide](../epoll.md) owns caller workflows; shared [API conventions](api.md) apply.
 
 ## Resource model and caller
 

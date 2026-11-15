@@ -1,6 +1,6 @@
 # mmap design
 
-P04 adds owned anonymous and file-backed mappings. Implementation and verification status are tracked in [the plan](../../IMPLEMENTATION.md); ordinary Linux 7.3 amd64 execution and Linux 7.0 arm64 CI acceptance are distinct. The [usage guide](../mmap.md) owns caller workflows.
+P04 adds owned anonymous and file-backed mappings. Runtime evidence is recorded in the [verification guide](../verification.md); ordinary Linux 7.3 amd64 execution and Linux 7.0 arm64 CI acceptance are distinct. The [usage guide](../mmap.md) owns caller workflows.
 
 ## Resource and caller model
 
@@ -44,7 +44,7 @@ Bounded subprocesses use the current test executable and `debug.SetPanicOnFault`
 
 The original P04 review found no common internals worth extracting. The user-selected opaque-resource migration now uses direct private file fields; pidfd owns its wake file locally, and the temporary shared descriptor holder has been removed. mmap still owns no descriptor and keeps its standard `*os.File` borrowing API; memfd now supplies a typed `File.Map` operation rather than exposing its file. Facility-specific synchronization, error handling, and mapping lifetime remain distinct.
 
-Required Linux 7.0 arm64 execution is verified by [Go 1.27.0 job 92](https://circleci.com/gh/alexfalkowski/go-linux/92) and [Go 1.27.4 job 90](https://circleci.com/gh/alexfalkowski/go-linux/90) for implementation revision 11c177c. Each passes all 36 mmap events, including both examples and five fault scenarios, and 172 total regression test events without failures/skips. The retained environment reports confirm actual Linux 7.0.0-1017-aws arm64 execution at the matching Go version. P04 is complete for the available target; see the plan's CI acceptance handoff. Failed-unmap retention and rare kernel allocation/partial-application errors are source-reviewed rather than fault-injected; no unsupported external unmapping or private seam is introduced to force them.
+Required Linux 7.0 arm64 execution is verified by [Go 1.27.0 job 92](https://circleci.com/gh/alexfalkowski/go-linux/92) and [Go 1.27.4 job 90](https://circleci.com/gh/alexfalkowski/go-linux/90) for implementation revision 11c177c. Each passes all 36 mmap events, including both examples and five fault scenarios, and 172 total regression test events without failures/skips. The retained environment reports confirm actual Linux 7.0.0-1017-aws arm64 execution at the matching Go version. P04 is complete for the available target; see the [verification guide](../verification.md). Failed-unmap retention and rare kernel allocation/partial-application errors are source-reviewed rather than fault-injected; no unsupported external unmapping or private seam is introduced to force them.
 
 ## Primary references
 

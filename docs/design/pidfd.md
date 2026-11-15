@@ -1,6 +1,6 @@
 # pidfd
 
-Status: P05 complete by user acceptance on 2026-11-14; corrected-revision ordinary CI now passes; the positive core-dump R01 follow-up remains explicit below. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns acceptance, results, and remaining gaps. Shared [API conventions](api.md) apply; the [package guide](../pidfd.md) owns usage.
+Status: P05 complete by user acceptance on 2026-11-14; corrected-revision ordinary CI now passes; the positive core-dump R01 follow-up remains explicit below. The [verification guide](../verification.md) records results; [IMPLEMENTATION.md](../../IMPLEMENTATION.md) tracks remaining gaps. Shared [API conventions](api.md) apply; the [package guide](../pidfd.md) owns usage.
 
 ## Caller and resource model
 
@@ -48,7 +48,7 @@ The SIGABRT fixture lowers only the child's core-file limit. That limit does not
 
 Ordinary-user execution needs permitted pidfd, pidfs inspection, fcntl, eventfd, poll, and waitid operations. Test fixtures additionally need procfs and the documented executables. Tests never send a nonzero signal outside test-owned children. Permission-denial coverage uses signal zero against a different-UID PID 1. Missing prerequisites skip only in optional runs and fail under required=true; such a skip remains a verification gap. An elevated runner with permission to signal that target is not equivalent to denial coverage. Cross-user signal success is not promised by these tests.
 
-The user accepted P05 completion after the fixture correction. Corrected-revision ordinary CI now passes at ae50d8d in [Go 1.27.0 job 193](https://circleci.com/gh/alexfalkowski/go-linux/193) and [Go 1.27.4 job 194](https://circleci.com/gh/alexfalkowski/go-linux/194) on actual Linux 7.0 arm64, without a pidfd skip. Positive CLD_DUMPED coverage remains open for R01; preserving the observed false flag does not verify the true outcome. Earlier failed-job evidence and local/compile results remain historical and separate in the P05 handoffs.
+The user accepted P05 completion after the fixture correction. Corrected-revision ordinary CI now passes at ae50d8d in [Go 1.27.0 job 193](https://circleci.com/gh/alexfalkowski/go-linux/193) and [Go 1.27.4 job 194](https://circleci.com/gh/alexfalkowski/go-linux/194) on actual Linux 7.0 arm64, without a pidfd skip. Positive CLD_DUMPED coverage remains open for R01; preserving the observed false flag does not verify the true outcome.
 
 Initial omissions: process/thread creation, thread pidfds, process-group signaling, queued/custom siginfo, pidfd_getfd, namespace operations, ptrace/stop/continue waits, rusage, deadlines, contexts, wait-many orchestration, and automatic child ownership transfer from os/exec. All included Linux operations and pidfs validation were checked against upstream 7.0 sources; no newer or vendor-specific feature is required. Rare syscall errors and exhaustive concurrency schedules remain beyond executed proof.
 
