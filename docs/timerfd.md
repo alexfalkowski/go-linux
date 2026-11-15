@@ -2,7 +2,7 @@
 
 `github.com/alexfalkowski/go-linux/timerfd` creates Linux timers whose descriptors deliver expiration counts. It requires Linux 7.0+, the Go version in `go.mod`, and permitted timerfd, clock-query, and polling operations. Ordinary use needs no extra capabilities. Use `time.Timer` or `time.Ticker` when no kernel descriptor or Linux clock selection is needed.
 
-P03 is complete for the available Linux 7.0 arm64 target, with ordinary operations verified at Go 1.27.0 and 1.27.4 and local Linux 7.3 amd64 verification. Isolated clock-change verification remains open for R01; [IMPLEMENTATION.md](../IMPLEMENTATION.md) tracks the remaining verification gaps.
+P03 is complete. Required native Linux 7.0 arm64 and amd64 CI jobs verify ordinary operations and isolated clock-change behavior with Go 1.27.4 at `bff403e`; earlier minimum-toolchain and local newer-kernel results remain separate evidence. See [verification guidance](verification.md) for linked jobs and source-reviewed limits, and [IMPLEMENTATION.md](../IMPLEMENTATION.md) for remaining work.
 
 ## Arm and consume a timer
 
@@ -44,7 +44,7 @@ Call `timerfd.Now(clock)` to obtain an `Instant` in the same clock domain as the
 
 Use `timerfd.CancelOnSet` only with `SetAt` on a Realtime timer. It requests `unix.ECANCELED` after a discontinuous clock change. Without this flag, a backward clock change can instead cause a successful zero-byte read. `Read` preserves `(0, nil)` in that case; `ReadExpirations` returns zero and an error matching `io.ErrNoProgress`. Neither result means permanent EOF. Reevaluate the schedule after clock-change notification. Gradual clock adjustments do not trigger this cancellation mode.
 
-Linux can apply a new absolute setting and still return `ECANCELED` when acknowledging a pending clock cancellation. Do not assume an error means the timer was unchanged: inspect `State()` before deciding whether to retry. Likewise, setters can return `EOVERFLOW` after applying a change if the previous kernel state cannot fit `time.Duration`; state inspection reports conversion errors without wrapping a value. These unusual paths are source-reviewed; clock-change execution needs an isolated clock-controlled VM. The package never adjusts the host clock.
+Linux can apply a new absolute setting and still return `ECANCELED` when acknowledging a pending clock cancellation. Do not assume an error means the timer was unchanged: inspect `State()` before deciding whether to retry. Likewise, setters can return `EOVERFLOW` after applying a change if the previous kernel state cannot fit `time.Duration`; state inspection reports conversion errors without wrapping a value. The ECANCELED rearm side effect is verified in the isolated clock-controlled VM jobs; old-state overflow rejection remains source-reviewed. The package never adjusts the host clock.
 
 ## Reads, deadlines, and ownership
 
