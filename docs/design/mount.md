@@ -1,6 +1,6 @@
 # mount design
 
-P06 implements descriptor-based mount operations. [The usage guide](../mount.md) owns caller workflows and [the plan](../../IMPLEMENTATION.md) owns acceptance. P06 is complete for the observed Linux 7.0 arm64 target: required isolated [Go 1.27.0 job 195](https://circleci.com/gh/alexfalkowski/go-linux/195) and [Go 1.27.4 job 192](https://circleci.com/gh/alexfalkowski/go-linux/192) each pass all 39 mount events without failures/skips at ae50d8d. Local namespace creation remains unavailable with EPERM; the accepted evidence comes from actual CI mount operations. Those reports predate the private-file refactor; its revised ABI setup still requires capable-runner execution.
+P06 implements descriptor-based mount operations. [The usage guide](../mount.md) owns caller workflows and [verification guidance](../verification.md) records runtime evidence. P06 is complete for the observed Linux 7.0 arm64 target: required isolated [Go 1.27.0 job 195](https://circleci.com/gh/alexfalkowski/go-linux/195) and [Go 1.27.4 job 192](https://circleci.com/gh/alexfalkowski/go-linux/192) each pass all 39 mount events without failures/skips at ae50d8d. Local namespace creation remains unavailable with EPERM; the accepted evidence comes from actual CI mount operations.
 
 ## Caller and ownership model
 

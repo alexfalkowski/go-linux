@@ -4,7 +4,7 @@ Linux APIs with idiomatic Go interfaces.
 
 `github.com/alexfalkowski/go-linux` provides focused Linux facilities that compose with standard Go interfaces. Packages are added sequentially through the implementation plan.
 
-The library targets Linux 7.0+ and the Go version in `go.mod`. Primary runtime verification uses arm64 on CircleCI; amd64 compilation and available local execution are checked separately. Package verification status is recorded in the [implementation plan](IMPLEMENTATION.md).
+The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests native arm64 and amd64 runtime verification, including isolated mount tests. Runtime evidence is in the [verification guide](docs/verification.md); unfinished work and open gaps are tracked in the [implementation plan](IMPLEMENTATION.md).
 
 ## 📦 Packages
 

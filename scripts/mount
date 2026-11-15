@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Run required mount tests in a privileged container on a native Linux Docker host.
+
+set -eo pipefail
+
+if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
+  printf 'usage: make verify-mount-container image=<tag> arch=<amd64|arm64>\n' >&2
+  exit 2
+fi
+
+mount_image=$1
+mount_arch=$2
+
+printf 'executor=machine container=%s arch=%s privileged=true\n' "$mount_image" "$mount_arch"
+
+docker run --rm --privileged --user root \
+  --mount "type=bind,src=$PWD,dst=/home/circleci/go-linux" \
+  --workdir /home/circleci/go-linux \
+  -- "$mount_image" \
+  bash -eo pipefail -c '
+    git config --global --add safe.directory /home/circleci/go-linux
+    make dep
+    make verify-mount arch="$1"
+  ' mount "$mount_arch"

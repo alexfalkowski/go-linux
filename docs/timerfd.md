@@ -2,7 +2,7 @@
 
 `github.com/alexfalkowski/go-linux/timerfd` creates Linux timers whose descriptors deliver expiration counts. It requires Linux 7.0+, the Go version in `go.mod`, and permitted timerfd, clock-query, and polling operations. Ordinary use needs no extra capabilities. Use `time.Timer` or `time.Ticker` when no kernel descriptor or Linux clock selection is needed.
 
-P03 is complete for the available Linux 7.0 arm64 target, with ordinary operations verified at Go 1.27.0 and 1.27.4 and local Linux 7.3 amd64 verification. Isolated clock-change verification remains open for R01; [IMPLEMENTATION.md](../IMPLEMENTATION.md) owns acceptance and the verification gaps.
+P03 is complete for the available Linux 7.0 arm64 target, with ordinary operations verified at Go 1.27.0 and 1.27.4 and local Linux 7.3 amd64 verification. Isolated clock-change verification remains open for R01; [IMPLEMENTATION.md](../IMPLEMENTATION.md) tracks the remaining verification gaps.
 
 ## Arm and consume a timer
 
@@ -57,3 +57,5 @@ Always call `Close`. It releases the descriptor and wakes poll-blocked reads wit
 The timer keeps its descriptor private; use arming, state, reads, and read deadlines directly. External poll registration is outside the current API.
 
 Kernel failures preserve errno identity through `errors.Is` and `errors.As`; policy denials remain observable. Initial omissions include alarm/wakeup clocks, clock adjustment, tick injection, adoption helpers, contexts, and exported ordinary files. See [GoDoc](../timerfd/doc.go), the [design note](design/timerfd.md), and [verification guidance](verification.md).
+
+Clock-changing integration tests are a separate opt-in mode for disposable VMs. Ordinary `make specs`, including root execution, leaves them disabled. See the [verification guide](verification.md) for `make verify-timerfd-container`, its explicit acknowledgment, and the dedicated CI machine jobs. Those jobs still need observed execution results.

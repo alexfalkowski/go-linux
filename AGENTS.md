@@ -6,8 +6,8 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 
 ## Repository
 
-- Follow `IMPLEMENTATION.md` for execution order, acceptance criteria, verification gaps, and handoffs. API conventions are in `docs/design/api.md`.
-- Go library for Linux APIs; implemented packages and verification status are tracked in `IMPLEMENTATION.md`.
+- Follow `IMPLEMENTATION.md` for remaining work, execution order, acceptance criteria, and open verification gaps. API conventions are in `docs/design/api.md`.
+- Go library for Linux APIs; README lists implemented packages, `docs/verification.md` records runtime evidence, and `IMPLEMENTATION.md` tracks unfinished work.
 - Check `go.mod` for the module path and Go version.
 - Keep dependencies and packages limited to implemented features.
 - Design public APIs and examples to read like standard-library Go while preserving Linux names, typed modes/flags, record boundaries, clock domains, errno identity, and ownership. Use familiar Go interfaces and explicit resource operations where their contracts fit.
@@ -24,9 +24,9 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 
 - Discover commands with `make help`; refresh dependencies with `make dep`.
 - Quality checks: `make lint`, `make format`, `make specs`, `make sec`.
-- Verification: `make test-environment`, `make vet`, `make compile`, and `make scripts-lint`; details and profile requirements are in `docs/verification.md`.
+- Verification: `make test-environment`, `make vet`, and `make scripts-lint`; details and profile requirements are in `docs/verification.md`.
 - Use `make specs profile=namespaces` for optional namespace coverage or add `required=true` to fail when its prerequisites are unavailable. JSON and JUnit results are written under `test/reports/`.
-- Use `make verify-mount` after `make dep` on a capable Linux host to record namespace prerequisites and run required mount-only coverage. CI adds `arch=arm64`; local checks can omit it.
+- Use `make verify-mount-container image=<tag> arch=<amd64|arm64>` for the same mount verification locally and in CI. Use the Go image reference from `.circleci/config.yml` on a native Linux Docker host that permits privileged containers. The container runs dependency setup and `make verify-mount` to record prerequisites and run required mount-only coverage.
 - Scope tests with `package=<path> make specs` once feature packages exist.
 - Generate coverage with `make coverage` after `make specs`.
 - CircleCI configuration is in `.circleci/config.yml`.
