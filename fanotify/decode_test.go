@@ -21,6 +21,7 @@ func TestDecoderPreservesUnknownRecordsAndMetadataExtensions(t *testing.T) {
 	group := &Group{file: reader}
 	file := test.TempFile(t, 4)
 	test.WriteAt(t, file, 0, "data")
+
 	fd := test.DuplicateDescriptor(t, file)
 	record := test.FanotifyRecord(int32(fd), 123, uint64(Open)|1<<63, []byte{255, 0, 7, 0, 1, 2, 3, 254, 0, 4, 0}) //nolint:gosec // A live descriptor fits the Linux signed field.
 	// The metadata extension is opaque; info begins at metadata_len.
@@ -31,6 +32,7 @@ func TestDecoderPreservesUnknownRecordsAndMetadataExtensions(t *testing.T) {
 	events, err := group.decode(record)
 	require.NoError(t, err)
 	require.Len(t, events, 1)
+
 	event := events[0]
 	test.Cleanup(t, event)
 	clear(record)
@@ -38,6 +40,7 @@ func TestDecoderPreservesUnknownRecordsAndMetadataExtensions(t *testing.T) {
 	require.Equal(t, 123, event.PID)
 	require.Equal(t, []Info{{Type: 255, Data: []byte{1, 2, 3}}, {Type: 254}}, event.Info)
 	require.Equal(t, []byte("data"), test.ReadAt(t, event, 0, 4))
+
 	require.NoError(t, event.Close())
 	require.Equal(t, before-1, test.DescriptorCount(t), "the event must consume exactly its transferred file")
 }
@@ -108,8 +111,10 @@ func TestDecoderRejectsMalformedBatchesAndClosesEveryIdentifiableFile(t *testing
 			events, err := group.decode(append(prefix, bad...))
 			require.Nil(t, events)
 			require.ErrorIs(t, err, scenario.err)
+
 			_, err = unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
 			require.ErrorIs(t, err, unix.EBADF)
+
 			_, err = reader.Read(make([]byte, 1))
 			require.ErrorIs(t, err, os.ErrClosed)
 		})
@@ -126,6 +131,7 @@ func TestDecoderContinuesCleanupAfterMalformedInformation(t *testing.T) {
 	events, err := group.decode(p)
 	require.Nil(t, events)
 	require.ErrorIs(t, err, os.ErrInvalid)
+
 	for _, fd := range []int{first, second} {
 		_, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
 		require.ErrorIs(t, err, unix.EBADF, "descriptor %d must close even after an earlier malformed extension", fd)
@@ -138,13 +144,18 @@ func TestDecoderOverflowOwnsNoFile(t *testing.T) {
 	events, err := group.decode(test.FanotifyRecord(-1, 0, uint64(QueueOverflow)|1<<63, nil))
 	require.NoError(t, err)
 	require.Len(t, events, 1)
+
 	event := events[0]
 	require.Equal(t, QueueOverflow|1<<63, event.Mask)
+
 	_, err = event.Stat()
 	require.ErrorIs(t, err, unix.ENODATA)
+
 	_, err = event.ReadAt(make([]byte, 1), 0)
 	require.ErrorIs(t, err, unix.ENODATA)
+
 	require.NoError(t, event.Close())
+
 	events, err = group.decode(nil)
 	require.NoError(t, err)
 	require.Empty(t, events)
@@ -161,8 +172,10 @@ func TestPermissionBatchCleanupEncodesDenyForEveryUnreadEvent(t *testing.T) {
 		descriptors = append(descriptors, fd)
 		records = append(records, test.FanotifyRecord(int32(fd), 1, uint64(OpenPermission), nil)...) //nolint:gosec // Linux descriptors fit int32.
 	}
+
 	events, err := group.decode(records)
 	require.NoError(t, err)
+
 	// Exported observations must not control the actual permission lifecycle.
 	events[0].Mask = 0
 	require.False(t, lendEvents(events, func(event *Event, err error) bool {
@@ -170,13 +183,16 @@ func TestPermissionBatchCleanupEncodesDenyForEveryUnreadEvent(t *testing.T) {
 		require.Same(t, events[0], event)
 		return false
 	}), "breaking must stop iteration while releasing the whole batch")
+
 	responses := make([]byte, 24)
 	_, err = io.ReadFull(reader, responses)
 	require.NoError(t, err)
+
 	for index, fd := range descriptors {
 		response := responses[index*8 : (index+1)*8]
 		require.EqualValues(t, fd, binary.NativeEndian.Uint32(response[:4]), "response must retain its owned event identity")
 		require.Equal(t, uint32(Deny), binary.NativeEndian.Uint32(response[4:]), "unanswered events must receive Deny")
+
 		_, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
 		require.ErrorIs(t, err, unix.EBADF)
 	}
@@ -189,15 +205,21 @@ func TestResponseFailureRetainsOwnershipUntilCloseReleasesGroupAndFile(t *testin
 	events, err := group.decode(test.FanotifyRecord(int32(fd), 1, uint64(OpenPermission), nil)) //nolint:gosec // Linux descriptors fit int32.
 	require.NoError(t, err)
 	require.Len(t, events, 1)
+
 	event := events[0]
 	test.Cleanup(t, event)
 	require.ErrorIs(t, event.Respond(Allow), unix.EBADF, "a read-only pipe rejects the encoded response")
+
 	_, err = event.Stat()
 	require.NoError(t, err, "failed Respond must leave the event caller-owned")
+
 	require.ErrorIs(t, event.Close(), unix.EBADF)
+
 	_, err = reader.Read(make([]byte, 1))
 	require.ErrorIs(t, err, os.ErrClosed, "failed cleanup response must close the group")
+
 	_, err = unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
 	require.ErrorIs(t, err, unix.EBADF, "response errors must not leak the event file")
+
 	require.ErrorIs(t, event.Close(), os.ErrClosed)
 }

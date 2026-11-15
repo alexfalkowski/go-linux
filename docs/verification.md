@@ -33,6 +33,8 @@ The coverage job retains the combined reports and uploads `final.cov` once throu
 
 The inotify overflow fixture fills only its own instance queue and never changes host limits. It bounds generation at `max_queued_events <= 65536`; a larger existing host limit skips the fixture in optional mode and fails with `required=true`. Decoder fixtures still cover the overflow record independently.
 
+The socket backpressure fixture fills only a test-owned Unix datagram endpoint, using the existing `/proc/sys/net/unix/max_dgram_qlen` value without changing it. Limits above 65536 skip optional coverage and fail with `required=true`; bounded native producers distinguish destination-queue exhaustion from a single sender's buffer limit.
+
 ## Profiles and prerequisites
 
 | Setting | Meaning |
@@ -130,3 +132,4 @@ Additional local ordinary-user evidence covers a newer kernel:
 | `xattr` real-filesystem behavior, examples, and rootless container launcher | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection directly and through the launcher with the pinned Moby profile; this is not Linux 7.0 or arm64 evidence. Namespace creation fails with EPERM and is not needed by these tests. |
 | `inotify` lifecycle, decoding, examples, and actual queue overflow | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes directly with race detection and no skips; decoder fuzzing also passes. Native Linux 7.0 amd64/arm64 evidence remains pending. Namespace creation fails with EPERM and is not needed by these tests. |
 | `fanotify` decoder and resource cleanup | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; Docker daemon is rootless | Parser/ABI cleanup and invalid-input tests run with race detection, and decoder fuzzing passes; selected live fixtures fail for missing CAP_SYS_ADMIN. This is not notification or permission-operation evidence. |
+| `socket` message I/O, ancillary ownership, and polling | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection and no skips, including binary abstract Unix names/replies, Unix datagram/seqpacket pairs, Netlink transport/options/membership, descriptor passing and truncation, credentials, deadlines, concurrent close, and descriptor-exhaustion cleanup. Linux 7.0 amd64/arm64 runtime evidence remains pending. |

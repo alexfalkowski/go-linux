@@ -148,11 +148,13 @@ func TestUnmountReleasesAttachmentsWithExplicitReferenceRules(t *testing.T) {
 			file := test.OpenFile(t, filename)
 			if !scenario.retainReferences {
 				require.ErrorIs(t, mount.Unmount(path, 0), unix.EBUSY)
+
 				require.NoError(t, file.Close())
 				require.NoError(t, handle.Close())
 			}
 
 			require.NoError(t, mount.Unmount(path, scenario.flags))
+
 			attached = false
 
 			_, err := os.Stat(filename)
@@ -173,6 +175,7 @@ func TestUnmountReleasesAttachmentsWithExplicitReferenceRules(t *testing.T) {
 func TestCloningAClosedDirectoryReturnsNoHandle(t *testing.T) {
 	dir, err := os.Open(t.TempDir())
 	require.NoError(t, err)
+
 	require.NoError(t, dir.Close())
 
 	before := test.DescriptorCount(t)
@@ -198,6 +201,7 @@ func TestInvalidMountAttributesAndEmptyTargetsAreRejected(t *testing.T) {
 		got, err := config.Mount(attributes)
 		require.Nil(t, got, scenario.name)
 		require.ErrorIs(t, err, os.ErrInvalid, scenario.name)
+
 		require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{Set: attributes}), os.ErrInvalid, scenario.name)
 		require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{Clear: attributes}), os.ErrInvalid, scenario.name)
 	}
@@ -226,6 +230,7 @@ func TestFailedMountAcquisitionPreservesErrnoAndRetainsNoDescriptor(t *testing.T
 
 	expected = unix.Unmount(path, 0)
 	require.Error(t, expected)
+
 	require.ErrorIs(t, mount.Unmount(path, 0), expected)
 	require.Equal(t, before, test.DescriptorCount(t), "failed kernel acquisitions must not retain descriptors")
 }
@@ -250,6 +255,7 @@ func TestMountRequiresExplicitFilesystemCreation(t *testing.T) {
 	if !test.MountNamespace(t) {
 		return
 	}
+
 	config := test.MountConfig(t)
 	handle, err := config.Mount(0)
 	test.NoResource(t, handle, err, unix.EINVAL)
@@ -264,8 +270,10 @@ func TestFilesystemParametersAndMountRestrictionsReachTheKernel(t *testing.T) {
 	config := test.MountConfig(t)
 	test.CloseOnExec(t, test.NewDescriptor(t, before))
 	require.NoError(t, config.SetFlag("rw"))
+
 	require.NoError(t, config.SetString("size", "1m"))
 	require.NoError(t, config.SetString("mode", "0700"))
+
 	require.NoError(t, config.Create())
 
 	const all = mount.ReadOnly | mount.NoSUID | mount.NoDev | mount.NoExec
@@ -274,6 +282,7 @@ func TestFilesystemParametersAndMountRestrictionsReachTheKernel(t *testing.T) {
 	handle, err := config.Mount(all)
 	require.NoError(t, err)
 	test.Cleanup(t, handle)
+
 	fd := test.NewDescriptor(t, before)
 	test.CloseOnExec(t, fd)
 
@@ -327,6 +336,7 @@ func TestClosingConfigurationLeavesItsMountUsable(t *testing.T) {
 
 	_, err = config.Diagnostics()
 	require.ErrorIs(t, err, os.ErrClosed)
+
 	require.NoError(t, handle.SetAttributes(mount.AttributeChange{Set: mount.NoExec}))
 
 	attributes := test.Value(t, handle.Attributes)
@@ -404,7 +414,9 @@ func TestRejectedParametersLeaveTheConfigurationContextUsable(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			config := test.MountConfig(t)
 			require.ErrorIs(t, scenario.configure(config), scenario.err)
+
 			require.NoError(t, config.SetString("source", ""))
+
 			require.NoError(t, config.Create())
 		})
 	}
@@ -447,6 +459,7 @@ func TestMountRejectsInvalidAttributeChangesBeforeCallingTheKernel(t *testing.T)
 		got, err := config.Mount(attributes)
 		require.Nil(t, got, scenario.name)
 		require.ErrorIs(t, err, os.ErrInvalid, "%s must fail before kernel phase validation", scenario.name)
+
 		require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{Set: attributes}), os.ErrInvalid, scenario.name)
 		require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{Clear: attributes}), os.ErrInvalid, scenario.name)
 	}
@@ -462,6 +475,7 @@ func TestDiagnosticsDrainsTheNewestEightKernelRecordsInOrder(t *testing.T) {
 	if !test.MountNamespace(t) {
 		return
 	}
+
 	before := test.Descriptors(t)
 	config := test.MountConfig(t)
 	fd := test.NewDescriptor(t, before)
@@ -636,6 +650,7 @@ func TestCloningIncludesChildMountsOnlyWhenRequested(t *testing.T) {
 			path := t.TempDir()
 			target := test.OpenFile(t, filepath.Dir(path))
 			test.AttachMount(t, handle, target, filepath.Base(path), path)
+
 			data, err := os.ReadFile(filepath.Join(path, "nested", "value"))
 			require.NoError(t, err)
 			require.Equal(t, scenario.content, string(data))
@@ -666,7 +681,9 @@ func TestRecursiveAttributesAffectTheCloneAndItsChildMounts(t *testing.T) {
 			}
 
 			require.NoError(t, os.WriteFile(filepath.Join(source, "original"), nil, 0o600), "source mount remains writable")
+
 			require.NoError(t, handle.SetAttributes(mount.AttributeChange{Clear: mount.ReadOnly, Recursive: true}))
+
 			require.NoError(t, os.WriteFile(filepath.Join(path, "nested", "new"), nil, 0o600))
 		})
 	}
@@ -709,6 +726,7 @@ func TestMountAcquisitionAndCloseLeaveNoDescriptorsBehind(t *testing.T) {
 
 		handle, err := config.Mount(0)
 		require.NoError(t, err)
+
 		require.NoError(t, handle.Close())
 		require.NoError(t, config.Close())
 
@@ -727,6 +745,7 @@ func TestMountAcquisitionAndCloseLeaveNoDescriptorsBehind(t *testing.T) {
 				test.NoResource(t, handle, err, source.err)
 			} else {
 				require.NoError(t, err, source.name)
+
 				require.NoError(t, handle.Close(), source.name)
 			}
 		}
@@ -754,6 +773,7 @@ func TestClosedBorrowedDirectoriesLeaveMountHandlesUsable(t *testing.T) {
 	handle = test.Mount(t)
 
 	require.ErrorIs(t, handle.Attach(dir, "."), os.ErrClosed)
+
 	require.NoError(t, handle.SetAttributes(mount.AttributeChange{Set: mount.NoExec}))
 }
 
@@ -773,6 +793,7 @@ func TestMountAcquisitionFailsWithoutAnOwnerWhenDescriptorsAreExhausted(t *testi
 	})
 
 	test.ExhaustDescriptors(t)
+
 	got, err := mount.Open("tmpfs")
 	test.NoResource(t, got, err, unix.EMFILE)
 

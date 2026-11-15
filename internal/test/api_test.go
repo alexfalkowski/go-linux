@@ -14,6 +14,7 @@ import (
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mount"
 	"github.com/alexfalkowski/go-linux/pidfd"
+	"github.com/alexfalkowski/go-linux/socket"
 	"github.com/alexfalkowski/go-linux/timerfd"
 	"github.com/stretchr/testify/require"
 )
@@ -29,6 +30,7 @@ func TestResourcesKeepDescriptorAccessPrivate(t *testing.T) {
 		{name: "filesystem permission group", owner: &fanotify.Group{}},
 		{name: "timer", owner: &timerfd.Timer{}},
 		{name: "process", owner: &pidfd.Process{}},
+		{name: "message socket", owner: &socket.Conn{}},
 		{name: "filesystem configuration", owner: &mount.Config{}},
 		{name: "mount", owner: &mount.Handle{}},
 		{name: "readiness set", owner: &epoll.Poller{}},

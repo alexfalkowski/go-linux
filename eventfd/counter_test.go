@@ -32,9 +32,11 @@ func TestReadsReturnTheAccumulatedCountAndDrainIt(t *testing.T) {
 func TestSemaphoreReadsConsumeOneUnitAtATime(t *testing.T) {
 	counter, fd := test.CounterDescriptor(t, 2, eventfd.Semaphore)
 	require.NoError(t, counter.Add(2))
+
 	for range 4 {
 		require.Equal(t, uint64(1), test.Value(t, counter.ReadValue))
 	}
+
 	test.NoPendingRecord(t, fd)
 }
 
@@ -54,6 +56,7 @@ func TestByteReadsReturnOneRecordAndPreserveTheBufferTail(t *testing.T) {
 	const value = uint64(0x0102030405060708)
 	counter := test.Counter(t, 0, eventfd.Default)
 	require.NoError(t, counter.Add(value))
+
 	buffer := bytes.Repeat([]byte{0xff}, 16)
 	expected := bytes.Clone(buffer)
 	binary.NativeEndian.PutUint64(expected, value)
@@ -145,11 +148,13 @@ func TestZeroAdditionsPreserveEmptyAndMaximumCounters(t *testing.T) {
 func TestClosingCountersReleasesTheirDescriptors(t *testing.T) {
 	counter := test.Counter(t, 0, eventfd.Default)
 	require.NoError(t, counter.Close())
+
 	before := test.DescriptorCount(t)
 
 	for range 32 {
 		counter, err := eventfd.New(0, eventfd.Default)
 		require.NoError(t, err)
+
 		require.NoError(t, counter.Close())
 	}
 
@@ -167,11 +172,13 @@ func TestReadsWaitUntilTheCounterIsIncremented(t *testing.T) {
 func TestFullCounterWritesWaitUntilTheCountIsDrained(t *testing.T) {
 	counter := test.Counter(t, 0, eventfd.Default)
 	require.NoError(t, counter.Add(math.MaxUint64-2))
+
 	done := test.Start(t, func() error {
 		return counter.Add(2)
 	})
 
 	require.Equal(t, uint64(math.MaxUint64-2), test.Value(t, counter.ReadValue), "waiting additions do not partially commit")
+
 	require.NoError(t, test.Receive(t, done))
 	require.Equal(t, uint64(2), test.Value(t, counter.ReadValue), "the whole addition commits after draining")
 }
@@ -179,14 +186,17 @@ func TestFullCounterWritesWaitUntilTheCountIsDrained(t *testing.T) {
 func TestClearingAReadDeadlineRestoresReadsWithoutLosingTheCount(t *testing.T) {
 	counter := test.Counter(t, 0, eventfd.Default)
 	require.NoError(t, counter.SetReadDeadline(time.Now().Add(30*time.Millisecond)))
+
 	value, err := counter.ReadValue()
 	require.Zero(t, value)
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 	require.True(t, os.IsTimeout(err), "deadline failures must expose timeout semantics")
 
 	require.NoError(t, counter.Add(9), "a read deadline must not expire writes")
+
 	_, err = counter.ReadValue()
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded, "expired read deadlines persist")
+
 	require.NoError(t, counter.SetReadDeadline(time.Time{}))
 	require.Equal(t, uint64(9), test.Value(t, counter.ReadValue), "clearing the deadline must restore reads without data loss")
 }
@@ -194,12 +204,17 @@ func TestClearingAReadDeadlineRestoresReadsWithoutLosingTheCount(t *testing.T) {
 func TestClearingAWriteDeadlineRestoresWritesWithoutChangingTheCount(t *testing.T) {
 	counter := test.Counter(t, 0, eventfd.Default)
 	require.NoError(t, counter.Add(math.MaxUint64-1))
+
 	require.NoError(t, counter.SetWriteDeadline(time.Now().Add(30*time.Millisecond)))
+
 	require.ErrorIs(t, counter.Add(1), os.ErrDeadlineExceeded)
 
 	require.Equal(t, uint64(math.MaxUint64-1), test.Value(t, counter.ReadValue), "a timed-out addition must not change the count")
+
 	require.ErrorIs(t, counter.Add(1), os.ErrDeadlineExceeded, "expired write deadlines persist")
+
 	require.NoError(t, counter.SetWriteDeadline(time.Time{}))
+
 	require.NoError(t, counter.Add(1))
 	require.Equal(t, uint64(1), test.Value(t, counter.ReadValue))
 }
@@ -211,7 +226,9 @@ func TestExpiredDeadlinesInterruptPendingIOAndCanBeCleared(t *testing.T) {
 			done := test.Start(t, waitingOperation(t, counter, operation))
 
 			require.NoError(t, counter.SetDeadline(time.Now().Add(-time.Second)))
+
 			require.ErrorIs(t, test.Receive(t, done), os.ErrDeadlineExceeded)
+
 			require.NoError(t, counter.SetDeadline(time.Time{}))
 
 			if operation == "write" {
@@ -232,7 +249,9 @@ func TestClosingACounterInterruptsPendingIO(t *testing.T) {
 			done := test.Start(t, waitingOperation(t, counter, operation))
 
 			require.NoError(t, counter.Close())
+
 			require.ErrorIs(t, test.Receive(t, done), os.ErrClosed)
+
 			require.ErrorIs(t, counter.Close(), os.ErrClosed)
 		})
 	}
@@ -246,10 +265,12 @@ func TestZeroCountersRejectOperations(t *testing.T) {
 func TestClosedCountersRejectOperations(t *testing.T) {
 	counter := test.Counter(t, 0, eventfd.Default)
 	require.NoError(t, counter.Close())
+
 	checkUnavailableCounter(t, counter, os.ErrClosed)
 
 	_, err := counter.Read(nil)
 	require.ErrorIs(t, err, unix.EINVAL, "invalid sizes take precedence after close")
+
 	_, err = counter.Write(nil)
 	require.ErrorIs(t, err, unix.EINVAL)
 }
@@ -258,6 +279,7 @@ func TestUnknownCounterModesFailWithoutRetainingDescriptors(t *testing.T) {
 	// Initialize the runtime poller before comparing descriptor counts.
 	counter := test.Counter(t, 0, eventfd.Default)
 	require.NoError(t, counter.Close())
+
 	before := test.DescriptorCount(t)
 
 	for _, scenario := range []struct {

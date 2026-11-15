@@ -112,7 +112,7 @@ func Open(dir *os.File, name string, options OpenOptions) (*os.File, error) {
 		return nil, &os.PathError{Op: "openat2", Path: name, Err: err}
 	}
 
-	fd := -1
+	var fd int
 	err = control(dir, func(anchor int) error {
 		var callErr error
 		fd, callErr = unix.Openat2(anchor, name, &unix.OpenHow{

@@ -212,7 +212,7 @@ func (p *Poller) translate(events []Event, ready []unix.EpollEvent) (int, error)
 		return 0, os.ErrClosed
 	}
 
-	count := 0
+	var count int
 	for _, event := range ready {
 		// Fd and Pad hold the two opaque data halves, never descriptor numbers.
 		id := uint64(uint32(event.Fd)) | uint64(uint32(event.Pad))<<32 //nolint:gosec // Preserve all opaque token bits.

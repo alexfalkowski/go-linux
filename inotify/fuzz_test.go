@@ -16,13 +16,16 @@ func FuzzParseEvents(f *testing.F) {
 	f.Add(test.InotifyRecord(inotify.Event{Watch: 1, Mask: inotify.Create, Name: "child"}))
 	f.Add(test.InotifyRecord(inotify.Event{Watch: -1, Mask: inotify.QueueOverflow}))
 	f.Add([]byte{1, 2, 3})
+
 	f.Fuzz(func(t *testing.T, input []byte) {
 		events, err := inotify.ParseEvents(input)
 		if err != nil {
 			require.Nil(t, events, "malformed batches must not return partial results")
 			return
 		}
+
 		require.LessOrEqual(t, len(events), len(input)/16, "each event requires a complete header")
+
 		for _, event := range events {
 			require.NotContains(t, event.Name, "\x00", "names must exclude ABI terminators and padding")
 		}

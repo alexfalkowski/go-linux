@@ -32,21 +32,27 @@ func TestAttributesRoundTripAsWholeBinaryValues(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			opened := test.TempFile(t, 0)
 			require.NoError(t, xattr.Set(opened, "user.roundtrip", scenario.value, xattr.Upsert))
+
 			value, err := xattr.Get(opened, "user.roundtrip")
 			require.NoError(t, err)
 			require.NotNil(t, value)
 			require.Equal(t, append([]byte{}, scenario.value...), value)
+
 			names, err := xattr.List(opened)
 			require.NoError(t, err)
 			require.Contains(t, names, "user.roundtrip")
+
 			require.NoError(t, xattr.Remove(opened, "user.roundtrip"))
+
 			value, err = xattr.Get(opened, "user.roundtrip")
 			require.ErrorIs(t, err, unix.ENODATA)
 			require.Nil(t, value)
+
 			names, err = xattr.List(opened)
 			require.NoError(t, err)
 			require.NotNil(t, names)
 			require.NotContains(t, names, "user.roundtrip")
+
 			_, err = opened.Stat()
 			require.NoError(t, err)
 		})
@@ -58,17 +64,23 @@ func TestSetModesPreserveAtomicExistenceConditions(t *testing.T) {
 	require.ErrorIs(t, xattr.Set(opened, "user.mode", []byte("missing"), xattr.Replace), unix.ENODATA)
 	require.NoError(t, xattr.Set(opened, "user.mode", []byte("created"), xattr.Create))
 	require.ErrorIs(t, xattr.Set(opened, "user.mode", []byte("duplicate"), xattr.Create), unix.EEXIST)
+
 	value, err := xattr.Get(opened, "user.mode")
 	require.NoError(t, err)
 	require.Equal(t, "created", string(value))
+
 	require.NoError(t, xattr.Set(opened, "user.mode", []byte("replaced"), xattr.Replace))
+
 	value, err = xattr.Get(opened, "user.mode")
 	require.NoError(t, err)
 	require.Equal(t, "replaced", string(value))
+
 	require.NoError(t, xattr.Set(opened, "user.mode", nil, xattr.Upsert))
+
 	value, err = xattr.Get(opened, "user.mode")
 	require.NoError(t, err)
 	require.Equal(t, []byte{}, value)
+
 	require.NoError(t, xattr.Remove(opened, "user.mode"))
 	require.ErrorIs(t, xattr.Remove(opened, "user.mode"), unix.ENODATA)
 }
@@ -77,44 +89,61 @@ func TestDirectoryRelativePathsAndStableHandles(t *testing.T) {
 	root := t.TempDir()
 	dir := test.OpenFile(t, root)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "data"), nil, 0o600))
+
 	opened := test.OpenFile(t, filepath.Join(root, "data"))
 	pathOnly, err := file.Open(dir, "data", file.OpenOptions{Flags: file.Path})
 	require.NoError(t, err)
 	test.Cleanup(t, pathOnly)
+
 	_, err = xattr.Get(pathOnly, "user.path")
 	require.ErrorIs(t, err, unix.EBADF)
+
 	require.ErrorIs(t, xattr.Set(pathOnly, "user.path", nil, xattr.Upsert), unix.EBADF)
+
 	require.ErrorIs(t, xattr.Remove(pathOnly, "user.path"), unix.EBADF)
+
 	_, err = xattr.List(pathOnly)
 	require.ErrorIs(t, err, unix.EBADF)
 
 	require.NoError(t, xattr.SetAt(dir, "data", "user.path", []byte("relative"), xattr.Create, xattr.PathOptions{}))
+
 	value, err := xattr.Get(opened, "user.path")
 	require.NoError(t, err)
 	require.Equal(t, "relative", string(value))
+
 	require.NoError(t, xattr.Set(opened, "user.path", []byte("handle"), xattr.Replace))
+
 	value, err = xattr.GetAt(dir, filepath.Join(root, "data"), "user.path", xattr.PathOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "handle", string(value))
+
 	names, err := xattr.ListAt(dir, "data", xattr.PathOptions{})
 	require.NoError(t, err)
 	require.Contains(t, names, "user.path")
+
 	require.NoError(t, xattr.RemoveAt(dir, "data", "user.path", xattr.PathOptions{}))
+
 	require.NoError(t, xattr.Set(dir, "user.directory", []byte("dir"), xattr.Create))
+
 	value, err = xattr.GetAt(dir, "", "user.directory", xattr.PathOptions{NoFollow: true})
 	require.NoError(t, err)
 	require.Equal(t, "dir", string(value))
 
 	require.NoError(t, os.Rename(root, root+"-moved"))
+
 	t.Cleanup(func() {
 		require.NoError(t, os.RemoveAll(root+"-moved"))
 	})
 	require.NoError(t, xattr.SetAt(dir, "data", "user.unlinked", []byte("still open"), xattr.Upsert, xattr.PathOptions{}))
+
 	require.NoError(t, os.Remove(filepath.Join(root+"-moved", "data")))
+
 	value, err = xattr.Get(opened, "user.unlinked")
 	require.NoError(t, err)
 	require.Equal(t, "still open", string(value))
+
 	require.NoError(t, xattr.Remove(opened, "user.unlinked"))
+
 	names, err = xattr.List(opened)
 	require.NoError(t, err)
 	require.NotContains(t, names, "user.unlinked")
@@ -124,32 +153,43 @@ func TestSymlinkOperationsSelectTheLinkOrItsTarget(t *testing.T) {
 	root := t.TempDir()
 	dir := test.OpenFile(t, root)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "target"), nil, 0o600))
+
 	require.NoError(t, os.Symlink("target", filepath.Join(root, "link")))
 	require.NoError(t, os.Symlink("missing", filepath.Join(root, "dangling")))
+
 	require.NoError(t, xattr.SetAt(dir, "link", "user.link", []byte("target"), xattr.Create, xattr.PathOptions{}))
+
 	value, err := xattr.GetAt(dir, "target", "user.link", xattr.PathOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "target", string(value))
+
 	noFollow := xattr.PathOptions{NoFollow: true}
 	for _, path := range []string{"link", "dangling"} {
 		t.Run(path, func(t *testing.T) {
 			value, err := xattr.GetAt(dir, path, "user.link", noFollow)
 			require.ErrorIs(t, err, unix.ENODATA, "user attributes are unavailable on symlinks")
 			require.Nil(t, value)
+
 			require.ErrorIs(t, xattr.SetAt(dir, path, "user.link", nil, xattr.Upsert, noFollow), unix.EPERM)
+
 			require.ErrorIs(t, xattr.RemoveAt(dir, path, "user.link", noFollow), unix.EPERM)
+
 			names, err := xattr.ListAt(dir, path, noFollow)
 			require.NoError(t, err)
 			require.NotContains(t, names, "user.link")
 		})
 	}
+
 	link, err := file.Open(dir, "link", file.OpenOptions{Flags: file.Path | file.NoFollow})
 	require.NoError(t, err)
 	test.Cleanup(t, link)
+
 	value, err = xattr.Get(link, "user.link")
 	require.ErrorIs(t, err, unix.EBADF)
 	require.Nil(t, value)
+
 	require.NoError(t, xattr.RemoveAt(dir, "link", "user.link", xattr.PathOptions{}))
+
 	value, err = xattr.GetAt(dir, "target", "user.link", xattr.PathOptions{})
 	require.ErrorIs(t, err, unix.ENODATA)
 	require.Nil(t, value)
@@ -173,22 +213,29 @@ func TestErrorsPreserveInputsAndReturnNoPartialResults(t *testing.T) {
 			value, err := xattr.GetAt(dir, scenario.path, scenario.attr, xattr.PathOptions{})
 			require.ErrorIs(t, err, scenario.want)
 			require.Nil(t, value)
+
 			var pathErr *os.PathError
 			require.ErrorAs(t, err, &pathErr)
 			require.Equal(t, scenario.path, pathErr.Path)
+
 			require.ErrorIs(t, xattr.SetAt(dir, scenario.path, scenario.attr, nil, xattr.Upsert, xattr.PathOptions{}), scenario.want)
+
 			require.ErrorIs(t, xattr.RemoveAt(dir, scenario.path, scenario.attr, xattr.PathOptions{}), scenario.want)
 		})
 	}
+
 	for _, path := range []string{"missing", "bad\x00path"} {
 		names, err := xattr.ListAt(dir, path, xattr.PathOptions{})
 		require.Error(t, err)
 		require.Nil(t, names)
 	}
+
 	for _, mode := range []xattr.SetMode{xattr.Create | xattr.Replace, 1 << 31} {
 		require.ErrorIs(t, xattr.Set(nil, "user.mode", nil, mode), os.ErrInvalid)
 	}
+
 	require.ErrorIs(t, xattr.Set(dir, "user.large", make([]byte, 65537), xattr.Upsert), unix.E2BIG)
+
 	_, err := dir.Stat()
 	require.NoError(t, err, "errors leave borrowed handles open")
 }
@@ -196,6 +243,7 @@ func TestErrorsPreserveInputsAndReturnNoPartialResults(t *testing.T) {
 func TestUnavailableHandlesRejectEveryOperation(t *testing.T) {
 	closed := test.TempFile(t, 0)
 	require.NoError(t, closed.Close())
+
 	for _, scenario := range []struct {
 		want error
 		file *os.File
@@ -208,10 +256,13 @@ func TestUnavailableHandlesRejectEveryOperation(t *testing.T) {
 			value, err := xattr.Get(scenario.file, "user.a")
 			require.ErrorIs(t, err, scenario.want)
 			require.Nil(t, value)
+
 			names, err := xattr.List(scenario.file)
 			require.ErrorIs(t, err, scenario.want)
 			require.Nil(t, names)
+
 			require.ErrorIs(t, xattr.Set(scenario.file, "user.a", nil, xattr.Upsert), scenario.want)
+
 			require.ErrorIs(t, xattr.Remove(scenario.file, "user.a"), scenario.want)
 		})
 	}
@@ -221,6 +272,7 @@ func TestConcurrentSizeChangesReturnWholeValues(t *testing.T) {
 	opened := test.TempFile(t, 0)
 	small, large := []byte{}, bytes.Repeat([]byte{255}, 1024)
 	require.NoError(t, xattr.Set(opened, "user.race", small, xattr.Upsert))
+
 	start := make(chan struct{})
 	results := make(chan error, 1)
 	go func() {
@@ -233,20 +285,25 @@ func TestConcurrentSizeChangesReturnWholeValues(t *testing.T) {
 				}
 			}
 		}
+
 		results <- nil
 	}()
+
 	close(start)
-	successes := 0
+	var successes int
 	for range 300 {
 		value, err := xattr.Get(opened, "user.race")
 		if errors.Is(err, unix.ERANGE) {
 			require.Nil(t, value)
 			continue
 		}
+
 		require.NoError(t, err)
+
 		successes++
 		require.True(t, bytes.Equal(value, small) || bytes.Equal(value, large), "read must return one complete version")
 	}
+
 	require.NoError(t, test.Receive(t, results))
 	require.Positive(t, successes, "concurrent reads must exercise successful whole-value observations")
 }
@@ -255,6 +312,7 @@ func TestConcurrentCloseKeepsBorrowedIdentity(t *testing.T) {
 	for range 20 {
 		opened := test.TempFile(t, 0)
 		require.NoError(t, xattr.Set(opened, "user.close", []byte("value"), xattr.Create))
+
 		start := make(chan struct{})
 		results := make(chan error, 1)
 		go func() {
@@ -262,8 +320,10 @@ func TestConcurrentCloseKeepsBorrowedIdentity(t *testing.T) {
 			_, err := xattr.Get(opened, "user.close")
 			results <- err
 		}()
+
 		close(start)
 		require.NoError(t, opened.Close())
+
 		if err := test.Receive(t, results); !errors.Is(err, os.ErrClosed) {
 			require.NoError(t, err)
 		}
@@ -273,8 +333,10 @@ func TestConcurrentCloseKeepsBorrowedIdentity(t *testing.T) {
 func TestListsRemainCompleteDuringConcurrentAttributeChanges(t *testing.T) {
 	opened := test.TempFile(t, 0)
 	require.NoError(t, xattr.Set(opened, "user.stable", nil, xattr.Create))
+
 	before, err := xattr.List(opened)
 	require.NoError(t, err)
+
 	start := make(chan struct{})
 	results := make(chan error, 1)
 	go func() {
@@ -284,28 +346,34 @@ func TestListsRemainCompleteDuringConcurrentAttributeChanges(t *testing.T) {
 				results <- err
 				return
 			}
+
 			if err := xattr.Remove(opened, "user.changing"); err != nil {
 				results <- err
 				return
 			}
 		}
+
 		results <- nil
 	}()
+
 	close(start)
-	successes := 0
+	var successes int
 	for range 300 {
 		names, err := xattr.List(opened)
 		if errors.Is(err, unix.ERANGE) {
 			require.Nil(t, names)
 			continue
 		}
+
 		require.NoError(t, err)
+
 		successes++
 		withoutChanging := slices.DeleteFunc(slices.Clone(names), func(name string) bool {
 			return name == "user.changing"
 		})
 		require.ElementsMatch(t, before, withoutChanging, "list must retain every stable name without truncated records")
 	}
+
 	require.NoError(t, test.Receive(t, results))
 	require.Positive(t, successes, "concurrent listings must exercise successful results")
 }
@@ -313,16 +381,22 @@ func TestListsRemainCompleteDuringConcurrentAttributeChanges(t *testing.T) {
 func TestUnsupportedNamespacesAndNonDirectoryAnchorsStayObservable(t *testing.T) {
 	opened := test.TempFile(t, 0)
 	require.ErrorIs(t, xattr.Set(opened, "unsupported.attribute", nil, xattr.Upsert), unix.EOPNOTSUPP)
+
 	value, err := xattr.Get(opened, "unsupported.attribute")
 	require.ErrorIs(t, err, unix.EOPNOTSUPP)
 	require.Nil(t, value)
+
 	require.ErrorIs(t, xattr.Remove(opened, "unsupported.attribute"), unix.EOPNOTSUPP)
+
 	_, err = xattr.GetAt(opened, "child", "user.a", xattr.PathOptions{})
 	require.ErrorIs(t, err, unix.ENOTDIR)
+
 	names, err := xattr.ListAt(opened, "child", xattr.PathOptions{})
 	require.ErrorIs(t, err, unix.ENOTDIR)
 	require.Nil(t, names)
+
 	require.ErrorIs(t, xattr.SetAt(opened, "child", "user.a", nil, xattr.Upsert, xattr.PathOptions{}), unix.ENOTDIR)
+
 	require.ErrorIs(t, xattr.RemoveAt(opened, "child", "user.a", xattr.PathOptions{}), unix.ENOTDIR)
 }
 
@@ -330,16 +404,20 @@ func TestPathOnlyDirectoryAnchorsNonemptyLookups(t *testing.T) {
 	root := t.TempDir()
 	dir := test.OpenFile(t, root)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "data"), nil, 0o600))
+
 	anchor, err := file.Open(dir, ".", file.OpenOptions{Flags: file.Path | file.Directory})
 	require.NoError(t, err)
 	test.Cleanup(t, anchor)
 	require.NoError(t, xattr.SetAt(anchor, "data", "user.anchor", []byte("anchored"), xattr.Create, xattr.PathOptions{}))
+
 	value, err := xattr.GetAt(anchor, "data", "user.anchor", xattr.PathOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "anchored", string(value))
+
 	names, err := xattr.ListAt(anchor, "data", xattr.PathOptions{})
 	require.NoError(t, err)
 	require.Contains(t, names, "user.anchor")
+
 	require.NoError(t, xattr.RemoveAt(anchor, "data", "user.anchor", xattr.PathOptions{}))
 }
 
@@ -348,17 +426,23 @@ func TestAttributeCallsPreserveBorrowedFileState(t *testing.T) {
 	opened := test.TempFile(t, 16)
 	_, err := opened.Seek(7, io.SeekStart)
 	require.NoError(t, err)
+
 	flags := test.FileFlags(t, opened)
 	descriptors := test.Descriptors(t)
 	for range 10 {
 		require.NoError(t, xattr.Set(opened, "user.borrowed", []byte("value"), xattr.Create))
+
 		_, err := xattr.Get(opened, "user.borrowed")
 		require.NoError(t, err)
+
 		_, err = xattr.List(opened)
 		require.NoError(t, err)
+
 		require.ErrorIs(t, xattr.Set(opened, "user.borrowed", nil, xattr.Create), unix.EEXIST)
+
 		require.NoError(t, xattr.Remove(opened, "user.borrowed"))
 	}
+
 	offset, err := opened.Seek(0, io.SeekCurrent)
 	require.NoError(t, err)
 	require.Equal(t, int64(7), offset, "attribute operations must preserve ordinary I/O position")

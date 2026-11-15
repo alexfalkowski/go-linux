@@ -34,6 +34,7 @@ func ExamplePoller() {
 	if err := reader.SetReadDeadline(time.Now().Add(time.Second)); err != nil {
 		panic(err)
 	}
+
 	if _, err := io.WriteString(writer, "hello"); err != nil {
 		panic(err)
 	}
@@ -43,15 +44,18 @@ func ExamplePoller() {
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println("registered reader:", events[:n][0].Registration == registration)
 	var message [5]byte
 	if _, err := io.ReadFull(reader, message[:]); err != nil {
 		panic(err)
 	}
+
 	fmt.Println(string(message[:]))
 	if err := registration.Modify(epoll.Readable | epoll.OneShot); err != nil {
 		panic(err)
 	}
+
 	// Output:
 	// registered reader: true
 	// hello

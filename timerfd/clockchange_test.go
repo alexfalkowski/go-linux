@@ -25,6 +25,7 @@ func TestRealtimeClockChangesCancelPendingReads(t *testing.T) {
 			timer := test.Timer(t, timerfd.Realtime)
 			deadline, err := timerfd.Now(timerfd.Realtime)
 			require.NoError(t, err)
+
 			deadline.Seconds += 60
 			_, err = timer.SetAt(deadline, 0, timerfd.CancelOnSet)
 			require.NoError(t, err)
@@ -48,6 +49,7 @@ func TestRearmingAnUnreadCanceledTimerAppliesTheNewSchedule(t *testing.T) {
 	timer, fd := test.TimerDescriptor(t, timerfd.Realtime)
 	deadline, err := timerfd.Now(timerfd.Realtime)
 	require.NoError(t, err)
+
 	deadline.Seconds += 60
 	_, err = timer.SetAt(deadline, 0, timerfd.CancelOnSet)
 	require.NoError(t, err)
@@ -55,12 +57,15 @@ func TestRearmingAnUnreadCanceledTimerAppliesTheNewSchedule(t *testing.T) {
 	test.ShiftRealtime(t, time.Second)
 	// The independent readiness observation leaves cancellation unconsumed.
 	test.Readable(t, fd)
+
 	deadline, err = timerfd.Now(timerfd.Realtime)
 	require.NoError(t, err)
+
 	deadline.Seconds++
 	old, err := timer.SetAt(deadline, 0, timerfd.CancelOnSet)
 	require.ErrorIs(t, err, unix.ECANCELED)
 	require.Equal(t, timerfd.State{}, old, "an error must return no previous state")
+
 	test.ArmedTimer(t, test.Value(t, timer.State), time.Second, 0)
 
 	require.Equal(t, uint64(1), test.Value(t, timer.ReadExpirations), "ECANCELED must not undo the newly armed schedule")
@@ -88,15 +93,18 @@ func TestBackwardClockChangesDoNotInventExpirationsOrEOF(t *testing.T) {
 			timer, fd := test.TimerDescriptor(t, timerfd.Realtime)
 			deadline, err := timerfd.Now(timerfd.Realtime)
 			require.NoError(t, err)
+
 			deadline.Seconds++
 			_, err = timer.SetAt(deadline, time.Minute, 0)
 			require.NoError(t, err)
+
 			test.Readable(t, fd)
 
 			// After expiry, rewind before the original deadline. Linux's
 			// periodic forward calculation can then yield zero ticks. With
 			// O_NONBLOCK it returns EAGAIN; Go must wait for a real record.
 			test.ShiftRealtime(t, -2*time.Second)
+
 			done := test.StartRead(t, func() (uint64, error) {
 				return scenario.read(timer)
 			})

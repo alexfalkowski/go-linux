@@ -35,6 +35,7 @@ func TestLevelReadinessRepeatsUntilTheInputIsConsumed(t *testing.T) {
 
 	_, err = writer.WriteString("ab")
 	require.NoError(t, err)
+
 	n, err = poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
@@ -44,6 +45,7 @@ func TestLevelReadinessRepeatsUntilTheInputIsConsumed(t *testing.T) {
 	_, err = io.ReadFull(reader, value[:])
 	require.NoError(t, err)
 	require.Equal(t, byte('a'), value[0])
+
 	n, err = poller.Wait(events, 0)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
@@ -51,6 +53,7 @@ func TestLevelReadinessRepeatsUntilTheInputIsConsumed(t *testing.T) {
 	_, err = io.ReadFull(reader, value[:])
 	require.NoError(t, err)
 	require.Equal(t, byte('b'), value[0])
+
 	n, err = poller.Wait(events, 0)
 	require.NoError(t, err)
 	require.Zero(t, n, "consumed input must clear readiness")
@@ -64,6 +67,7 @@ func TestEdgeReadinessRequiresANewInputTransition(t *testing.T) {
 
 	_, err := writer.WriteString("ab")
 	require.NoError(t, err)
+
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
@@ -71,14 +75,17 @@ func TestEdgeReadinessRequiresANewInputTransition(t *testing.T) {
 	var value [1]byte
 	_, err = io.ReadFull(reader, value[:])
 	require.NoError(t, err)
+
 	n, err = poller.Wait(events, 0)
 	require.NoError(t, err)
 	require.Zero(t, n, "partially consumed input must not create an edge")
 
 	_, err = io.ReadFull(reader, value[:])
 	require.NoError(t, err)
+
 	_, err = writer.WriteString("c")
 	require.NoError(t, err)
+
 	n, err = poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
@@ -101,17 +108,20 @@ func TestOneShotDeliveryIsRearmedByModifyingTheRegistration(t *testing.T) {
 
 			_, err := writer.WriteString("ready")
 			require.NoError(t, err)
+
 			n, err := poller.Wait(events, time.Second)
 			require.NoError(t, err)
 			require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
 
 			_, err = writer.WriteString("more")
 			require.NoError(t, err)
+
 			n, err = poller.Wait(events, 0)
 			require.NoError(t, err)
 			require.Zero(t, n, "disabled one-shot must suppress further delivery")
 
 			require.NoError(t, registration.Modify(interests))
+
 			n, err = poller.Wait(events, time.Second)
 			require.NoError(t, err)
 			require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
@@ -127,14 +137,17 @@ func TestModificationReplacesTheCompleteInterestMask(t *testing.T) {
 
 	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
+
 	for _, interests := range []epoll.Events{0, epoll.Writable} {
 		require.NoError(t, registration.Modify(interests))
+
 		n, err := poller.Wait(events, 0)
 		require.NoError(t, err)
 		require.Zero(t, n, "mask %v must replace Readable", interests)
 	}
 
 	require.NoError(t, registration.Modify(epoll.Readable))
+
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
@@ -146,12 +159,14 @@ func TestModificationClearsEdgeAndOneShotFlags(t *testing.T) {
 	registration := test.Registration(t, poller, reader, epoll.Readable|epoll.EdgeTriggered|epoll.OneShot)
 	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
+
 	events := make([]epoll.Event, 1)
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
 
 	require.NoError(t, registration.Modify(epoll.Readable))
+
 	for range 2 {
 		n, err := poller.Wait(events, time.Second)
 		require.NoError(t, err)
@@ -169,6 +184,7 @@ func TestBatchEventsIdentifyIndependentRegistrations(t *testing.T) {
 
 	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
+
 	events := make([]epoll.Event, 4)
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err)
@@ -179,6 +195,7 @@ func TestBatchEventsIdentifyIndependentRegistrations(t *testing.T) {
 	}, events[:n])
 
 	require.NoError(t, first.Close())
+
 	n, err = poller.Wait(events, 0)
 	require.NoError(t, err)
 	require.ElementsMatch(t, []epoll.Event{
@@ -202,6 +219,7 @@ func TestHangupAndErrorAreReportedWithoutBeingRequested(t *testing.T) {
 			if scenario.writer {
 				source, peer = peer, source
 			}
+
 			registration := test.Registration(t, poller, source, 0)
 			require.NoError(t, peer.Close())
 
@@ -220,13 +238,16 @@ func TestRemovingARegistrationLeavesTheSourceUsable(t *testing.T) {
 
 	_, err := writer.WriteString("x")
 	require.NoError(t, err)
+
 	require.NoError(t, registration.Close())
 	require.ErrorIs(t, registration.Close(), os.ErrClosed)
+
 	require.ErrorIs(t, registration.Modify(epoll.Readable), os.ErrClosed)
 
 	n, err := poller.Wait(make([]epoll.Event, 1), 0)
 	require.NoError(t, err)
 	require.Zero(t, n, "removed ready entry must not be delivered")
+
 	var value [1]byte
 	_, err = io.ReadFull(reader, value[:])
 	require.NoError(t, err)
@@ -243,6 +264,7 @@ func TestAddingAReadySourceWakesAnEmptyWait(t *testing.T) {
 
 	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
+
 	registration := test.Registration(t, poller, reader, epoll.Readable)
 
 	result := test.Receive(t, pending)
@@ -261,6 +283,7 @@ func TestNewInputWakesARegisteredWait(t *testing.T) {
 
 	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
+
 	result := test.Receive(t, pending)
 	require.NoError(t, result.Err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:result.Value])
@@ -285,22 +308,30 @@ func TestClosingThePollerInterruptsEveryWaitAndReleasesRegistrations(t *testing.
 					results <- err
 				}()
 			}
+
 			test.Pending(t, results)
 
 			require.NoError(t, poller.Close())
+
 			for range 4 {
 				require.ErrorIs(t, test.Receive(t, results), os.ErrClosed)
 			}
+
 			require.ErrorIs(t, registration.Close(), os.ErrClosed)
+
 			require.ErrorIs(t, registration.Modify(epoll.Readable), os.ErrClosed)
+
 			require.ErrorIs(t, poller.Close(), os.ErrClosed)
+
 			_, err := poller.Wait(make([]epoll.Event, 1), 0)
 			require.ErrorIs(t, err, os.ErrClosed)
+
 			added, err := poller.Add(reader, epoll.Readable)
 			test.NoResource(t, added, err, os.ErrClosed)
 
 			_, err = writer.WriteString("x")
 			require.NoError(t, err)
+
 			var value [1]byte
 			_, err = io.ReadFull(reader, value[:])
 			require.NoError(t, err, "poller closure must leave borrowed files usable")
@@ -339,6 +370,7 @@ func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 	reader, writer := test.Pipe(t)
 	closed, _ := test.Pipe(t)
 	require.NoError(t, closed.Close())
+
 	before := test.DescriptorCount(t)
 
 	for _, scenario := range []struct {
@@ -359,25 +391,32 @@ func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 	}
 
 	require.Equal(t, before, test.DescriptorCount(t), "failed additions must release every duplicate")
+
 	_, err := file.Stat()
 	require.NoError(t, err, "failed registration must not close a borrowed file")
+
 	registration := test.Registration(t, poller, reader, epoll.Readable)
 	require.ErrorIs(t, registration.Modify(1<<26), os.ErrInvalid)
 
 	_, err = writer.WriteString("ready")
 	require.NoError(t, err)
+
 	events := make([]epoll.Event, 1)
 	n, err := poller.Wait(events, time.Second)
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n],
 		"invalid interests must retain the existing kernel registration")
+
 	_, err = poller.Wait(nil, 0)
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	require.NoError(t, poller.Close())
+
 	require.ErrorIs(t, registration.Modify(1<<26), os.ErrInvalid, "mask validation precedes closed state")
+
 	added, err := poller.Add(reader, 1<<26)
 	test.NoResource(t, added, err, os.ErrInvalid)
+
 	_, err = poller.Wait(nil, 0)
 	require.ErrorIs(t, err, os.ErrInvalid, "buffer validation precedes closed state")
 }
@@ -389,10 +428,14 @@ func TestZeroOwnersRejectOperations(t *testing.T) {
 
 	added, err := poller.Add(reader, epoll.Readable)
 	test.NoResource(t, added, err, os.ErrInvalid)
+
 	_, err = poller.Wait(make([]epoll.Event, 1), 0)
 	require.ErrorIs(t, err, os.ErrInvalid)
+
 	require.ErrorIs(t, poller.Close(), os.ErrInvalid)
+
 	require.ErrorIs(t, registration.Modify(epoll.Readable), os.ErrInvalid)
+
 	require.ErrorIs(t, registration.Close(), os.ErrInvalid)
 }
 
@@ -401,6 +444,7 @@ func TestConcurrentRegistrationChangesAndWaitsPreserveLifetime(t *testing.T) {
 	reader, writer := test.Pipe(t)
 	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
+
 	results := make(chan error, 4)
 	pending := test.Start(t, func() error {
 		for {
@@ -419,9 +463,11 @@ func TestConcurrentRegistrationChangesAndWaitsPreserveLifetime(t *testing.T) {
 				if err == nil {
 					err = registration.Modify(epoll.Readable | epoll.EdgeTriggered)
 				}
+
 				if err == nil {
 					err = registration.Close()
 				}
+
 				if err != nil {
 					results <- err
 					return
@@ -429,11 +475,14 @@ func TestConcurrentRegistrationChangesAndWaitsPreserveLifetime(t *testing.T) {
 			}
 		})
 	}
+
 	workers.Wait()
 	close(results)
 	for err := range results {
 		require.NoError(t, err)
 	}
+
 	require.NoError(t, poller.Close())
+
 	require.ErrorIs(t, test.Receive(t, pending), os.ErrClosed)
 }

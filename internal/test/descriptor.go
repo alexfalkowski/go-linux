@@ -218,7 +218,7 @@ func ExhaustDescriptors(t *testing.T) func() int {
 	entries, err := os.ReadDir("/proc/self/fd")
 	require.NoError(t, err)
 
-	maximum := 0
+	var maximum int
 	for _, entry := range entries {
 		fd, err := strconv.Atoi(entry.Name())
 		require.NoError(t, err)

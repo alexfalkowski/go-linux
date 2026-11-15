@@ -25,13 +25,17 @@ func TestOpenReturnsAnIndependentStandardFile(t *testing.T) {
 
 	test.WriteAt(t, opened, 0, "hello")
 	require.Equal(t, "hello", string(test.ReadAt(t, opened, 0, 5)))
+
 	info, err := opened.Stat()
 	require.NoError(t, err)
 	require.Equal(t, os.FileMode(0o600), info.Mode().Perm())
 	require.Equal(t, "data", opened.Name())
+
 	require.NoError(t, opened.Close())
+
 	_, err = opened.Read(make([]byte, 1))
 	require.ErrorIs(t, err, os.ErrClosed)
+
 	require.ErrorIs(t, opened.Close(), os.ErrClosed)
 }
 
@@ -50,6 +54,7 @@ func TestOpenSelectsOneAccessMode(t *testing.T) {
 			root := t.TempDir()
 			dir := test.OpenFile(t, root)
 			require.NoError(t, os.WriteFile(filepath.Join(root, "data"), []byte("before"), 0o600))
+
 			opened, err := file.Open(dir, "data", file.OpenOptions{Flags: scenario.flags})
 			require.NoError(t, err)
 			test.Cleanup(t, opened)
@@ -57,13 +62,17 @@ func TestOpenSelectsOneAccessMode(t *testing.T) {
 			value := make([]byte, 1)
 			_, err = opened.ReadAt(value, 0)
 			require.ErrorIs(t, err, scenario.readErr)
+
 			if scenario.readErr == nil {
 				require.Equal(t, []byte("b"), value)
 			}
+
 			_, err = opened.WriteAt([]byte("after!"), 0)
 			require.ErrorIs(t, err, scenario.writeErr)
+
 			contents, err := os.ReadFile(filepath.Join(root, "data"))
 			require.NoError(t, err)
+
 			if scenario.writeErr == nil {
 				require.Equal(t, "after!", string(contents))
 			} else {
@@ -90,17 +99,21 @@ func TestOpenPreservesAppendTruncateAndExclusiveSemantics(t *testing.T) {
 			opened, err := file.Open(dir, "data", file.OpenOptions{Flags: scenario.flags})
 			require.NoError(t, err)
 			test.Cleanup(t, opened)
+
 			n, err := opened.WriteString("next")
 			require.NoError(t, err)
 			require.Equal(t, 4, n)
+
 			contents, err := os.ReadFile(filepath.Join(root, "data"))
 			require.NoError(t, err)
 			require.Equal(t, scenario.want, string(contents))
 		})
 	}
+
 	opened, err := file.Open(dir, "data", file.OpenOptions{Flags: file.Create | file.Exclusive, Perm: 0o600})
 	require.ErrorIs(t, err, unix.EEXIST)
 	require.Nil(t, opened)
+
 	_, err = dir.Stat()
 	require.NoError(t, err, "failed creation must leave the borrowed anchor open")
 }
@@ -111,6 +124,7 @@ func TestCreateTranslatesGoSpecialPermissionBits(t *testing.T) {
 	opened, err := file.Open(dir, "special", file.OpenOptions{Flags: file.Create | file.Exclusive | file.ReadWrite, Perm: perm})
 	require.NoError(t, err)
 	test.Cleanup(t, opened)
+
 	info, err := opened.Stat()
 	require.NoError(t, err)
 	require.Equal(t, perm, info.Mode(), "Go special bits must be translated to Linux mode bits at creation")
@@ -121,12 +135,15 @@ func TestOpenEnforcesResolutionAndPreservesPathSemantics(t *testing.T) {
 	anchor := filepath.Join(root, "anchor")
 	require.NoError(t, os.Mkdir(anchor, 0o700))
 	require.NoError(t, os.Mkdir(filepath.Join(anchor, "sub"), 0o700))
+
 	require.NoError(t, os.WriteFile(filepath.Join(root, "outside"), []byte("outside"), 0o600))
 	require.NoError(t, os.WriteFile(filepath.Join(anchor, "data"), []byte("inside"), 0o600))
+
 	require.NoError(t, os.Symlink("data", filepath.Join(anchor, "link")))
 	require.NoError(t, os.Symlink("../outside", filepath.Join(anchor, "escape")))
 	require.NoError(t, os.Symlink("/data", filepath.Join(anchor, "absolute")))
 	require.NoError(t, os.Symlink("sub", filepath.Join(anchor, "linkdir")))
+
 	dir := test.OpenFile(t, anchor)
 
 	for _, scenario := range []struct {
@@ -164,11 +181,13 @@ func TestOpenEnforcesResolutionAndPreservesPathSemantics(t *testing.T) {
 			if scenario.wantErr != nil {
 				require.ErrorIs(t, err, scenario.wantErr)
 				require.Nil(t, opened)
+
 				var pathErr *os.PathError
 				require.ErrorAs(t, err, &pathErr)
 				require.Equal(t, scenario.path, pathErr.Path)
 				return
 			}
+
 			require.NoError(t, err)
 			test.Cleanup(t, opened)
 			require.Equal(t, scenario.want, string(test.ReadAt(t, opened, 0, len(scenario.want))))
@@ -180,18 +199,22 @@ func TestPathOnlyHandlesCanInspectSymlinksAndAnchorDirectories(t *testing.T) {
 	root := t.TempDir()
 	dir := test.OpenFile(t, root)
 	require.NoError(t, os.Symlink("missing", filepath.Join(root, "link")))
+
 	link, err := file.Open(dir, "link", file.OpenOptions{Flags: file.Path | file.NoFollow, Resolve: file.NoSymlinks})
 	require.NoError(t, err)
 	test.Cleanup(t, link)
+
 	metadata, err := file.Stat(link, file.MaskBasic)
 	require.NoError(t, err)
 	require.Equal(t, os.ModeSymlink, metadata.Mode.Type())
+
 	_, err = link.Read(make([]byte, 1))
 	require.ErrorIs(t, err, unix.EBADF)
 
 	anchor, err := file.Open(dir, ".", file.OpenOptions{Flags: file.Path | file.Directory})
 	require.NoError(t, err)
 	test.Cleanup(t, anchor)
+
 	created, err := file.Open(anchor, "data", file.OpenOptions{Flags: file.Create | file.ReadWrite, Perm: 0o600, Resolve: file.Beneath})
 	require.NoError(t, err)
 	test.Cleanup(t, created)
@@ -204,9 +227,11 @@ func TestOpenRejectsMountCrossingsAndMagicLinks(t *testing.T) {
 	proc := test.OpenFile(t, "/proc")
 	rootStat, err := file.Stat(root, file.MaskMountID)
 	require.NoError(t, err)
+
 	procStat, err := file.Stat(proc, file.MaskMountID)
 	require.NoError(t, err)
 	require.NotEqual(t, rootStat.MountID, procStat.MountID, "fixture must cross a mount")
+
 	opened, err := file.Open(root, "proc", file.OpenOptions{Flags: file.Path, Resolve: file.NoXDev})
 	require.ErrorIs(t, err, unix.EXDEV)
 	require.Nil(t, opened)
@@ -216,9 +241,11 @@ func TestOpenRejectsMountCrossingsAndMagicLinks(t *testing.T) {
 	opened, err = file.Open(proc, magicLink, file.OpenOptions{Flags: file.Path, Resolve: file.NoMagicLinks})
 	require.ErrorIs(t, err, unix.ELOOP)
 	require.Nil(t, opened)
+
 	link, err := file.Open(proc, magicLink, file.OpenOptions{Flags: file.Path | file.NoFollow, Resolve: file.NoMagicLinks})
 	require.NoError(t, err)
 	test.Cleanup(t, link)
+
 	stat, err := file.Stat(link, file.MaskType)
 	require.NoError(t, err)
 	require.Equal(t, os.ModeSymlink, stat.Mode.Type())
@@ -237,6 +264,7 @@ func TestCachedLookupPreservesItsRequestedGuarantee(t *testing.T) {
 	opened, err = file.Open(dir, "new", file.OpenOptions{Flags: file.Create | file.ReadWrite, Perm: 0o600, Resolve: file.Cached})
 	require.ErrorIs(t, err, unix.EAGAIN, "creation needs uncached work and must not be retried without Cached")
 	require.Nil(t, opened)
+
 	_, err = file.StatAt(dir, "new", file.StatOptions{Mask: file.MaskType})
 	require.ErrorIs(t, err, unix.ENOENT, "failed cached creation must not create an entry")
 }
@@ -245,6 +273,7 @@ func TestOpenRejectsInvalidOptionsBeforeAcquiringAResource(t *testing.T) {
 	dir := test.OpenFile(t, t.TempDir())
 	closed := test.OpenFile(t, t.TempDir())
 	require.NoError(t, closed.Close())
+
 	for _, scenario := range []struct {
 		name    string
 		options file.OpenOptions
@@ -267,6 +296,7 @@ func TestOpenRejectsInvalidOptionsBeforeAcquiringAResource(t *testing.T) {
 			}
 		})
 	}
+
 	_, err := dir.Stat()
 	require.NoError(t, err)
 }

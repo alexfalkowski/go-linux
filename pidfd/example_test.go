@@ -15,6 +15,7 @@ import (
 func ExampleProcess() {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	command := exec.CommandContext(ctx, "/bin/cat")
 	input, err := command.StdinPipe()
 	if err != nil {

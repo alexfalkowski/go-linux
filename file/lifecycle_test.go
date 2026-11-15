@@ -16,6 +16,7 @@ import (
 func TestUnavailableAnchorsRejectEveryOperation(t *testing.T) {
 	closed := test.OpenFile(t, t.TempDir())
 	require.NoError(t, closed.Close())
+
 	live := test.OpenFile(t, t.TempDir())
 	for _, scenario := range []struct {
 		wantErr error
@@ -29,19 +30,24 @@ func TestUnavailableAnchorsRejectEveryOperation(t *testing.T) {
 			opened, err := file.Open(scenario.dir, ".", file.OpenOptions{})
 			require.ErrorIs(t, err, scenario.wantErr)
 			require.Nil(t, opened)
+
 			metadata, err := file.Stat(scenario.dir, file.MaskBasic)
 			require.ErrorIs(t, err, scenario.wantErr)
 			require.Zero(t, metadata)
+
 			require.ErrorIs(t, file.Rename(scenario.dir, "a", live, "b", file.Replace), scenario.wantErr)
 			require.ErrorIs(t, file.Rename(live, "a", scenario.dir, "b", file.Replace), scenario.wantErr)
 		})
 	}
+
 	regular := test.TempFile(t, 0)
 	opened, err := file.Open(regular, "child", file.OpenOptions{})
 	require.ErrorIs(t, err, unix.ENOTDIR)
 	require.Nil(t, opened)
+
 	_, err = file.StatAt(regular, "child", file.StatOptions{})
 	require.ErrorIs(t, err, unix.ENOTDIR)
+
 	require.ErrorIs(t, file.Rename(live, ".", regular, "child", file.Replace), unix.ENOTDIR)
 }
 
@@ -57,11 +63,14 @@ func TestOpenedDescriptorsAreCloseOnExecAndFullyReleased(t *testing.T) {
 	for range 25 {
 		opened, err := file.Open(dir, ".", file.OpenOptions{})
 		require.NoError(t, err)
+
 		require.NoError(t, opened.Close())
+
 		opened, err = file.Open(dir, "absent", file.OpenOptions{Resolve: file.Beneath})
 		require.ErrorIs(t, err, unix.ENOENT)
 		require.Nil(t, opened)
 	}
+
 	require.Equal(t, before, test.Descriptors(t), "successful and failed opens must release every descriptor")
 }
 
@@ -79,29 +88,36 @@ func TestConcurrentAnchorCloseCannotLeakOrRetargetOperations(t *testing.T) {
 			if err == nil {
 				err = opened.Close()
 			}
+
 			results <- err
 		}()
+
 		go func() {
 			<-start
 			_, err := file.Stat(dir, file.MaskBasic)
 			results <- err
 		}()
+
 		go func() {
 			<-start
 			rename <- file.Rename(dir, "absent", dir, "other", file.NoReplace)
 		}()
+
 		close(start)
 		require.NoError(t, dir.Close())
+
 		for range 2 {
 			err := test.Receive(t, results)
 			if !errors.Is(err, os.ErrClosed) {
 				require.NoError(t, err)
 			}
 		}
+
 		if err := test.Receive(t, rename); !errors.Is(err, os.ErrClosed) {
 			require.ErrorIs(t, err, unix.ENOENT)
 		}
 	}
+
 	require.Equal(t, before, test.Descriptors(t))
 }
 
@@ -120,11 +136,15 @@ func TestOpenExhaustionLeavesBorrowedAnchorUsable(t *testing.T) {
 	opened, err := file.Open(dir, ".", file.OpenOptions{})
 	require.ErrorIs(t, err, unix.EMFILE)
 	require.Nil(t, opened)
+
 	_, err = file.Stat(dir, file.MaskBasic)
 	require.NoError(t, err, "failed open must not consume its borrowed directory")
+
 	freeSlot()
 	opened, err = file.Open(dir, ".", file.OpenOptions{})
 	require.NoError(t, err)
+
 	require.NoError(t, opened.Close())
+
 	t.Log("verified open exhaustion")
 }
