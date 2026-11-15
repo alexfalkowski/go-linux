@@ -18,7 +18,7 @@ timerfd_arch=$2
 
 printf 'executor=machine container=%s arch=%s privileged=true clock_change=true\n' "$timerfd_image" "$timerfd_arch"
 
-docker run --rm --privileged --user root \
+docker run --quiet --rm --privileged --user root \
   --mount "type=bind,src=$PWD,dst=/home/circleci/go-linux" \
   --workdir /home/circleci/go-linux \
   -- "$timerfd_image" \

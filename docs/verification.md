@@ -46,6 +46,20 @@ package=mount make specs profile=namespaces required=true arch=arm64
 
 Environment discovery reports actual Go/kernel/architecture, UID/capabilities, security settings, and namespace prerequisites. Namespace creation alone does not prove mount operations work, and UID 0 does not establish ordinary-user coverage. Rootless runs may skip mount success scenarios; the separate required mount lane covers them. A skip is not runtime verification, and a facility error such as EPERM must not become a blanket skip.
 
+## Rootless container verification
+
+The native rootless CI jobs use machine executors to control the container syscall profile. A managed Docker executor can return ENOSYS for baseline-supported syscalls, including the xattr-at family, even when its host runs Linux 7.0. Changing the Go image does not change that outer filter.
+
+Use a native Linux Docker host, a nonroot invoking user, and the Go image from [.circleci/config.yml](../.circleci/config.yml):
+
+```sh
+make verify-rootless-container image=alexfalkowski/go:5.23 arch=amd64 package=xattr
+```
+
+Omit `package` for the complete rootless suite used by CI. The launcher downloads the [Moby default seccomp profile at a pinned revision](https://github.com/moby/profiles/blob/f862455628f78f84c937e967e4a03902fb1dee11/seccomp/default.json), checks its SHA-256 digest, and passes it explicitly to Docker. This allowlist includes getxattrat, setxattrat, listxattrat, and removexattrat. The host Docker runtime/libseccomp must recognize those syscalls. Profile download or checksum failures stop verification; the launcher does not fall back to an unconfined container.
+
+A root setup process remaps the image's `circleci` user and home to the invoking UID. Docker's init remains root at PID 1, providing the different-UID target required by signal-permission tests; its KILL capability permits forwarding signals to the nonroot child. All checks run with the invoking UID/GID, no supplementary groups, and empty capability sets; no-new-privileges is enabled from startup. The checkout is mounted separately at `/work`, so account setup does not change its ownership. The Docker bind mount must preserve the test UID/GID's write access; rootless-daemon UID mappings require corresponding checkout ownership. `make verify-rootless` refreshes dependencies, records the environment, and runs lint, script lint, security checks, vet, tests with race detection, and coverage. Modules, build artifacts, and tool caches are disposable container state. Reports are bind-mounted to the checked-in `test/reports/` directory. CI uploads coverage separately through `make codecov-upload-container image=<tag>`; the local verification command does not upload it.
+
 ## Mount verification
 
 Use a native Linux Docker host that permits privileged containers. Select the Go image from [.circleci/config.yml](../.circleci/config.yml) and the host architecture; the current amd64 invocation is:
@@ -76,12 +90,20 @@ With tools installed directly, use `make verify-timerfd arch=amd64 clock_change=
 
 ## Verified environments
 
-The [workflow for bff403e](https://app.circleci.com/workflow/191849be-75c5-4a97-94fc-4165cfa85ed6) passed the required matrix using Go 1.27.4 from `alexfalkowski/go:5.23`:
+The [workflow for e1d6c4f](https://app.circleci.com/workflow/eb175e2b-377b-480f-a8b8-ae4d60a36f3c) passed the required matrix using Go 1.27.4 from `alexfalkowski/go:5.23`:
 
 | Lane | Native architectures | Observed kernel | CI evidence: arm64 / amd64 |
 | --- | --- | --- | --- |
-| Ordinary user | arm64, amd64 | 7.0.0-1017-aws | [338](https://circleci.com/gh/alexfalkowski/go-linux/338) / [342](https://circleci.com/gh/alexfalkowski/go-linux/342) |
-| Isolated mount | arm64, amd64 | 7.0.0-1004-aws | [340](https://circleci.com/gh/alexfalkowski/go-linux/340) / [341](https://circleci.com/gh/alexfalkowski/go-linux/341) |
-| Disposable-VM clock changes | arm64, amd64 | 7.0.0-1004-aws | [343](https://circleci.com/gh/alexfalkowski/go-linux/343) / [339](https://circleci.com/gh/alexfalkowski/go-linux/339) |
+| Ordinary user | arm64, amd64 | 7.0.0-1004-aws | [408](https://circleci.com/gh/alexfalkowski/go-linux/408) / [409](https://circleci.com/gh/alexfalkowski/go-linux/409) |
+| Isolated mount | arm64, amd64 | 7.0.0-1004-aws | [406](https://circleci.com/gh/alexfalkowski/go-linux/406) / [410](https://circleci.com/gh/alexfalkowski/go-linux/410) |
+| Disposable-VM clock changes | arm64, amd64 | 7.0.0-1004-aws | [411](https://circleci.com/gh/alexfalkowski/go-linux/411) / [407](https://circleci.com/gh/alexfalkowski/go-linux/407) |
+
+Both ordinary-user jobs ran as UID 1001 with zero effective/bounding capabilities, NoNewPrivs=1, and seccomp mode 2. All 27 xattr tests/examples passed without skips on each architecture, including real-filesystem attribute operations; the pidfd cross-user signal-permission test also passed on both.
 
 These results establish the recorded revision and scenarios, not exhaustive kernel behavior or later revisions. CI runs the configured image toolchain rather than a separate minimum-Go-version matrix. Inspect the retained environment and test reports when accepting a new revision; compilation alone, image names, privileges, or source inspection do not establish runtime coverage. Remaining gaps and source-reviewed paths are tracked in the implementation plan.
+
+Additional local ordinary-user evidence covers a newer kernel:
+
+| Scope | Go / kernel / architecture | Observed prerequisites | Evidence and limits |
+| --- | --- | --- | --- |
+| `xattr` real-filesystem behavior, examples, and rootless container launcher | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection directly and through the launcher with the pinned Moby profile; this is not Linux 7.0 or arm64 evidence. Namespace creation fails with EPERM and is not needed by these tests. |

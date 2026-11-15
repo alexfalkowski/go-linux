@@ -20,11 +20,27 @@ specs: export GOTESTSUM_JSONFILE := test/reports/specs.json
 test-environment:
 	@go run -mod=vendor ./internal/cmd/testenv
 
+# Record prerequisites and run required rootless quality checks, tests, and coverage (package optional).
+verify-rootless: dep
+	@bash -eo pipefail -c '$(MAKE) test-environment profile=rootless required=true | tee test/reports/environment.json'
+	@$(MAKE) lint scripts-lint sec vet
+	@$(MAKE) specs profile=rootless required=true
+	@$(MAKE) coverage
+
+# Run rootless verification in a nonroot Docker container with the pinned syscall profile (image, arch required).
+verify-rootless-container: export image := $(value image)
+verify-rootless-container:
+	@bash scripts/rootless "$$image" "$$GO_LINUX_TEST_ARCH"
+
+# Upload coverage from a nonroot Docker container using the Go image (image required).
+codecov-upload-container: export image := $(value image)
+codecov-upload-container:
+	@bash scripts/coverage "$$image"
+
 # Record namespace prerequisites and run required isolated mount tests (arch optional).
 verify-mount:
-	@mkdir -p test/reports
-	@bash -eo pipefail -c '$(MAKE) --no-print-directory test-environment profile=namespaces required=true | tee test/reports/environment.json'
-	@$(MAKE) --no-print-directory specs package=mount profile=namespaces required=true
+	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
+	@$(MAKE) specs package=mount profile=namespaces required=true
 
 # Run required mount verification in privileged Docker (set image=<tag> and arch=amd64 or arm64).
 verify-mount-container: export image := $(value image)
@@ -36,10 +52,9 @@ verify-timerfd: export GO_LINUX_TEST_CLOCK_CHANGE := $(clock_change)
 verify-timerfd: override export GOFLAGS := $(GOFLAGS) -tags=clockchange
 verify-timerfd:
 	@test "$$GO_LINUX_TEST_CLOCK_CHANGE" = true || { printf '%s\n' 'clock-changing tests require clock_change=true on a disposable VM' >&2; exit 2; }
-	@mkdir -p test/reports
-	@bash -eo pipefail -c '$(MAKE) --no-print-directory test-environment GOFLAGS="$$GOFLAGS" | tee test/reports/environment.json'
-	@$(MAKE) --no-print-directory vet GOFLAGS="$$GOFLAGS"
-	@$(MAKE) --no-print-directory specs package=timerfd profile=rootless required=true GOFLAGS="$$GOFLAGS"
+	@bash -eo pipefail -c '$(MAKE) test-environment GOFLAGS="$$GOFLAGS" | tee test/reports/environment.json'
+	@$(MAKE) vet GOFLAGS="$$GOFLAGS"
+	@$(MAKE) specs package=timerfd profile=rootless required=true GOFLAGS="$$GOFLAGS"
 
 # Run timerfd clock changes in privileged Docker on a disposable VM (image, arch, clock_change=true required).
 verify-timerfd-container: export image := $(value image)
@@ -53,7 +68,7 @@ vet:
 
 # Check repository-owned Bash scripts with ShellCheck.
 scripts-lint:
-	@shellcheck scripts/mount scripts/timerfd
+	@shellcheck scripts/coverage scripts/rootless scripts/mount scripts/timerfd
 
 # Validate CircleCI configuration with the official CLI (requires CircleCI API access).
 ci-validate:
