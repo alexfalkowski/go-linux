@@ -140,6 +140,26 @@ func TestModificationReplacesTheCompleteInterestMask(t *testing.T) {
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
 }
 
+func TestModificationClearsEdgeAndOneShotFlags(t *testing.T) {
+	poller := test.Poller(t)
+	reader, writer := test.Pipe(t)
+	registration := test.Registration(t, poller, reader, epoll.Readable|epoll.EdgeTriggered|epoll.OneShot)
+	_, err := writer.WriteString("ready")
+	require.NoError(t, err)
+	events := make([]epoll.Event, 1)
+	n, err := poller.Wait(events, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
+
+	require.NoError(t, registration.Modify(epoll.Readable))
+	for range 2 {
+		n, err := poller.Wait(events, time.Second)
+		require.NoError(t, err)
+		require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n],
+			"replacing the complete mask must clear edge and one-shot flags without consuming input")
+	}
+}
+
 func TestBatchEventsIdentifyIndependentRegistrations(t *testing.T) {
 	poller := test.Poller(t)
 	reader, writer := test.Pipe(t)
@@ -316,7 +336,7 @@ func TestTimeoutsReturnAnEmptyResultWithoutChangingTheBuffer(t *testing.T) {
 func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 	poller := test.Poller(t)
 	file := test.TempFile(t, 0)
-	reader, _ := test.Pipe(t)
+	reader, writer := test.Pipe(t)
 	closed, _ := test.Pipe(t)
 	require.NoError(t, closed.Close())
 	before := test.DescriptorCount(t)
@@ -343,11 +363,21 @@ func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 	require.NoError(t, err, "failed registration must not close a borrowed file")
 	registration := test.Registration(t, poller, reader, epoll.Readable)
 	require.ErrorIs(t, registration.Modify(1<<26), os.ErrInvalid)
+
+	_, err = writer.WriteString("ready")
+	require.NoError(t, err)
+	events := make([]epoll.Event, 1)
+	n, err := poller.Wait(events, time.Second)
+	require.NoError(t, err)
+	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n],
+		"invalid interests must retain the existing kernel registration")
 	_, err = poller.Wait(nil, 0)
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	require.NoError(t, poller.Close())
 	require.ErrorIs(t, registration.Modify(1<<26), os.ErrInvalid, "mask validation precedes closed state")
+	added, err := poller.Add(reader, 1<<26)
+	test.NoResource(t, added, err, os.ErrInvalid)
 	_, err = poller.Wait(nil, 0)
 	require.ErrorIs(t, err, os.ErrInvalid, "buffer validation precedes closed state")
 }

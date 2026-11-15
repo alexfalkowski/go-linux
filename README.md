@@ -17,6 +17,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests
 - [epoll](docs/epoll.md): explicit readiness sets, stable registrations, trigger modes, and interruptible waits.
 - [file](docs/file.md): explicit path resolution, extended metadata, and atomic rename modes on standard files.
 - [xattr](docs/xattr.md): whole extended attributes, atomic set modes, and explicit file/path/symlink selection.
+- [inotify](docs/inotify.md): file and directory watches, record decoding, rename cookies, and explicit queue-overflow events.
 
 ## 🚀 Setup
 
