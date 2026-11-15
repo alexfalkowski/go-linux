@@ -1,6 +1,6 @@
 # Linux APIs for Go: remaining implementation
 
-Next: **P11 — `fanotify`: filesystem notifications and permission events**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
+Next: **P12 — `socket`: Linux socket extensions**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
 
 This file contains unfinished work only. Delete finished items and resolved gaps instead of marking them done. Keep a short resume note only while work is incomplete; replace it when circumstances change and remove it when finished. Do not append completed handoffs, historical command logs, resolved findings, or an archive of deleted entries.
 
@@ -26,7 +26,7 @@ The bounded first release comprises 21 facility-focused public packages in one m
 - Add GoDoc, a usage guide linked from README, a focused design note, and useful executable examples. Link public operation documentation to the relevant Linux interfaces. Use `docs/design/netlink-route.md` for the nested package. Examples and ordinary behavior tests use the typed public API; focused ABI tests retain independent kernel observations.
 - Verify real resource behavior, errors, invalid inputs, partial-failure cleanup, ownership, concurrency, and Linux-specific contracts with the existing harness. Use bounded subprocesses for irreversible restrictions, thread-sensitive changes, faults, and child-process tests. Do not mutate the shared host's clocks, mounts, routes, cgroups, or security policy.
 - Run the narrowest supported checks for the changed scope; CI owns the full native arm64/amd64 suites. Use the one Go toolchain from the configured standard image; separate Go-version and compile-only/no-cgo matrices are not required. Re-run affected checks after relevant changes and report actual commands, outcomes, and limitations.
-- The `build`, `build-mount`, and `build-timerfd` architecture matrices are required gates. Use the same mount container launcher locally and in CI. Follow [verification guidance](docs/verification.md) for profiles, native architecture checks, image selection, reports, and privilege/isolation requirements. A container image does not select the host kernel.
+- The `build`, `build-mount`, `build-fanotify`, and `build-timerfd` architecture matrices are required gates. Use the same facility container launchers locally and in CI. Follow [verification guidance](docs/verification.md) for profiles, native architecture checks, image selection, reports, and privilege/isolation requirements. A container image does not select the host kernel.
 - Missing optional prerequisites may produce precise skips; selected required prerequisites must fail when absent. Root, capability bits, namespace creation, mocks, or compilation alone do not establish operation success. Record actual Go/kernel/architecture and relevant privilege observations. Reassess runner evidence when the environment changes without implicitly changing support policy.
 
 ## Open verification gaps
@@ -35,14 +35,10 @@ The bounded first release comprises 21 facility-focused public packages in one m
 | --- | --- | --- |
 | R01 / `inotify` native baseline coverage | Runtime evidence for inotify on Linux 7.0 amd64 and arm64. Local ordinary-user coverage is native amd64 on 7.3.4-3-t2-resolute; requesting `kernel=7.0` fails the runner check. | Run the required rootless lane with the configured Go image on native Linux 7.0 amd64 and arm64, retaining environment and test reports. No container image can supply the missing host kernel or native architecture. |
 | R01 / `xattr` defensive read paths | Concurrent value and list mutation runs do not deterministically establish ERANGE retry/exhaustion, the oversized query guard, or malformed kernel-list rejection. | Reconcile using supported public/kernel scenarios where reproducible; retain source-reviewed limits rather than adding production injection hooks. |
-| R01 / source-reviewed paths | Direct execution remains absent for defensive timerfd zero-byte conversion, file block-device conversion/remote synchronization/automount/positive attributes, eventfd/inotify poller-registration rejection, inotify unmount notifications, oversized/malformed mount diagnostics, and rare acquisition, cleanup, or partial-application failures. | Reconcile during R01 using supported public/kernel scenarios and suitable isolated runners; retain explicit limits where execution is not feasible. |
+| R01 / source-reviewed paths | Direct execution remains absent for defensive timerfd zero-byte conversion, file block-device conversion/remote synchronization/automount/positive attributes, eventfd/inotify/fanotify poller-registration rejection, inotify unmount notifications, oversized/malformed mount diagnostics, and rare acquisition, response, cleanup, or partial-application failures. | Reconcile during R01 using supported public/kernel scenarios and suitable isolated runners; retain explicit limits where execution is not feasible. |
 | R01 / `pidfd` positive core-dump status | Actual CLD_DUMPED and `CoreDump=true` on the Linux 7.0 arm64 target | A runner whose existing core policy produces CLD_DUMPED for the test-owned child. The current test compares with nonconsuming kernel status; CLD_KILLED verifies only the false flag. Do not change host core policy to force this case. |
 
 ## Remaining work
-
-### Filesystem notifications
-
-- **P11 — `fanotify`: filesystem notifications and permission events.** Define the initial supported modes and event record types. Expose event-owned descriptors and permission responses with explicit lifetime rules. Document capabilities, configuration, and filesystem requirements by mode. **Acceptance:** isolated integration tests exercise the promised notification and permission paths; parser tests handle variable records and unknown types. Verify descriptor cleanup on abandoned events, malformed records, and errors.
 
 ### Socket and Netlink facilities
 

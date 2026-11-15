@@ -6,11 +6,29 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+// ExecutableCopy copies the running test binary to a private executable inode
+// so exec-open fixtures mark only their own program, never a host executable.
+func ExecutableCopy(t *testing.T) string {
+	t.Helper()
+	path, err := os.Executable()
+	require.NoError(t, err)
+	source := OpenFile(t, path)
+	destination := filepath.Join(t.TempDir(), "program")
+	file, err := os.OpenFile(destination, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o700)
+	require.NoError(t, err)
+	Cleanup(t, file)
+	_, err = io.Copy(file, source)
+	require.NoError(t, err)
+	require.NoError(t, file.Close())
+	return destination
+}
 
 // StartWithInput starts a bounded caller-supplied command and returns its input.
 // Cleanup kills, waits, and releases even when the scenario chooses another

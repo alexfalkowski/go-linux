@@ -3,6 +3,9 @@
 
 set -eo pipefail
 
+# shellcheck source=scripts/container.sh
+source "$(dirname "$0")/container.sh"
+
 if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
   printf 'usage: make verify-timerfd-container image=<tag> arch=<amd64|arm64> clock_change=true\n' >&2
   exit 2
@@ -18,12 +21,4 @@ timerfd_arch=$2
 
 printf 'executor=machine container=%s arch=%s privileged=true clock_change=true\n' "$timerfd_image" "$timerfd_arch"
 
-docker run --quiet --rm --privileged --user root \
-  --mount "type=bind,src=$PWD,dst=/home/circleci/go-linux" \
-  --workdir /home/circleci/go-linux \
-  -- "$timerfd_image" \
-  bash -eo pipefail -c '
-    git config --global --add safe.directory /home/circleci/go-linux
-    make dep
-    make verify-timerfd arch="$1" clock_change=true
-  ' timerfd "$timerfd_arch"
+run_privileged_container "$timerfd_image" timerfd "$timerfd_arch" clock_change=true

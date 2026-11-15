@@ -67,6 +67,20 @@ jobs:
           path: test/reports
       - store_artifacts:
           path: test/reports
+  build-fanotify:
+    parameters:
+      arch:
+        type: enum
+        enum: [arm64, amd64]
+    executor: mount-<< parameters.arch >>
+    working_directory: ~/go-linux
+    steps:
+      - checkout-submodules
+      - run: make verify-fanotify-container image="$GO_LINUX_CI_IMAGE" arch=<< parameters.arch >>
+      - store_test_results:
+          path: test/reports
+      - store_artifacts:
+          path: test/reports
   build-timerfd:
     parameters:
       arch:
@@ -118,6 +132,11 @@ workflows:
           matrix:
             parameters:
               arch: [arm64, amd64]
+      - build-fanotify:
+          name: build-fanotify-<< matrix.arch >>
+          matrix:
+            parameters:
+              arch: [arm64, amd64]
       - build-timerfd:
           name: build-timerfd-<< matrix.arch >>
           matrix:
@@ -127,6 +146,7 @@ workflows:
           requires:
             - build
             - build-mount
+            - build-fanotify
             - build-timerfd
           filters: 'pipeline.git.branch != "master"'
       - version:
@@ -135,12 +155,14 @@ workflows:
           requires:
             - build
             - build-mount
+            - build-fanotify
             - build-timerfd
           filters: 'pipeline.git.branch == "master"'
       - wait-all:
           requires:
             - build
             - build-mount
+            - build-fanotify
             - build-timerfd
             - sync
             - version

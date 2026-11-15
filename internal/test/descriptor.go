@@ -139,6 +139,20 @@ func FileDescriptor(t *testing.T, file *os.File) int {
 	return result
 }
 
+// DuplicateDescriptor acquires a close-on-exec descriptor for a consuming ABI
+// fixture. The caller must immediately transfer it to the operation under test;
+// the original file remains caller-owned. No second os.File owns the duplicate.
+func DuplicateDescriptor(t *testing.T, file *os.File) int {
+	t.Helper()
+	var duplicate int
+	var err error
+	FileControl(t, file, func(fd uintptr) {
+		duplicate, err = unix.FcntlInt(fd, unix.F_DUPFD_CLOEXEC, 0)
+	})
+	require.NoError(t, err)
+	return duplicate
+}
+
 // FileControl pins a standard-library file during a focused kernel observation.
 func FileControl(t *testing.T, file *os.File, operation func(uintptr)) {
 	t.Helper()
