@@ -9,7 +9,7 @@ This file contains unfinished work only. Delete finished items and resolved gaps
 - Follow [AGENTS.md](AGENTS.md), the shared [API conventions](docs/design/api.md), and each package's usage/design guides. [README.md](README.md) lists implemented packages; [verification guidance](docs/verification.md) owns commands, runner requirements, and current evidence. Keep durable API decisions in `docs/design/<package>.md`.
 - Inspect the working tree before editing and preserve unrelated changes. Read the relevant existing implementation and primary Linux/Go documentation. Work on the requested scope; implement the first eligible remaining item when asked to continue the plan. Do not create future package stubs, dependencies, or speculative shared frameworks.
 - Keep work sequential by default. If essential verification is blocked by a demonstrated environment prerequisite, retain the item as implemented with verification pending and record the missing operation, observed failure, and required runner below. Continue only to independent work; ordinary failures or unexplained permission errors must be investigated. User-accepted partial scopes may leave explicit R01 follow-ups.
-- Before removing an item, satisfy its acceptance criteria and the checklist below. Record only useful current verification evidence and limitations in the verification guide or package design note. Update the next-item pointer and any open gaps; do not retain a completion entry here.
+- Before removing an item, satisfy its acceptance criteria and the checklist below. Keep a compact verified-environment matrix in the verification guide and unresolved verification gaps below; design notes explain decisions and tradeoffs. Update the next-item pointer and any open gaps; do not retain a completion entry here.
 - Keep prose paragraphs and list items on single source lines. Use the same plan for human contributors and coding agents; do not maintain separate copies of the roadmap.
 
 ## Scope and constraints
@@ -22,7 +22,7 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 ## Acceptance and verification
 
-- Provide the typed public API, Linux semantics, ownership/error/concurrency contracts, and resource cleanup required by [API conventions](docs/design/api.md). Record the initial operation list and explicit omissions in the package design note.
+- Provide the typed public API, Linux semantics, ownership/error/concurrency contracts, and resource cleanup required by [API conventions](docs/design/api.md). Document operations and omissions in the package guide and GoDoc, with their rationale in the package design note.
 - Add GoDoc, a usage guide linked from README, a focused design note, and useful executable examples. Link public operation documentation to the relevant Linux interfaces. Use `docs/design/netlink-route.md` for the nested package. Examples and ordinary behavior tests use the typed public API; focused ABI tests retain independent kernel observations.
 - Verify real resource behavior, errors, invalid inputs, partial-failure cleanup, ownership, concurrency, and Linux-specific contracts with the existing harness. Use bounded subprocesses for irreversible restrictions, thread-sensitive changes, faults, and child-process tests. Do not mutate the shared host's clocks, mounts, routes, cgroups, or security policy.
 - Run the narrowest supported checks for the changed scope; CI owns the full native arm64/amd64 suites. Use the one Go toolchain from the configured standard image; separate Go-version and compile-only/no-cgo matrices are not required. Re-run affected checks after relevant changes and report actual commands, outcomes, and limitations.
@@ -33,6 +33,7 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 | Scope | Missing evidence | Required environment or next action |
 | --- | --- | --- |
+| R01 / source-reviewed paths | Direct execution remains absent for defensive timerfd zero-byte conversion, file block-device conversion/remote synchronization/automount/positive attributes, eventfd poller-registration rejection, oversized/malformed mount diagnostics, and rare acquisition, cleanup, or partial-application failures. | Reconcile during R01 using supported public/kernel scenarios and suitable isolated runners; retain explicit limits where execution is not feasible. |
 | R01 / `pidfd` positive core-dump status | Actual CLD_DUMPED and `CoreDump=true` on the Linux 7.0 arm64 target | A runner whose existing core policy produces CLD_DUMPED for the test-owned child. The current test compares with nonconsuming kernel status; CLD_KILLED verifies only the false flag. Do not change host core policy to force this case. |
 
 ## Remaining work

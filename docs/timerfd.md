@@ -2,7 +2,7 @@
 
 `github.com/alexfalkowski/go-linux/timerfd` creates Linux timers whose descriptors deliver expiration counts. It requires Linux 7.0+, the Go version in `go.mod`, and permitted timerfd, clock-query, and polling operations. Ordinary use needs no extra capabilities. Use `time.Timer` or `time.Ticker` when no kernel descriptor or Linux clock selection is needed.
 
-P03 is complete. Required native Linux 7.0 arm64 and amd64 CI jobs verify ordinary operations and isolated clock-change behavior with Go 1.27.4 at `bff403e`; earlier minimum-toolchain and local newer-kernel results remain separate evidence. See [verification guidance](verification.md) for linked jobs and source-reviewed limits, and [IMPLEMENTATION.md](../IMPLEMENTATION.md) for remaining work.
+See [verification guidance](verification.md) for runner requirements and verified environments, and [IMPLEMENTATION.md](../IMPLEMENTATION.md#open-verification-gaps) for remaining verification gaps.
 
 ## Arm and consume a timer
 
@@ -58,4 +58,4 @@ The timer keeps its descriptor private; use arming, state, reads, and read deadl
 
 Kernel failures preserve errno identity through `errors.Is` and `errors.As`; policy denials remain observable. Initial omissions include alarm/wakeup clocks, clock adjustment, tick injection, adoption helpers, contexts, and exported ordinary files. See [GoDoc](../timerfd/doc.go), the [design note](design/timerfd.md), and [verification guidance](verification.md).
 
-Clock-changing integration tests are a separate opt-in mode for disposable VMs. Ordinary `make specs`, including root execution, leaves them disabled. See the [verification guide](verification.md) for `make verify-timerfd-container`, its explicit acknowledgment, and the dedicated CI machine jobs. Those jobs still need observed execution results.
+Clock-changing integration tests are a separate opt-in mode for disposable VMs. Ordinary `make specs`, including root execution, leaves them disabled. See the [verification guide](verification.md) for `make verify-timerfd-container`, its explicit acknowledgment, and the dedicated CI machine jobs. Their observed results are recorded there.

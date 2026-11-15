@@ -2,7 +2,7 @@
 
 `github.com/alexfalkowski/go-linux/eventfd` creates Linux event counters for descriptor-based notifications. It requires Linux 7.0+, the Go version in `go.mod`, and permitted `eventfd2` and polling operations. Ordinary use needs no extra capabilities. Use Go channels or synchronization primitives when no kernel descriptor is needed.
 
-P02 is complete for the available Linux 7.0 arm64 target, verified at Go 1.27.0 and 1.27.4, with additional local Linux 7.3 amd64 checks. The [verification guide](verification.md) records the CI evidence and project-wide verification limits.
+The [verification guide](verification.md) describes runner requirements and verified environments; [IMPLEMENTATION.md](../IMPLEMENTATION.md#open-verification-gaps) tracks remaining verification gaps.
 
 ## Accumulate and consume notifications
 
