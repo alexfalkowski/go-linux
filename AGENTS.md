@@ -7,7 +7,7 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 ## Repository
 
 - Follow `IMPLEMENTATION.md` for remaining work, execution order, acceptance criteria, and open verification gaps. API conventions are in `docs/design/api.md`.
-- Go library for Linux APIs; README lists implemented packages, `docs/verification.md` records runtime evidence, and `IMPLEMENTATION.md` tracks unfinished work.
+- Go library for Linux APIs; README lists implemented packages. `docs/verification.md` is a concise human contributor guide to commands, prerequisites, isolation/safety, reports, and a verified environment matrix. Keep detailed run results in CI reports and unfinished work or verification gaps in `IMPLEMENTATION.md`.
 - Check `go.mod` for the module path and Go version.
 - Keep dependencies and packages limited to implemented features.
 - Design public APIs and examples to read like standard-library Go while preserving Linux names, typed modes/flags, record boundaries, clock domains, errno identity, and ownership. Use familiar Go interfaces and explicit resource operations where their contracts fit.
@@ -18,7 +18,8 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 - Write ordinary behavior tests as clients of the typed public API. Repeated `syscall`/`unix` calls or inspection of implementation state should trigger a review of the API/test boundary. Verify effects, returned values, errors, lifetime, and concurrency; do not add public raw access, inspection methods, or test-only production hooks merely to make assertions convenient.
 - Preserve focused real-kernel/ABI checks when they establish a documented Linux contract. Linux constants, errno comparisons, and independent syscall observations are appropriate there; put reusable OS setup and observations in `internal/test`. Keep these checks distinct from ordinary caller scenarios, and do not replace kernel evidence with mocks or weaken ownership, cleanup, or prerequisite coverage to avoid low-level code.
 - Chosen Linux-only convention: use plain Go filenames without a `_linux` suffix and start every repository-owned Go file, including tests and `doc.go`, with `//go:build linux`. Preserve the standard `_test.go` suffix; leave dependency and submodule files unchanged.
-- Link each implemented public package from README to its usage guide in `docs/<package>.md`. Keep design rationale in `docs/design/<package>.md`.
+- Link each implemented public package from README to its usage guide in `docs/<package>.md`. Keep design notes in `docs/design/<package>.md` focused on decisions, alternatives, rationale, and consequences that add value beyond usage guides and GoDoc; omit API inventories, implementation diaries, CI histories, and work-status lists.
+- Before adding documentation, identify the reader's concrete need and check existing coverage. Update the authoritative document and link to it instead of duplicating it. Verify prose against current code and remove obsolete sketches and stale work references; keep unique runtime evidence in `docs/verification.md` and unfinished work in `IMPLEMENTATION.md`.
 
 ## Setup and commands
 

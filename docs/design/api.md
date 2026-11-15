@@ -1,249 +1,39 @@
-# API decisions
+# API conventions
 
-Status: F01 design record with implementation follow-ups, 2026-11-14. This document owns shared conventions and the original provisional sketches for P01–P06; sketches alone do not establish package availability or runtime verification. [IMPLEMENTATION.md](../../IMPLEMENTATION.md) tracks remaining work, execution order, acceptance criteria, and open verification gaps. Each package item must refine its sketch in its own design note and supply executable examples and kernel tests before claiming completion.
+These conventions govern the library's public Go APIs. Package design notes explain choices specific to each facility; usage belongs in `docs/<package>.md` and GoDoc. [Verification](../verification.md) owns contributor commands, runner requirements, and the verified environment matrix; [IMPLEMENTATION.md](../../IMPLEMENTATION.md) owns unfinished work and verification gaps. Design notes record decisions, alternatives, and consequences rather than API inventories, implementation history, or test reports.
 
-Implementation follow-up: [memfd](memfd.md) owns the accepted P01 API; [eventfd](eventfd.md) owns the accepted P02 API and verified primary-target runtime behavior. The original sketches and F01 evidence below remain design history where refined by those notes.
+## Standard-library boundary
 
-P03 implementation follow-up: [timerfd](timerfd.md) refines the timer pilot with a private pollable owner, clock-tagged absolute instants, checked signed-64-bit-nanosecond limits, state/arming operations, and exceptional read preservation. Local and Linux 7.0 arm64 CI kernel tests verify ordinary operations at both supported Go versions; P03 is complete. At `bff403e`, required native Linux 7.0 arm64 and amd64 disposable-VM jobs also verify real clock changes and ECANCELED read/rearm behavior with Go 1.27.4, closing that R01 gap. `Read` restores Go's synthesized EOF to the Linux zero-byte result; this defensive conversion remains source-reviewed. The original P03 sketch below remains design history.
+Add Linux mechanisms that the standard library does not express; reuse ordinary Go I/O, process startup, and resource management. Prefer the maintained `golang.org/x/sys/unix` bindings over copied syscall numbers or ABI layouts. Packages depend on implemented facilities only; shared internals need demonstrated reuse rather than a planned family of future packages.
 
-P04 implementation follow-up: [mmap](mmap.md) refines the mapping pilot with an explicit Region owner, protected file borrowing, Private/Shared modes, NoAccess/Read/Write protection, five whole-region advice operations, and deterministic unmapping. The [usage guide](../mmap.md) and executable examples document borrowed-slice lifetimes and independent file ownership. Local and Linux 7.0 arm64 CI kernel tests and fault subprocesses verify the promised behavior at both supported Go versions; P04 is complete for the available target. The original four-pilot review deferred common internals. Opaque owners now keep direct private file fields; syscall, polling, and mapping semantics remain distinct. The original P04 sketch below remains design history.
+Use familiar resource names and operations: `New` creates, `Open` acquires by identity, `Adopt` consumes ownership, and `Close` releases a local resource. Independent flag bits use typed masks; mutually exclusive modes use enums. Document zero options and reject unknown input bits or contradictory combinations. Preserve unknown output bits so inspection does not silently discard newer kernel information.
 
-P05 implementation follow-up: [pidfd](pidfd.md) refines the process pilot with immediate ownership consumption by Adopt, flag-preserving standard-library handle composition, eventfd-interrupted poll waits, and nonblocking child-status checks. The [usage guide](../pidfd.md) separates observation from reaping. P05 is complete by user acceptance after the core-dump fixture correction. Corrected-revision ordinary arm64 CI now passes at both Go versions in jobs 193/194 at ae50d8d; positive primary-target core-dump evidence remains an explicit R01 follow-up. Creation/adoption cleanup is a shared ownership rule for subsequent packages.
+Facility owners keep descriptors private. Typed operations perform borrowing, duplication, and polling internally; exported raw callbacks, descriptor accessors, and embedded files would make those implementation details permanent caller responsibilities. Selected standard interfaces remain available where their contracts fit. The `file` package deliberately borrows and returns standard files because it adds individual file operations rather than another resource owner.
 
-P07 implementation follow-up: [epoll](epoll.md) supplies explicit readiness sets for borrowed standard files, independently owned registrations, stable event identities, trigger modes, and close-interrupted waits. The [usage guide](../epoll.md) explains extended source lifetime and batch races. Existing opaque facility owners remain independent of epoll; their producer registration is outside this initial scope. P07 is complete at 5e42c6f after required Linux 7.0 arm64 jobs 236/238 each pass all 41 epoll events without skips at Go 1.27.0 and 1.27.4; local Linux 7.3 amd64 checks remain separate.
+## Ownership and lifetime
 
-P08 implementation follow-up: [file](file.md) adds restricted openat2 lookup, selected statx metadata, and renameat2 modes while borrowing and returning standard os.File handles as planned. The [usage guide](../file.md) distinguishes one-lookup restrictions from ordinary StatAt/Rename resolution. P08 is complete at `bff403e`: required native Linux 7.0 arm64 and amd64 jobs each pass all 71 file events without failures/skips using Go 1.27.4, and both required mount and clock-change matrices pass. The [verification guide](../verification.md) records the evidence; local Linux 7.3 amd64 checks remain separate.
+Creation and adoption return no resource on error and close every resource acquired or consumed. Callers arrange cleanup only after success. `Adopt` consumes its input even when validation fails, avoiding conditional ownership and caller error-path cleanup. Borrowing leaves inputs caller-owned on both success and failure. An operation failing on an existing owner does not transfer its cleanup responsibility.
 
-## Standard-library overlap
+Duplicate under lifetime protection when independent descriptor ownership is required. Duplicates still share open-file-description state, including status flags and offsets; changing that state can affect another owner. Never give two independent file owners the same live descriptor. Internal `RawConn.Control` calls pin borrowed descriptors against close/reuse; they do not make blocking syscalls cancelable.
 
-The caller is a Go program that needs a Linux facility while retaining normal Go I/O and resource management. Ordinary application work should continue through the standard library. The inventory uses the installed Go 1.27.4 documentation and source, including the API history for features available before the module's Go 1.27.0 floor; minimum-version execution remains F02 work.
+Create descriptors atomically close-on-exec. Use explicit Close rather than relying on garbage collection, and never retry a Linux descriptor close after an error because its number may already have been reused. Closing a descriptor releases that reference; it does not necessarily undo the kernel effect that created or used it. Mappings, attached mounts, and process reaping have distinct lifetimes explained in their package guides.
 
-| Planned packages | Existing Go surface | Boundary retained here |
-| --- | --- | --- |
-| `memfd`, `file`, `xattr` | `os.File` already supplies ordinary I/O, seeking, sizing, metadata, and close; `os.Root` supplies operations confined beneath a directory | Memory-backed creation/seals, explicit Linux resolution/metadata/rename controls, and extended attributes; return or reuse standard files |
-| `eventfd`, `timerfd` | Channels, `sync`, `time.Timer`, and `time.Ticker` cover ordinary Go synchronization and timers | Kernel counters and timers represented by descriptors, including semaphore reads, expiration counts, and Linux clock domains |
-| `mmap` | Slices and file reads cover ordinary byte access; `syscall.Mmap` exposes raw mappings | Explicit mapping ownership, protection, advice, and invalidation rules; no replacement allocator |
-| `pidfd` | `os.Process` supports signaling and child waiting; `Process.WithHandle` exposes a lifetime-protected pidfd callback on Linux; `syscall.SysProcAttr.PidFD` can obtain a descriptor during process creation | Independently owned/adopted process descriptors and exit readiness without reaping; keep process startup in `os/exec` or `os.StartProcess` |
-| `mount`, `namespace`, `cgroup` | Files and `SysProcAttr` cover parts of process setup and pseudo-filesystem access | Explicit mount/configuration handles, namespace mechanisms, and v2 resource control; no container lifecycle manager |
-| `epoll` | The Go runtime already polls supported files and network connections | Explicit application readiness sets; no replacement for the runtime poller |
-| `inotify`, `fanotify` | Ordinary `os` operations do not supply filesystem event streams | Linux event records, watch identities, overflow, and permission-event ownership |
-| `socket`, `netlink`, `netlink/route` | `net.Conn`, `net.PacketConn`, Unix message I/O, `FileConn`, and `SyscallConn` already cover much networking | Linux extensions, ancillary data, and bounded kernel protocols; preserve datagram boundaries and truncation |
-| `capability`, `seccomp`, `landlock` | `SysProcAttr` supports selected child setup; it is not a general live-process security API | Explicit kernel state/restriction operations with documented thread and exec scope |
-| `procfs`, `sysfs` | `os`, `io/fs`, `bufio`, and parsing packages provide file access and parsing machinery | Bounded typed Linux records with an explicit root, visibility/race handling, and unknown-field policy |
+Owned wrapper types are used through pointers and must not be copied after use. Their zero value owns nothing; error-returning operations report `os.ErrInvalid`, with view methods documented separately. Repeated close and valid operations after successful descriptor closure match `os.ErrClosed`. Document validation precedence and exceptional cleanup semantics per operation. Methods may be safe concurrently while sequences still require caller coordination.
 
-In particular, `os.Root` permits filesystem-boundary traversal and is not equivalent to every `openat2` resolution restriction. P08 must compare its precise operation list with the chosen Go version again. `os.Process.WithHandle` is already public since Go 1.26; P05 must not claim that the standard library hides all process descriptors. References: [Go 1.27.4 os](https://pkg.go.dev/os@go1.27.4), [Root](https://pkg.go.dev/os@go1.27.4#Root), [Process.WithHandle](https://pkg.go.dev/os@go1.27.4#Process.WithHandle), [SysProcAttr](https://pkg.go.dev/syscall@go1.27.4#SysProcAttr), and [net](https://pkg.go.dev/net@go1.27.4).
+## Interfaces, records, and clocks
 
-## Existing Go libraries as references
+Expose standard interfaces only when their behavioral contracts fit. Files support ordinary streams; counters and timers preserve one native-endian eight-byte record per read. Validate record sizes before generic file I/O, which can otherwise treat empty buffers or partial writes as stream operations. Typed helpers use `encoding/binary.NativeEndian`; their results are values or counts, not byte lengths. Readiness sets and process handles do not become byte streams merely because Linux represents them with descriptors.
 
-These are selected API comparisons, not an exhaustive ecosystem survey or dependency endorsements. No dependency is added by F01. Recheck the relevant library and standard-library overlap when implementing each package; do not copy implementation code without a licensing review.
+Use `time.Duration` for relative intervals and `time.Time` for Go I/O deadlines. Absolute Linux timer values carry their clock domain explicitly rather than borrowing Go's wall-clock or private monotonic representation. Keep kernel timer arming separate from the deadline that bounds reading its records.
 
-| Reference | Surface inspected | Design consequence |
-| --- | --- | --- |
-| [golang.org/x/sys/unix](https://pkg.go.dev/golang.org/x/sys/unix) | Syscall wrappers, constants, and ABI types | Use as the normal syscall foundation; select and pin a compatible version when the first implementation needs it, rather than copying syscall tables |
-| [iofd](https://pkg.go.dev/code.hybscloud.com/iofd) | MemFD, EventFD, TimerFD, PidFD, mapped regions, and raw nonblocking defaults | Typed helpers are useful; retain separate facility packages and standard Go polling semantics instead of adopting its universal descriptor abstraction |
-| [mmap-go](https://pkg.go.dev/github.com/edsrzf/mmap-go@v1.2.0) | Slice-based mappings, MapRegion, Flush, and Unmap | Make lifetime explicit through a region owner; do not infer Linux protection/advice guarantees from a portable mapping API |
-| [moby/sys/mount](https://pkg.go.dev/github.com/moby/sys/mount@v0.3.5) | Mount/unmount and propagation helpers | Retain familiar mount vocabulary, but model configuration contexts and detached mounts separately instead of a single device/target/options operation |
-| [mdlayher/netlink](https://pkg.go.dev/github.com/mdlayher/netlink@v1.11.2) and [vishvananda/netlink](https://pkg.go.dev/github.com/vishvananda/netlink@v1.3.1) | Message/attribute connection APIs versus typed route operations | Keep protocol framing in P13 and route resources in P14; defer their exact designs until those items |
-| [fsnotify](https://pkg.go.dev/github.com/fsnotify/fsnotify@v1.10.1) | Portable watcher/event API | P10 exposes Linux watch/cookie/overflow details; a portable channel watcher is a different boundary |
+## Blocking and errors
 
-`x/sys/unix` adds an external module and vendoring/update obligations, but supplies architecture-specific UAPI definitions without cgo or private runtime integration. This is preferable to maintaining copied ABI declarations. The other libraries remain references, avoiding dependencies on overlapping lifecycle, polling, or higher-level policy. Any missing wrapper in the pinned syscall dependency must be established from its Linux-specific source before deciding whether an internal addition is necessary.
+Counter and timer constructors require nonblocking descriptors and establish Go polling before returning. `os.NewFile` alone does not prove successful poller registration; a zero deadline probe checks the promised integration and failure closes the resource. Do not replace failed polling with blocking I/O or a hidden goroutine. Explicit kernel waits may occupy an OS thread. Add contexts or deadlines only when a real interruption mechanism can release the pending operation.
 
-## Shared conventions
+Preserve errno through `errors.Is` and `errors.As`, using standard error wrappers when they carry sufficient context. Input validation normally matches `os.ErrInvalid`; documented Linux-shaped validation may use errno directly. Do not collapse `EPERM`, `EINVAL`, or `ENOSYS` into a blanket unsupported-feature result. Structured errors are justified when callers need additional information, such as mount diagnostics; keep the primary failure distinguishable from secondary retrieval failures.
 
-### Naming, types, and package direction
+Do not emulate atomic kernel operations with multiple racy calls, silently weaken requested restrictions, or promise rollback after a syscall may have applied a change. Retry interruption only where repeating the operation preserves its contract.
 
-Use a facility package plus a resource noun: `memfd.File`, `eventfd.Counter`, `timerfd.Timer`, `mmap.Region`, `pidfd.Process`, and `mount.Config`/`mount.Handle`. Use `New` for a newly allocated resource, `Open` for acquisition by identity, `Adopt` for ownership transfer, and `Close` for releasing the owned local resource. Keep Linux terms such as seal, pidfd, and mount where they communicate the mechanism. Use typed flags for independent bits and enums for exclusive modes. Validate unknown bits, invalid enum values, overflow, and contradictory combinations; zero options must have one documented meaning.
+## Compatibility
 
-Public packages depend on the standard library, `x/sys/unix`, and only demonstrated shared internals. The six pilots must not depend on future `epoll` or `namespace` packages. For example, a caller passes the standard file underlying a memfd to `mmap`; `mmap` need not import `memfd`. Keep byte order, ABI layouts, and syscall plumbing private. Do not add a public descriptor superclass, generic options framework, or speculative helper package. Consolidate only repetition demonstrated by P01–P04.
-
-Put package documentation in `doc.go`. Exported identifier comments describe behavior, ownership, errors, feature requirements, and the relevant Linux interface. Package notes own included and omitted operations. These Go APIs have no HTTP or RPC transport; REST/AIP route conventions do not apply.
-
-### Ownership, lifetime, and concurrency
-
-Constructors return one owner with deterministic `Close`; create descriptors close-on-exec atomically. Close-on-exec has no initial opt-out: explicit child descriptor passing uses standard process-start facilities. Close every acquired intermediate resource when construction fails, preserving the primary error and reporting a cleanup error when material. Do not retry a Linux `close` after an error: its descriptor number may already have been reused.
-
-Creation and adoption APIs own failure cleanup. A function returning a newly owned resource returns no resource on error and releases everything it acquired or consumed before returning. Callers check the error, then arrange Close only for a successful result; they must not need an extra error-path Close. An operation on an already-owned resource leaves that existing owner responsible for its lifetime, including after an operation error. Borrowed inputs remain with their caller unless the operation explicitly consumes ownership.
-
-Passing a file into an operation borrows it only for the operation unless the method explicitly says otherwise. `Adopt` consumes exclusive ownership immediately, including on failure: the constructor closes rejected inputs and callers never need conditional cleanup after transfer. Do not use the input after calling Adopt. This user-selected P05 refinement supersedes the pilot's transfer-only-on-success rule. Duplication creates a separate descriptor owner, but shared open-file-description state remains shared. Never wrap the same live descriptor in two independent `os.File` owners. A borrowed file or descriptor must remain valid for the operation; use `SyscallConn.Control` for descriptor lifetime protection where applicable.
-
-Owned types are used through pointers and must not be copied after first use. Their zero value owns no resource; error-returning operations on it report `os.ErrInvalid`, and a slice view may return nil where documented. For successfully constructed descriptor resources, repeated close and operations after close match `os.ErrClosed` through `errors.Is`. Nil receiver support is not a separate promise. Do not rely on garbage collection for cleanup, and do not attach an automatic unmap finalizer to a mapping whose slice can escape.
-
-`memfd` ordinary file methods retain `os.File` concurrency guarantees. Counter and timer operations are intended to be safe concurrently, including close waking a poll-blocked operation with a closed error; this is a requirement for P02/P03 to verify, not F01 runtime evidence. Multiple readers compete for kernel records. Synchronizing individual calls does not make a sequence transactional. Mapping views require caller synchronization against protection changes and unmapping. Mount configuration sequences require caller serialization. P05 must document the interaction between multiple waiters, reaping, and close.
-
-User-selected API direction (2026-11-14): public APIs and examples should read like standard-library Go, with typed facility operations handling descriptor borrowing, duplication, polling, and Linux calls internally. Preserve Linux modes, flags, record boundaries, clocks, errors, and ownership rather than hiding their semantics. Keep SyscallConn, raw descriptor numbers/callbacks, and underlying resource fields out of the intended public surface. Embedding an os.File also exposes its raw methods, so an intentional boundary requires selecting the supported file operations. Test convenience alone does not justify a public inspection method or raw-access hook.
-
-Migration status (2026-11-14): the implemented resource types now keep descriptor access private. Counter, Timer, Process, mount.Config, and mount.Handle no longer implement syscall.Conn; memfd.File no longer embeds or exposes os.File. This intentional pre-v1 breaking change updates code, examples, tests, and package guides together. It does not claim new primary-target runtime acceptance.
-
-| Previous caller pattern | Typed replacement |
-| --- | --- |
-| Ordinary memfd I/O through the embedded file | Call File's selected standard Go I/O, metadata, sizing, copy, and Close methods directly |
-| `mmap.Map(file.File, ...)` or a memfd mapping callback | `file.Map(offset, length, mmap.Options{...})`; close the independent Region |
-| WithHandle + manual close-on-exec duplication + Adopt | `pidfd.OpenProcess(process)`; close its independent handle and retain the original wait owner |
-| Mount fstat/fstatfs callbacks | `handle.Stat()` and `handle.Attributes()` snapshots |
-| Application `unix.Unmount` cleanup | `mount.Unmount(path, 0)` or `mount.Unmount(path, mount.Detach)`; close handles separately |
-| Counter/timer raw I/O and polling callbacks | Typed record operations and Go I/O deadlines |
-
-Other raw integrations, including external epoll/producer registration and descriptor passing, need a concrete typed facility operation; there is no replacement raw escape hatch. Directory-only os.File methods accidentally promoted by memfd embedding are removed. mmap.Map continues borrowing a standard *os.File, and pidfd.Adopt still consumes one for low-level integrations; neither operation returns an underlying file.
-
-Each opaque owner stores its own unexported file *os.File field and calls it directly. No embedded alias, shared owner interface, registry, or descriptor accessor sits between the owner and its file. pidfd owns a separate private eventfd-backed file for its wakeup; lifetime pinning, cancellation, and cleanup remain local to pidfd. Public resource shapes and supported operations are unchanged. Focused ABI fixtures observe newly acquired descriptors through procfs while fixture cleanup keeps the owners live; they do not obtain private fields or synchronize concurrent Close. Concurrent lifetime behavior remains tested through typed public operations.
-
-Internally, use supported lifetime protection such as [RawConn.Control](https://pkg.go.dev/syscall@go1.27.4#RawConn). Do not close a borrowed descriptor, retain its number beyond the protected lifetime, or change shared status flags behind another owner. Duplicate under lifetime protection when independent ownership is required, and clean up failed acquisitions. Focused ABI/kernel checks may use independent syscall observations through internal test support; ordinary behavior tests should express the typed caller experience. These checks preserve real Linux evidence without making implementation access part of the public contract.
-
-### Byte I/O and typed helpers
-
-Expose standard interfaces only where their behavioral contracts fit. `memfd.File` reuses `os.File` methods rather than reimplementing streams, offsets, or sizing. Counter and timer reads preserve fixed eight-byte records in native byte order; a larger read buffer still consumes one record, and a smaller buffer, including zero length, is invalid. Use `encoding/binary.NativeEndian` for typed helpers, not `unsafe` casts. A byte `Read` count is a byte count; typed helper results are counter values or expiration counts.
-
-For eventfd, writes must contain exactly eight bytes on the Linux 7.0 baseline. Do not split or coalesce records. Invalid buffers and the forbidden all-ones write value fail without changing the counter. Standard `io.Writer` short-write errors must still be honored. Interface assertions supplement behavioral tests; they do not prove stream utilities are appropriate. In particular, `io.Copy` with arbitrary chunk sizes is not the counter protocol. References: [io contracts](https://pkg.go.dev/io@go1.27.4), [eventfd](https://man7.org/linux/man-pages/man2/eventfd.2.html), and the authoritative baseline [eventfd read/write implementation](https://github.com/torvalds/linux/blob/v7.0/fs/eventfd.c). The latter checks write length for equality, which is more precise than the manual's description of undersized writes.
-
-Keep the underlying `os.File` private for record descriptors. Its generic I/O can bypass a zero-length read and its writer can loop after a short write; a timer's exceptional zero-byte read must not accidentally become permanent EOF. Use supported raw callbacks where necessary to preserve one kernel operation and its result while retaining lifetime and polling support. This is a design inference from the inspected Go 1.27.4 `os/file_unix.go`, `os/rawconn.go`, and `internal/poll/fd_unix.go`; no private runtime calls are permitted.
-
-### Blocking, deadlines, and errors
-
-For pollable counter/timer descriptors, create with atomic nonblocking and close-on-exec flags, then use `os.NewFile` and its public polling integration. The intended public byte and typed operations wait like Go I/O, with deadlines and concurrent close; the internal descriptor being nonblocking does not imply public `EAGAIN` behavior. Before returning a constructor that promises deadlines, establish polling support, for example through a zero deadline probe, and clean up on failure. Do not silently fall back to a blocking syscall. See [NewFile](https://pkg.go.dev/os@go1.27.4#NewFile).
-
-Internal raw callbacks retry `EINTR` where the operation permits, return false only when readiness must be awaited, and preserve terminal syscall errors. Use `RawConn.Control` internally for a deliberate nonblocking syscall or an independent kernel observation; a test's need to inspect `EAGAIN` does not justify public raw access or a new `Try` family. Never hold a wrapper lock across a wait if close needs that lock to wake it. Implement polling/close tests before promising the behavior on a runner.
-
-Use `time.Duration` for relative intervals and `time.Time` for Go I/O deadlines. Those deadlines bound the I/O operation; they do not arm/disarm a kernel timer. A zero I/O deadline clears the deadline. Deadline errors must match `os.ErrDeadlineExceeded`. Do not offer deadlines for ordinary memory-backed files, mappings, mount configuration, or every syscall. Do not accept contexts until there is a tested cancellation mechanism that actually releases the pending operation.
-
-Preserve errno identity through `errors.Is`/`errors.As`. Prefer existing `*os.PathError` for file/path operations and `*os.SyscallError` for contextual syscall failures; reuse errors already supplied by `os.File`. Validation errors match `os.ErrInvalid` unless the documented kernel-shaped check promises `unix.EINVAL`. A new structured error is justified for additional information such as mount diagnostics, with `Unwrap` preserving its cause. Do not classify `EPERM`, `EINVAL`, or `ENOSYS` uniformly as unsupported: permissions, options, filtering, configuration, and kernel support differ. Preserve partial results and irreversible side effects explicitly; successful `Close` is not a promise to reverse prior operations.
-
-### Compatibility and feature policy
-
-Keep the plan's Linux 7.0 and Go 1.27.0 floors. Native Linux 7.0 CI execution is verified on arm64 and amd64 using the configured Go image; local newer-kernel execution and compilation remain separate evidence. Linux-specific files use appropriate build constraints; do not add non-Linux emulation stubs. A feature being defined in upstream 7.0 is different from it being permitted/configured on a runner. Compare operations against versioned upstream sources and probe actual prerequisites. Optional later flags carry explicit requirements and must never silently raise the floor or weaken a requested guarantee.
-
-The sketches may change during the owning package item, with reasons recorded in its design note and material changes in the plan. Once shipped, exported names/types, defaults, error matching, blocking/close behavior, and ownership are compatibility surfaces. Additive options keep zero-value behavior; do not change a requested flag into a weaker fallback. Before v1, record intentional breaks and migration consequences; v1 follows [Go module versioning](https://go.dev/doc/modules/version-numbers). Reassess the Go floor against the [Go support policy](https://go.dev/doc/devel/release#policy), without treating a policy check as minimum-toolchain execution.
-
-## Provisional pilot sketches
-
-The following tables are signature sketches, not compilable examples or exported declarations. Named types describe intended domain concepts; exact constants, integer backing types, and method sets are finalized and tested in the owning item. Each caller flow assumes checking errors after every operation and releasing each successfully acquired owner. No sketch below constitutes completed package acceptance.
-
-### P01: memfd
-
-P01 refines this provisional sketch in [memfd.md](memfd.md); that note and the package documentation own the implemented API. The plan records completed runtime acceptance on the available Linux 7.0 arm64 target.
-
-Caller flow: `memfd.New` → standard `Truncate`/`WriteAt`/`ReadAt` → `AddSeals` → `Close`. `File` forwards selected standard Go file operations and adds sealing and typed mapping. Its underlying file stays private; Map returns a separately owned Region.
-
-| Sketch | Contract |
-| --- | --- |
-| `New(name string, options Options) (*File, error)` | New empty memory-backed file; `Options.Executable` is an explicit opt-in, false by default |
-| `(*File).Seals() (Seals, error)` | Inspect the inode's seal bits, including bits not recognized by this version |
-| `(*File).AddSeals(seals Seals) error` | Apply a supported mask irreversibly; expose seal-further-sealing, shrink, grow, write, future-write, and execute controls with Go names |
-| File operations | Ordinary byte I/O, random access, seeking, metadata, sizing, copy, and Close; open-file deadlines report os.ErrNoDeadline |
-| `Map(offset, length, options)` | Borrow the private file with mmap.Map semantics; return an independently owned Region |
-
-Default creation requests `MFD_CLOEXEC | MFD_ALLOW_SEALING | MFD_NOEXEC_SEAL`; executable opt-in replaces `MFD_NOEXEC_SEAL` with `MFD_EXEC`. The default is intentionally sealable and non-executable, differing from raw zero flags; it begins with the execute seal implied by no-exec creation. Ordinary data remains writable until the caller seals it. Names are debugging labels, not paths. Preserve permission/configuration failures without retrying as executable.
-
-Initial omissions: huge-page allocation/size encodings and execution helpers. Huge-page and execute controls are already present in the selected baseline, not post-7.0 requirements; their extra policy/resource requirements are distinct from kernel age. No post-7.0 flag is initially promised. Inspect the exact chosen flags/seals against the [7.0 memfd header](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/memfd.h) and fcntl definitions during P01. References: [memfd_create](https://man7.org/linux/man-pages/man2/memfd_create.2.html), [seals](https://man7.org/linux/man-pages/man2/F_GET_SEALS.2const.html), and [non-executable memfd policy](https://docs.kernel.org/userspace-api/mfd_noexec.html). P01 must verify size/I/O, each included seal's failure behavior, lifecycle, and constructor cleanup without elevated privileges when permitted.
-
-### P02: eventfd
-
-P02 refines this sketch in [eventfd.md](eventfd.md), with a [package guide](../eventfd.md) and executable kernel tests. `Mode` is a `uint8` enum with `Default = 0` and `Semaphore = 1`. Descriptor access is internal; callers use typed record I/O and deadlines. Linux 7.0 arm64 CI and local Linux 7.3 amd64 execution verify polling, deadlines, and close interruption at both supported Go versions; the P02 primary-target runtime gap is closed. Deadline setters normalize Go's private closing error; internal control paths retain lifetime protection.
-
-Caller flow: create `eventfd.Counter`, optionally set a deadline, call `Add`, then consume `ReadValue`, and close. A private `os.File` supplies lifetime/polling; do not expose seek or file-copy methods that imply an arbitrary byte stream.
-
-| Sketch | Contract |
-| --- | --- |
-| `New(initial uint32, mode Mode) (*Counter, error)` | Zero mode is ordinary counter draining; the other supported mode is semaphore decrementing |
-| `(*Counter).Read(p []byte) (int, error)` | Consume one native-endian eight-byte record |
-| `(*Counter).Write(p []byte) (int, error)` | Add one encoded value; require exactly eight bytes |
-| `(*Counter).ReadValue() (uint64, error)` | Destructive read: drain the counter, or return one in semaphore mode |
-| `(*Counter).Add(value uint64) error` | Encode one addition; the all-ones value is invalid, and zero is allowed |
-| `Close`, `SetDeadline`, `SetReadDeadline`, `SetWriteDeadline` | Standard signatures and the polling/close requirements above |
-
-The initial value reflects the syscall's unsigned 32-bit input; subsequent values are 64-bit. Reads when the counter is zero and additions that would exceed the kernel's allowed counter range wait subject to deadlines. Do not implement typed reads by buffering partial records. Initial omissions: a raw-mode constructor, contexts, userspace event broadcasting, and wait-many orchestration. Prerequisites are permitted `eventfd2` and runtime polling, with no extra capabilities normally needed. P02 must verify both modes, invalid sizes/values without mutation, accumulation/draining, deadline expiry/reset, close interrupting blocked I/O, and actual nonblocking descriptor flags and empty-record EAGAIN through focused ABI observations. Reference: [eventfd](https://man7.org/linux/man-pages/man2/eventfd.2.html).
-
-### P03: timerfd
-
-Caller flow: `timerfd.New` for a named clock → `SetAfter` or `Now`/`SetAt` → `ReadExpirations` → `Disarm`/`Close`. `Clock` initially selects monotonic, realtime, or boottime; zero selects monotonic. The owner contains a private pollable file and implements `io.Reader`/`io.Closer`, without `io.Writer` or seek methods.
-
-| Sketch | Contract |
-| --- | --- |
-| `New(clock Clock) (*Timer, error)` | New disarmed timer using the selected clock |
-| `Now(clock Clock) (Instant, error)` | Query the same Linux clock used by absolute arming |
-| `Instant{Clock, Seconds, Nanoseconds}` | Tagged absolute clock reading; nanoseconds are normalized and the tag must match the timer |
-| `(*Timer).SetAfter(initial, interval time.Duration) (State, error)` | Relative first expiration and repeat interval; zero initial disarms; negative values fail |
-| `(*Timer).SetAt(deadline Instant, interval time.Duration, flags SetFlags) (State, error)` | Absolute arming; initial flags are zero or cancel-on-clock-set, the latter restricted to realtime absolute timers |
-| `(*Timer).State() (State, error)` and `Disarm() (State, error)` | Remaining duration and repeat interval; setters return the previous kernel state from the same operation |
-| `(*Timer).Read(p []byte) (int, error)` and `ReadExpirations() (uint64, error)` | Read an eight-byte native-endian expiration count |
-| `Close`, `SetReadDeadline` | Standard signatures; read deadlines bound reads independently of timer arming |
-
-An `Instant` is measured in its named Linux clock, not a Go `time.Time` with an inaccessible monotonic origin. Check conversion overflow and invalid timestamps; an all-zero absolute value follows the kernel's disarm semantics. P03 must define how an unrepresentable remaining duration is reported without wrapping it, including whether a setter has already taken effect before conversion of the old state fails. State inspection is not a transaction with concurrent arming/reads. Byte reads preserve cancellation errors and the exceptional zero-byte realtime clock-change result; typed reads must report that no count was obtained, provisionally with `io.ErrNoProgress`, rather than inventing an expiration or permanent EOF.
-
-Initial omissions: alarm clocks requiring wake capabilities, suspend/wakeup guarantees, clock adjustment, and checkpoint/restore tick injection. All three initial clocks and the proposed cancel flag predate the baseline, but remain subject to allowed syscalls. P03 needs tolerant one-shot/periodic assertions, relative and absolute arming for each clock, counts, disarming, invalid arguments, deadlines, and close behavior. Clock-jump cancellation and exceptional reads require a dedicated clock-controlled VM; keep that evidence pending until such a runner exists. Reference: [timerfd](https://man7.org/linux/man-pages/man2/timerfd_create.2.html).
-
-### P04: mmap
-
-Caller flow: borrow a standard file for `mmap.Map`, or call `Anonymous` → access `Bytes` within its lifetime → optional `Protect`/`Advise` → `Close`. A `Region` owns one mapping, not its source file, and implements `io.Closer`; it does not pretend to be a file or stream.
-
-| Sketch | Contract |
-| --- | --- |
-| `Map(file *os.File, offset int64, length int, options Options) (*Region, error)` | Borrow the file during mapping; positive explicit length and nonnegative page-aligned offset |
-| `Anonymous(length int, options Options) (*Region, error)` | No source descriptor; explicit shared/private mode |
-| `Options{Mode, Protection}` | Exclusive shared/private enum, zero meaning private; protection is a bitmask with zero meaning no access |
-| `(*Region).Bytes() []byte` | View of exactly the requested length, with capacity limited to that length; nil for zero/closed region |
-| `(*Region).Protect(protection Protection) error` | Change protection for the whole owned mapping |
-| `(*Region).Advise(advice Advice) error` | Whole-region normal/random/sequential/will-need/don't-need advice; document mode-specific effects |
-| `(*Region).Close() error` | Unmap the original complete mapping; a successful unmap invalidates all escaped views |
-
-File closure after a successful map does not invalidate it; file truncation can make access fault. Validate length, offset addition, protection bits, and enum values before mapping. Byte indexing/slicing has normal Go bounds behavior; page-rounded allocation does not grant access past the requested view. Callers must coordinate all view use against `Protect`, advice with content effects, and `Close`; no method can protect an escaped slice after unmap. A failed unmap must not falsely mark the region closed. Close does not promise disk durability or an implicit sync.
-
-Initial omissions: fixed-address mapping, remap, locking, huge pages, executable-memory workflows, and persistence helpers. P04 must verify sharing/private copies, anonymous access, invalid arguments, view bounds, cleanup, and source-file independence; protection/fault cases run in bounded subprocesses. References: [mmap/munmap](https://man7.org/linux/man-pages/man2/mmap.2.html), [mprotect](https://man7.org/linux/man-pages/man2/mprotect.2.html), and [madvise](https://man7.org/linux/man-pages/man2/madvise.2.html).
-
-### P05: pidfd
-
-Caller flow: open a process identity or adopt a descriptor → signal and/or observe readiness → optionally reap a child through its sole wait owner → close the descriptor. Prefer standard `os.Process` for ordinary subprocess management. This package adds a descriptor owner/readiness boundary, not an alternative process launcher.
-
-| Sketch | Contract |
-| --- | --- |
-| `Open(pid int) (*Process, error)` | Acquire a thread-group-leader pidfd; document the numeric-PID race before acquisition |
-| `Adopt(file *os.File) (*Process, error)` | Consume an existing file immediately and close it if validation or construction fails; callers never close the input after the call |
-| `(*Process).Signal(signal syscall.Signal) error` | Signal through the handle; preserve Linux permission and vanished-process errors |
-| `(*Process).WaitReady() error` | Observe exit readiness without consuming child status or promising reaping rights |
-| `(*Process).Wait() (Exit, error)` | Reap an eligible child with `waitid(P_PIDFD)`; `Exit` distinguishes normal code, terminating signal, and core-dump status |
-| `OpenProcess(*os.Process)` | Borrow the stable native handle and acquire independent ownership without PID lookup |
-| `Close` | Close releases the local descriptor, without killing or reaping the process |
-
-For a child already managed by `exec.Cmd`, leave reaping with `Cmd.Wait`; use only readiness observation here. Use `OpenProcess(*os.Process)` to obtain independent ownership from a stable standard-library handle; it performs protected close-on-exec duplication internally without a numeric-PID fallback. `SysProcAttr.PidFD` is another acquisition path to review for its ownership contract. Once acquired, a pidfd avoids subsequent PID-reuse targeting, but opening a numeric PID does not prove that it is the intended earlier process.
-
-P05 resolves the pilot in [docs/design/pidfd.md](pidfd.md): a private eventfd interrupts public poll waits without changing flags shared with os.Process handles. Wait combines readiness with WNOHANG child-status checks independently of P07. Concurrent observers, competing waiters, and external-reaper races have subprocess tests. No context or deadline API is promised. A non-child can be observed but cannot generally be reaped; ECHILD is retained. Adopt requires close-on-exec and checks pidfs identity plus thread/O_PATH flags without requiring signal permission or a live target. Remaining primary-target verification follow-ups are tracked in IMPLEMENTATION.md.
-
-Initial omissions: thread pidfds, process-group signaling modes, descriptor stealing with `pidfd_getfd`, and process creation. Readiness, same-user child signals, lifecycle, supported waits, and expected permission errors need subprocess tests. Cross-user success requires a suitable runner. References: [pidfd_open](https://man7.org/linux/man-pages/man2/pidfd_open.2.html), [pidfd_send_signal](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html), [waitid](https://man7.org/linux/man-pages/man2/waitid.2.html), and the [7.0 pidfd header](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/pidfd.h).
-
-### P06: mount
-
-Caller flow inside an isolated mount environment: `mount.Open("tmpfs")` → explicit configuration → `Create` → `Mount` to get a detached handle → set attributes/attach → close both local descriptors. Cloning an existing tree is a separate acquisition path. The caller owns namespace setup and attachment policy; the library does not enter a namespace implicitly.
-
-| Sketch | Contract |
-| --- | --- |
-| `Open(filesystem string) (*Config, error)` | Own a close-on-exec `fsopen` configuration context |
-| `(*Config).SetFlag(key string) error` and `SetString(key, value string) error` | Initial supported fsconfig parameter kinds; preserve distinctions instead of encoding a comma-separated option string |
-| `(*Config).Create() error` | Explicit `FSCONFIG_CMD_CREATE`; the kernel may reuse a filesystem instance |
-| `(*Config).Mount(attributes Attributes) (*Handle, error)` | Separate `fsmount` acquisition; the config remains caller-owned |
-| `(*Config).Diagnostics() ([]Diagnostic, error)` | Drain available severity/message records; preserve partial records and retrieval errors |
-| `Clone(dir *os.File, path string, flags CloneFlags) (*Handle, error)` | `open_tree` clone, with recursive cloning explicit; borrow the directory during the call |
-| `(*Handle).SetAttributes(change AttributeChange) error` | `mount_setattr` on the handle; explicit set/clear masks and recursive scope |
-| `(*Handle).Attach(dir *os.File, path string) error` | `move_mount` attachment; borrow target directory, retain handle ownership |
-| `Stat`, `Attributes` on Handle | Snapshot root metadata and the four supported restrictions, including while detached |
-| `Unmount(path, flags)` | Explicit normal or detached unmount; preserve open owners |
-| `Close` on both owners | Descriptor lifetime only; no deadline promise or automatic unmount of an attached mount |
-
-Initial mount attributes are read-only, nosuid, nodev, and noexec. Reject overlapping set/clear bits. Initial omissions: binary/path/fd configuration values, reconfiguration, ID mappings, propagation policy, atime field groups, namespace creation flags, exclusive filesystem-instance creation, forced/expiry unmount modes, and orchestration. These omissions bound the initial API; they do not imply that the corresponding facilities are newer than 7.0. `FSCONFIG_CMD_CREATE` is not an isolation guarantee for a unique superblock. Check the exact selections against the [7.0 mount UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/mount.h).
-
-P06 refines this sketch in the [mount design](mount.md) and [usage guide](../mount.md). Config methods automatically collect failure diagnostics while serialized, retaining the existing caller-owned context. Error.Unwrap preserves only the primary errno, with retrieval errors separate. Exact Linux 7.0 source inspection corrects the earlier undersized-read warning: EMSGSIZE retains the queued record. The producer uses dynamic formatting without a fixed message-size bound, so reads grow from 4 KiB to a documented 1 MiB allocation limit and preserve partial records/retrieval failure. The eight-entry queue remains lossy under producer overwrite. A failed attachment leaves the handle owned by the caller; successful attachment is not undone by closing it. Required mount jobs 195/192 at ae50d8d each pass all 39 mount events without failures/skips on actual Linux 7.0 arm64 at the two Go versions, completing P06. See the design's primary-source links and verification limits.
-
-Integration requires permitted user/mount namespace isolation with applicable `CAP_SYS_ADMIN`, a supported filesystem, and private mount propagation, or a dedicated isolated runner. Use a subprocess fixture before P15 exists. Verify configuration/creation, clone or attachment, attributes, failure diagnostics, and cleanup there; expected permission-denial coverage does not establish successful mounting.
-
-## External constraints and evidence still required
-
-| Constraint | Evidence as of F01 | Owning work |
-| --- | --- | --- |
-| Supported Go/kernel/architecture execution matrix | Local Go 1.27.4, Linux 7.3.4 amd64 observed; Go 1.27.0 and CircleCI runtime not executed here | F02 establishes runners and exact versions; R01 reconciles complete runtime coverage |
-| CircleCI isolation, capabilities, and kernel floor | Docker image/resource class are configuration, not proof of kernel or syscall availability | F02 probes actual execution; absent required runners stay outstanding |
-| Local syscall permission/configuration | UID 1000, empty effective/bounding capabilities, no-new-privileges and seccomp filter observed; no facility probes run | F02 prerequisite discovery and each P-item's operation-specific probes |
-| Polling/deadline/close behavior | Public Go integration is documented and local source inspected; no pilot descriptor runtime tests yet | P02/P03/P05 must prove their exact promised method behavior and constructor cleanup |
-| Baseline ABI versus current documentation | Selected versioned 7.0 sources inspected for memfd, eventfd, pidfd, and mount; no complete six-package ABI audit | Each P-item checks its exact flags/operations and pinned syscall version; R01 audits all packages |
-| Clock changes, wake alarms, huge pages | Clock-changing runner unavailable/uninspected; other special modes initially omitted | P03 records missing clock-jump evidence; later extensions require their own prerequisites |
-| Reaping, adoption, and diagnostics details | Ownership choices recorded; real external-reaper races, pidfd validation, and diagnostic-buffer sizing not yet implemented | P05/P06 resolve and verify before accepting those package APIs |
-| Dependency reproducibility | `go.mod` currently has no external requirements; references do not establish a usable dependency version | First syscall implementation pins `x/sys`; F02 owns reproducible setup/verification commands |
-
-F01 completion means the decisions, alternatives, provisional caller surfaces, and unresolved constraints are recorded and reviewed. It does not complete any P-series common-checklist requirement or remove any future runtime verification obligation.
+The support floor is Linux 7.0 and the Go version declared in [go.mod](../../go.mod). Check selected operations against versioned Linux sources; runner policy and filesystem support remain separate prerequisites. Newer optional features must not silently raise the floor. Preserve exported names, zero defaults, ownership, error matching, and blocking/close behavior as compatibility surfaces. Record necessary migrations with the affected usage documentation. Runtime results and open acceptance gaps belong to the verification guide and implementation plan, not to parallel status lists here.

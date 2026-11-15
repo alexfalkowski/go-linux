@@ -2,7 +2,7 @@
 
 `github.com/alexfalkowski/go-linux/epoll` provides explicit Linux readiness sets for standard `*os.File` sources. It requires Linux 7.0+, the Go version in `go.mod`, and permitted epoll, eventfd, and descriptor duplication operations. Ordinary use needs no extra capabilities. Continue using normal Go I/O and its runtime poller for ordinary file and network operations.
 
-P07 is complete on the available Linux 7.0 arm64 target at Go 1.27.0 and 1.27.4; The [verification guide](verification.md) records exact CI evidence. The [executable example](../epoll/example_test.go) demonstrates pipe readiness and one-shot rearming.
+The [executable example](../epoll/example_test.go) demonstrates pipe readiness and one-shot rearming. See the [verification guide](verification.md) for runner requirements and verified environments.
 
 ## Register, wait, and remove
 
