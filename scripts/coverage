@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Upload coverage from the Go image as the nonroot checkout owner.
+
+set -eo pipefail
+
+if [[ $# -ne 1 || -z $1 ]]; then
+  printf 'usage: make codecov-upload-container image=<tag>\n' >&2
+  exit 2
+fi
+
+if [[ $(id -u) == 0 ]]; then
+  printf 'coverage upload requires a nonroot invoking user\n' >&2
+  exit 2
+fi
+
+coverage_image=$1
+
+docker run --quiet --rm --init --user root \
+  --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+  --cap-add SETUID --cap-add SETGID --cap-add SETPCAP --cap-add KILL \
+  --security-opt no-new-privileges \
+  --mount "type=bind,src=$PWD,dst=/work" --workdir /work \
+  --env HOME=/home/circleci \
+  --env CI --env CIRCLECI --env CIRCLE_BRANCH --env CIRCLE_SHA1 \
+  --env CIRCLE_PROJECT_USERNAME --env CIRCLE_PROJECT_REPONAME \
+  --env CIRCLE_BUILD_NUM --env CIRCLE_BUILD_URL --env CIRCLE_JOB \
+  --env CIRCLE_PULL_REQUEST --env CIRCLE_PR_NUMBER --env CIRCLE_WORKFLOW_ID \
+  --env CODECOV_TOKEN \
+  -- "$coverage_image" bash -eo pipefail -c '
+    usermod --uid "$1" circleci
+    exec setpriv --reuid="$1" --regid="$2" --clear-groups \
+      --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
+      make codecov-upload
+  ' coverage "$(id -u)" "$(id -g)"

@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Run rootless verification with a pinned Moby syscall profile on a native Linux Docker host.
+
+set -eo pipefail
+
+if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
+  printf 'usage: make verify-rootless-container image=<tag> arch=<amd64|arm64> [package=<path>]\n' >&2
+  exit 2
+fi
+
+if [[ $(id -u) == 0 ]]; then
+  printf 'rootless verification requires a nonroot invoking user\n' >&2
+  exit 2
+fi
+
+rootless_image=$1
+rootless_arch=$2
+rootless_profile=$(mktemp "${TMPDIR:-/tmp}/go-linux-seccomp.XXXXXX")
+trap 'rm -f -- "$rootless_profile"' EXIT
+
+# This default allowlist includes all four xattr-at calls; pin both its source
+# revision and bytes so an upstream policy change cannot silently alter a run.
+# https://github.com/moby/profiles/blob/f862455628f78f84c937e967e4a03902fb1dee11/seccomp/default.json
+curl --fail --silent --show-error --location \
+  --output "$rootless_profile" \
+  https://raw.githubusercontent.com/moby/profiles/f862455628f78f84c937e967e4a03902fb1dee11/seccomp/default.json
+printf '%s  %s\n' 3320527d4568265ac97a077609b1bfd4cfd0d789eeb9239b7e094b1526675406 "$rootless_profile" | sha256sum --check --status
+
+printf 'executor=machine container=%s arch=%s privileged=false uid=%s seccomp=moby-f862455\n' "$rootless_image" "$rootless_arch" "$(id -u)"
+
+# Keep a root init for cross-UID permission checks and signal forwarding;
+# setpriv below removes every capability from the test process.
+docker run --quiet --rm --init --user root \
+  --cap-drop ALL --cap-add CHOWN --cap-add DAC_OVERRIDE --cap-add FOWNER \
+  --cap-add SETUID --cap-add SETGID --cap-add SETPCAP --cap-add KILL \
+  --security-opt no-new-privileges --security-opt "seccomp=$rootless_profile" \
+  --mount "type=bind,src=$PWD,dst=/work" --workdir /work \
+  --env HOME=/home/circleci \
+  --env package --env GO_LINUX_TEST_KERNEL \
+  -- "$rootless_image" \
+  bash -eo pipefail -c '
+    # Remap only the image home, outside /work, so the invoking UID can use
+    # preinstalled tools without changing ownership of the mounted checkout.
+    usermod --uid "$1" circleci
+    exec setpriv --reuid="$1" --regid="$2" --clear-groups \
+      --inh-caps=-all --ambient-caps=-all --bounding-set=-all \
+      make verify-rootless arch="$3" kernel="$GO_LINUX_TEST_KERNEL"
+  ' rootless "$(id -u)" "$(id -g)" "$rootless_arch"
