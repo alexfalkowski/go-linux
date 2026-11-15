@@ -15,6 +15,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests
 - [pidfd](docs/pidfd.md): process handles, signaling, exit observation, and eligible child reaping.
 - [mount](docs/mount.md): filesystem configuration, detached mount handles, cloning, attributes, and explicit attachment.
 - [epoll](docs/epoll.md): explicit readiness sets, stable registrations, trigger modes, and interruptible waits.
+- [file](docs/file.md): explicit path resolution, extended metadata, and atomic rename modes on standard files.
 
 ## 🚀 Setup
 

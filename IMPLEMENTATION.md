@@ -1,6 +1,6 @@
 # Linux APIs for Go: remaining implementation
 
-Next: **P08 — `file`**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
+Next: **P09 — `xattr`: extended attributes**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
 
 This file contains unfinished work only. Delete finished items and resolved gaps instead of marking them done. Keep a short resume note only while work is incomplete; replace it when circumstances change and remove it when finished. Do not append completed handoffs, historical command logs, resolved findings, or an archive of deleted entries.
 
@@ -33,15 +33,11 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 | Scope | Missing evidence | Required environment or next action |
 | --- | --- | --- |
-| Consolidated CI on arm64 and amd64 | Exact-revision runtime results from all six ordinary-user, mount, and clock-change jobs | Collect environment and test reports from both architectures of `build`, `build-mount`, and `build-timerfd`. Verify Linux 7.0+, native architecture, strict ordinary-user prerequisites, successful isolated mount operations, and real clock changes in the disposable clock-test VMs. Earlier results do not verify this workflow revision. |
-| R01 / `timerfd` discontinuous Realtime changes | New clock-change tests await execution: ECANCELED reads, successful rearming despite ECANCELED, and noncanceling reads across a backward jump. Defensive zero-byte/`io.ErrNoProgress` conversion remains source-reviewed; Linux 7.0 returns EAGAIN for the nonblocking zero-tick path. | Collect the `build-timerfd` VM results on both architectures. The explicit `clockchange` build tag and `clock_change=true` acknowledgment enable real CLOCK_REALTIME changes only for the separate verification command. Never run it on a shared host. |
 | R01 / `pidfd` positive core-dump status | Actual CLD_DUMPED and `CoreDump=true` on the Linux 7.0 arm64 target | A runner whose existing core policy produces CLD_DUMPED for the test-owned child. The current test compares with nonconsuming kernel status; CLD_KILLED verifies only the false flag. Do not change host core policy to force this case. |
 
 ## Remaining work
 
 ### Files and directories
-
-- **P08 — `file`: bounded Linux file extensions.** Compare against the chosen Go version's `os.File` and `os.Root` first. Implement explicit `openat2` resolution options and selected Linux metadata/rename extensions, starting with `statx` and `renameat2` capabilities that add value. Reuse standard file handles; record the exact included operations. **Acceptance:** temporary-directory tests cover resolution restrictions, symlinks, relevant rename modes, metadata masks, and errno preservation. No broad replacement of ordinary `os` file operations.
 
 - **P09 — `xattr`: extended attributes.** Implement get/set/list/remove with explicit descriptor/path/symlink behavior. Handle variable-sized results and concurrent size changes with bounded, documented retry behavior. Keep filesystem support failures observable. Compare baseline-supported at-style attribute APIs against older variants; choose the modern interface where it supplies the required semantics. **Acceptance:** real-filesystem tests cover round trips, create/replace modes, missing attributes, sizing races where reproducible, and supported symlink behavior. Features introduced after Linux 7.0 remain explicitly optional.
 
