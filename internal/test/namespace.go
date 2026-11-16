@@ -126,6 +126,43 @@ func NetworkNamespace(t *testing.T) bool {
 	return false
 }
 
+// NamespaceProcess runs a namespace API scenario in a bounded child with a
+// private mapped user namespace. The child alone may change thread membership;
+// operation failures after startup always fail. It uses the existing namespace
+// profile and required-prerequisite policy without probing by changing a parent
+// thread. Assertions about individual facilities belong to the caller.
+func NamespaceProcess(t *testing.T) bool {
+	t.Helper()
+	const marker = "namespace-isolated"
+	if os.Args[len(os.Args)-1] == marker {
+		require.Zero(t, os.Getuid(), "child must have its requested user mapping")
+		return true
+	}
+
+	options, err := testenv.FromEnvironment()
+	require.NoError(t, err)
+	if options.Profile != "namespaces" {
+		t.Skip("namespace transitions require profile=namespaces; add required=true to require prerequisites")
+	}
+
+	ctx, command := Command(t, t.Name(), "-test.v", "--", marker)
+	command.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags:  syscall.CLONE_NEWUSER,
+		UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},
+		GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}},
+	}
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err(), "namespace scenario exceeded its time bound")
+	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC) {
+		reason := "profile=namespaces operation=clone(user)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
+		require.False(t, options.Required, reason)
+		t.Skip(reason)
+	}
+	require.NoError(t, err, "isolated namespace scenario: %s", output)
+	t.Log(string(output))
+	return false
+}
+
 func mountPrerequisite(t *testing.T, operation string, err error) {
 	t.Helper()
 	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) {

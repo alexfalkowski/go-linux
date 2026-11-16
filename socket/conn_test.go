@@ -422,60 +422,104 @@ func TestZeroAndClosedSocketsRejectOperations(t *testing.T) {
 	}
 }
 
-func TestInvalidInputsDoNotAcquireResourcesOrConsumeMessages(t *testing.T) {
-	a, b := test.MessagePair(t, socket.Datagram)
-	before := test.DescriptorCount(t)
+func TestInvalidSocketConstructorsReturnNoOwners(t *testing.T) {
+	before := test.Descriptors(t)
+
 	x, y, err := socket.Pair(socket.Kind(-1))
 	require.ErrorIs(t, err, os.ErrInvalid)
 	require.Nil(t, x)
 	require.Nil(t, y)
 
-	for _, name := range []string{"", "bad\x00path", strings.Repeat("x", 108)} {
-		conn, err := socket.ListenUnix(socket.UnixAddress{Name: name})
-		test.NoResource(t, conn, err, os.ErrInvalid)
-	}
-	for _, name := range []string{"", "\x00abstract", "@bad\x00path", strings.Repeat("x", 109)} {
-		address := socket.UnixAddress{Name: name, Pathname: true}
-		conn, err := socket.ListenUnix(address)
-		test.NoResource(t, conn, err, os.ErrInvalid)
-
-		_, err = a.Send([]byte("invalid"), address)
-		require.ErrorIs(t, err, os.ErrInvalid)
-	}
-
 	conn, err := socket.OpenNetlink(-1, socket.NetlinkAddress{})
 	test.NoResource(t, conn, err, os.ErrInvalid)
+	require.Equal(t, before, test.Descriptors(t), "failed constructors must release every descriptor")
+}
 
-	_, err = a.Send(nil, socket.NetlinkAddress{})
+func TestListenUnixRejectsInvalidAddresses(t *testing.T) {
+	before := test.Descriptors(t)
+	for name, address := range map[string]socket.UnixAddress{
+		"empty":             {},
+		"NUL in path":       {Name: "bad\x00path"},
+		"long path":         {Name: strings.Repeat("x", 108)},
+		"empty literal":     {Pathname: true},
+		"NUL in literal":    {Name: "\x00abstract", Pathname: true},
+		"NUL after at sign": {Name: "@bad\x00path", Pathname: true},
+		"long literal":      {Name: strings.Repeat("x", 109), Pathname: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			conn, err := socket.ListenUnix(address)
+			test.NoResource(t, conn, err, os.ErrInvalid)
+		})
+	}
+	require.Equal(t, before, test.Descriptors(t), "invalid addresses must not retain descriptors")
+}
+
+func TestSendRejectsWrongAddressTypes(t *testing.T) {
+	sender, _ := test.MessagePair(t, socket.Datagram)
+	before := test.DescriptorCount(t)
+
+	_, err := sender.Send(nil, socket.NetlinkAddress{})
+	require.ErrorIs(t, err, os.ErrInvalid)
+	_, err = sender.Send(nil, &socket.UnixAddress{Name: "@test"})
 	require.ErrorIs(t, err, os.ErrInvalid)
 
-	_, err = a.Send(nil, &socket.UnixAddress{Name: "@test"})
-	require.ErrorIs(t, err, os.ErrInvalid)
+	require.Equal(t, before, test.DescriptorCount(t), "invalid address types must not retain descriptors")
+}
 
-	require.ErrorIs(t, a.SetReadBuffer(0), os.ErrInvalid)
-	require.ErrorIs(t, a.SetWriteBuffer(-1), os.ErrInvalid)
+func TestSendRejectsInvalidUnixDestinations(t *testing.T) {
+	sender, _ := test.MessagePair(t, socket.Datagram)
+	before := test.DescriptorCount(t)
+	for name, address := range map[string]socket.UnixAddress{
+		"empty literal":     {Pathname: true},
+		"NUL in literal":    {Name: "\x00abstract", Pathname: true},
+		"NUL after at sign": {Name: "@bad\x00path", Pathname: true},
+		"long literal":      {Name: strings.Repeat("x", 109), Pathname: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := sender.Send([]byte("invalid"), address)
+			require.ErrorIs(t, err, os.ErrInvalid)
+		})
+	}
+	require.Equal(t, before, test.DescriptorCount(t), "failed sends must not retain descriptors")
+}
 
-	require.ErrorIs(t, a.JoinGroup(1), os.ErrInvalid)
-	require.ErrorIs(t, a.LeaveGroup(1), os.ErrInvalid)
+func TestSocketBufferSizesMustBePositive(t *testing.T) {
+	conn, _ := test.MessagePair(t, socket.Datagram)
+	before := test.DescriptorCount(t)
 
-	require.ErrorIs(t, a.SetExtendedAck(true), os.ErrInvalid)
+	require.ErrorIs(t, conn.SetReadBuffer(0), os.ErrInvalid)
+	require.ErrorIs(t, conn.SetWriteBuffer(-1), os.ErrInvalid)
+	require.Equal(t, before, test.DescriptorCount(t), "invalid buffer sizes must not retain descriptors")
+}
 
-	require.ErrorIs(t, a.SetCapAck(true), os.ErrInvalid)
+func TestUnixSocketsRejectNetlinkOptions(t *testing.T) {
+	conn, _ := test.MessagePair(t, socket.Datagram)
+	before := test.DescriptorCount(t)
 
-	require.ErrorIs(t, a.SetStrictCheck(true), os.ErrInvalid)
+	require.ErrorIs(t, conn.JoinGroup(1), os.ErrInvalid)
+	require.ErrorIs(t, conn.LeaveGroup(1), os.ErrInvalid)
+	require.ErrorIs(t, conn.SetExtendedAck(true), os.ErrInvalid)
+	require.ErrorIs(t, conn.SetCapAck(true), os.ErrInvalid)
+	require.ErrorIs(t, conn.SetStrictCheck(true), os.ErrInvalid)
+	require.Equal(t, before, test.DescriptorCount(t), "invalid socket options must not retain descriptors")
+}
 
-	_, err = a.Send([]byte("keep"), nil)
+func TestInvalidReceiveLimitsLeaveMessageQueued(t *testing.T) {
+	sender, receiver := test.MessagePair(t, socket.Datagram)
+	before := test.DescriptorCount(t)
+	_, err := sender.Send([]byte("keep"), nil)
 	require.NoError(t, err)
 
 	for _, limit := range []int{-1, 254} {
-		_, err := b.Receive(nil, limit)
+		_, err := receiver.Receive(nil, limit)
 		require.ErrorIs(t, err, os.ErrInvalid)
 	}
 
-	message, err := b.Receive(make([]byte, 8), 0)
+	buffer := make([]byte, 8)
+	message, err := receiver.Receive(buffer, 0)
 	require.NoError(t, err)
-	require.Equal(t, 4, message.N, "invalid limits must not consume a message")
-	require.Equal(t, before, test.DescriptorCount(t), "invalid inputs must not leak descriptors")
+	require.Equal(t, "keep", string(buffer[:message.N]), "invalid limits must leave the message intact")
+	require.Equal(t, before, test.DescriptorCount(t), "invalid limits must not retain descriptors")
 }
 
 func TestSocketCreationAndPairFailureReleaseAcquiredDescriptors(t *testing.T) {

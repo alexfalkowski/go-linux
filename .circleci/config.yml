@@ -80,6 +80,25 @@ jobs:
           root: /tmp/go-linux-reports
           paths:
             - netlink-<< parameters.arch >>
+  build-namespace:
+    parameters:
+      arch:
+        type: enum
+        enum: [arm64, amd64]
+    executor: go-<< parameters.arch >>
+    working_directory: ~/go-linux
+    steps:
+      - checkout-submodules
+      - run: make verify-namespace-container image="$GO_LINUX_CI_IMAGE" arch=<< parameters.arch >> kernel=7.0
+      - store_test_results:
+          path: test/reports
+      - store_artifacts:
+          path: test/reports
+      - run: make coverage-workspace-stage partition=namespace-<< parameters.arch >>
+      - persist_to_workspace:
+          root: /tmp/go-linux-reports
+          paths:
+            - namespace-<< parameters.arch >>
   build-mount:
     parameters:
       arch:
@@ -186,6 +205,11 @@ workflows:
           matrix:
             parameters:
               arch: [arm64, amd64]
+      - build-namespace:
+          name: build-namespace-<< matrix.arch >>
+          matrix:
+            parameters:
+              arch: [arm64, amd64]
       - build-mount:
           name: build-mount-<< matrix.arch >>
           matrix:
@@ -205,6 +229,7 @@ workflows:
           requires:
             - build
             - build-netlink
+            - build-namespace
             - build-mount
             - build-fanotify
             - build-timerfd

@@ -60,3 +60,18 @@ func RouteLink(t *testing.T, conn *route.Conn, name string) route.Link {
 	require.FailNow(t, "interface missing", name)
 	return route.Link{}
 }
+
+// RouteAddress observes an address identified by its interface and prefix.
+// Other configuration fields remain for the scenario's behavioral assertions.
+func RouteAddress(t *testing.T, conn *route.Conn, family route.Family, config route.AddressConfig) route.Address {
+	t.Helper()
+	addresses, err := conn.Addresses(family)
+	require.NoError(t, err)
+	for _, address := range addresses {
+		if address.Index == config.Index && address.Prefix == config.Prefix {
+			return address
+		}
+	}
+	require.FailNow(t, "address missing", config.Prefix)
+	return route.Address{}
+}

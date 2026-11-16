@@ -93,3 +93,6 @@ const ErrNoProcess = syscall.ESRCH
 
 // ErrCrossDevice preserves Linux EXDEV for exact error assertions.
 const ErrCrossDevice = syscall.EXDEV
+
+// ErrTooManyUsers preserves Linux EUSERS for time-namespace thread restrictions.
+const ErrTooManyUsers = syscall.EUSERS
