@@ -73,6 +73,59 @@ func MountNamespace(t *testing.T) bool {
 	return false
 }
 
+// NetworkNamespace runs the current test in a bounded child with private user
+// and network namespaces. It follows MountNamespace's profile/required policy;
+// true means only the child may perform network mutations. No thread in the
+// parent enters another namespace.
+func NetworkNamespace(t *testing.T) bool {
+	t.Helper()
+
+	const prefix = "network-isolated="
+	if argument := os.Args[len(os.Args)-1]; strings.HasPrefix(argument, prefix) {
+		current, err := os.Readlink("/proc/self/ns/net")
+		require.NoError(t, err)
+		require.NotEqual(t, strings.TrimPrefix(argument, prefix), current, "network mutations require a private namespace")
+		require.Zero(t, os.Getuid(), "child must have its requested user mapping")
+		t.Cleanup(func() {
+			if !t.Failed() {
+				t.Log("verified isolated network operations")
+			}
+		})
+		return true
+	}
+
+	options, err := testenv.FromEnvironment()
+	require.NoError(t, err)
+	if options.Profile != "namespaces" {
+		t.Skip("network integration requires profile=namespaces; add required=true to require its prerequisites")
+	}
+	before, err := os.Readlink("/proc/self/ns/net")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		after, err := os.Readlink("/proc/self/ns/net")
+		require.NoError(t, err)
+		require.Equal(t, before, after, "parent network namespace must remain unchanged")
+	})
+
+	ctx, command := Command(t, t.Name(), "-test.v", "--", prefix+before)
+	command.SysProcAttr = &syscall.SysProcAttr{
+		Cloneflags:  syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
+		UidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getuid(), Size: 1}},
+		GidMappings: []syscall.SysProcIDMap{{ContainerID: 0, HostID: os.Getgid(), Size: 1}},
+	}
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err(), "isolated network test exceeded its time bound")
+	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC) {
+		reason := "profile=namespaces operation=clone(user,network)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
+		require.False(t, options.Required, reason)
+		t.Skip(reason)
+	}
+	require.NoError(t, err, "isolated network test: %s", output)
+	require.Contains(t, string(output), "verified isolated network operations")
+	t.Log(string(output))
+	return false
+}
+
 func mountPrerequisite(t *testing.T, operation string, err error) {
 	t.Helper()
 	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) {

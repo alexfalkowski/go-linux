@@ -13,7 +13,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
@@ -21,7 +20,6 @@ import (
 	"github.com/alexfalkowski/go-linux/internal/testenv"
 	"github.com/alexfalkowski/go-linux/pidfd"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var _ io.Closer = (*pidfd.Process)(nil)
@@ -51,9 +49,9 @@ func TestExitObservationIsRepeatableAndLeavesReapingToTheCaller(t *testing.T) {
 	require.NoError(t, process.WaitReady(), "a reaped target remains exit-ready")
 
 	_, err = process.Wait()
-	require.ErrorIs(t, err, unix.ECHILD)
+	require.ErrorIs(t, err, test.ErrNoChild)
 
-	require.ErrorIs(t, process.Signal(0), unix.ESRCH)
+	require.ErrorIs(t, process.Signal(0), test.ErrNoProcess)
 }
 
 func TestWaitingReturnsAndConsumesTheChildExitCode(t *testing.T) {
@@ -83,7 +81,7 @@ func TestWaitingReturnsAndConsumesTheChildExitCode(t *testing.T) {
 			require.Equal(t, pidfd.Exit{Code: int(code)}, got.exit)
 
 			_, err = process.Wait()
-			require.ErrorIs(t, err, unix.ECHILD, "status is consumed once")
+			require.ErrorIs(t, err, test.ErrNoChild, "status is consumed once")
 
 			require.NoError(t, child.Release(), "release the standard-library owner after pidfd reaping")
 		})
@@ -95,13 +93,13 @@ func TestSignalsTerminateTheChildAndPreserveItsExitStatus(t *testing.T) {
 	process := test.Process(t, child.Pid)
 
 	require.NoError(t, process.Signal(0), "signal zero must check a live same-user target")
-	require.NoError(t, process.Signal(syscall.SIGKILL))
+	require.NoError(t, process.Signal(test.KillSignal))
 
 	exit, err := process.Wait()
 	require.NoError(t, err)
-	require.Equal(t, pidfd.Exit{Code: -1, Signal: syscall.SIGKILL}, exit)
+	require.Equal(t, pidfd.Exit{Code: -1, Signal: test.KillSignal}, exit)
 
-	require.ErrorIs(t, process.Signal(0), unix.ESRCH)
+	require.ErrorIs(t, process.Signal(0), test.ErrNoProcess)
 
 	require.NoError(t, child.Release())
 }
@@ -128,7 +126,7 @@ func TestWaitingPreservesTheKernelCoreDumpStatus(t *testing.T) {
 	// stdout/stderr pipes, and Cmd.Wait below is only fixture cleanup.
 	exit, err := process.Wait()
 	require.NoError(t, err)
-	require.Equal(t, pidfd.Exit{Code: -1, Signal: syscall.SIGABRT, CoreDump: coreDump}, exit)
+	require.Equal(t, pidfd.Exit{Code: -1, Signal: test.AbortSignal, CoreDump: coreDump}, exit)
 }
 
 func TestConcurrentObserversShareReadinessAndOnlyOneWaiterReaps(t *testing.T) {
@@ -162,7 +160,7 @@ func TestConcurrentObserversShareReadinessAndOnlyOneWaiterReaps(t *testing.T) {
 		require.NoError(t, test.Receive(t, observers))
 
 		if err := test.Receive(t, waiters); err != nil {
-			require.ErrorIs(t, err, unix.ECHILD)
+			require.ErrorIs(t, err, test.ErrNoChild)
 		} else {
 			successes++
 		}
@@ -175,18 +173,18 @@ func TestConcurrentObserversShareReadinessAndOnlyOneWaiterReaps(t *testing.T) {
 
 func TestClosingAHandleInterruptsWaitersWithoutKillingTheChild(t *testing.T) {
 	for _, scenario := range []struct {
-		name  string
-		flags int
-		reap  bool
+		name        string
+		nonblocking bool
+		reap        bool
 	}{
 		{name: "blocking handle waiting for readiness"},
 		{name: "blocking handle waiting for child status", reap: true},
-		{name: "nonblocking handle waiting for readiness", flags: unix.PIDFD_NONBLOCK},
-		{name: "nonblocking handle waiting for child status", flags: unix.PIDFD_NONBLOCK, reap: true},
+		{name: "nonblocking handle waiting for readiness", nonblocking: true},
+		{name: "nonblocking handle waiting for child status", nonblocking: true, reap: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			child, _ := test.Child(t)
-			process, err := pidfd.Adopt(test.Pidfd(t, child.Pid, scenario.flags))
+			process, err := pidfd.Adopt(test.Pidfd(t, child.Pid, scenario.nonblocking))
 			require.NoError(t, err)
 			test.Cleanup(t, process)
 
@@ -209,7 +207,7 @@ func TestClosingAHandleInterruptsWaitersWithoutKillingTheChild(t *testing.T) {
 				require.ErrorIs(t, test.Receive(t, results), os.ErrClosed)
 			}
 
-			require.NoError(t, child.Signal(syscall.Signal(0)), "closing the handle must leave its live child alone")
+			require.NoError(t, test.SignalZero(child), "closing the handle must leave its live child alone")
 		})
 	}
 }
@@ -217,7 +215,7 @@ func TestClosingAHandleInterruptsWaitersWithoutKillingTheChild(t *testing.T) {
 func TestWaitingForANonChildReturnsECHILDImmediately(t *testing.T) {
 	process := test.Process(t, os.Getpid())
 	exit, err := process.Wait()
-	require.ErrorIs(t, err, unix.ECHILD, "a live non-child must fail without waiting for its exit")
+	require.ErrorIs(t, err, test.ErrNoChild, "a live non-child must fail without waiting for its exit")
 	require.Equal(t, pidfd.Exit{}, exit)
 }
 
@@ -229,7 +227,7 @@ func TestNonChildExitCanBeObservedWithoutReapingIt(t *testing.T) {
 		process := test.Process(t, id)
 
 		_, err = process.Wait()
-		require.ErrorIs(t, err, unix.ECHILD, "the sibling process is not this observer's child")
+		require.ErrorIs(t, err, test.ErrNoChild, "the sibling process is not this observer's child")
 
 		_, err = os.Stdout.Write([]byte{1})
 		require.NoError(t, err)
@@ -284,9 +282,9 @@ func TestCompetingReapersConsumeChildStatusExactlyOnce(t *testing.T) {
 
 		first, second := test.Receive(t, waited), test.Receive(t, external)
 		if first == nil {
-			require.ErrorIs(t, second, unix.ECHILD)
+			require.ErrorIs(t, second, test.ErrNoChild)
 		} else {
-			require.ErrorIs(t, first, unix.ECHILD)
+			require.ErrorIs(t, first, test.ErrNoChild)
 			require.NoError(t, second)
 		}
 
@@ -296,22 +294,22 @@ func TestCompetingReapersConsumeChildStatusExactlyOnce(t *testing.T) {
 
 func TestAdoptionPreservesDescriptorFlagsAndTransfersOwnership(t *testing.T) {
 	for _, scenario := range []struct {
-		name  string
-		flags int
+		name        string
+		nonblocking bool
 	}{
 		{name: "blocking descriptor"},
-		{name: "nonblocking descriptor", flags: unix.PIDFD_NONBLOCK},
+		{name: "nonblocking descriptor", nonblocking: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			child, input := test.Child(t)
-			file := test.Pidfd(t, child.Pid, scenario.flags)
+			file := test.Pidfd(t, child.Pid, scenario.nonblocking)
 			before := test.FileFlags(t, file)
 			fd := test.FileDescriptor(t, file)
 			process, err := pidfd.Adopt(file)
 			require.NoError(t, err)
 			test.Cleanup(t, process)
 
-			after := test.Fcntl(t, fd, unix.F_GETFL)
+			after := test.DescriptorFlags(t, fd)
 			require.Equal(t, before, after, "adoption must not change the shared open-file description")
 
 			require.NoError(t, process.Signal(0))
@@ -356,7 +354,7 @@ func TestOpeningAProcessPreservesStandardLibraryWaiting(t *testing.T) {
 
 	require.NoError(t, test.Receive(t, managed), "borrowing must preserve concurrent Cmd.Wait behavior")
 
-	require.ErrorIs(t, process.Signal(0), unix.ESRCH)
+	require.ErrorIs(t, process.Signal(0), test.ErrNoProcess)
 }
 
 func TestOpeningAProcessCreatesIndependentOwnership(t *testing.T) {
@@ -390,7 +388,7 @@ func TestOpeningAProcessCreatesIndependentOwnership(t *testing.T) {
 
 			require.NoError(t, process.Close())
 
-			require.NoError(t, source.Signal(syscall.Signal(0)))
+			require.NoError(t, test.SignalZero(source))
 		})
 	}
 }
@@ -436,7 +434,7 @@ func TestOpeningAnUnavailableProcessReturnsNoHandle(t *testing.T) {
 
 func TestAdoptionAcceptsHandlesWhoseTargetWasAlreadyReaped(t *testing.T) {
 	child, input := test.Child(t)
-	file := test.Pidfd(t, child.Pid, 0)
+	file := test.Pidfd(t, child.Pid, false)
 
 	_, err := input.Write([]byte{0})
 	require.NoError(t, err)
@@ -450,30 +448,25 @@ func TestAdoptionAcceptsHandlesWhoseTargetWasAlreadyReaped(t *testing.T) {
 
 	require.NoError(t, process.WaitReady())
 
-	require.ErrorIs(t, process.Signal(0), unix.ESRCH)
+	require.ErrorIs(t, process.Signal(0), test.ErrNoProcess)
 
 	_, err = process.Wait()
-	require.ErrorIs(t, err, unix.ECHILD)
+	require.ErrorIs(t, err, test.ErrNoChild)
 }
 
 func TestAdoptingAStartupDescriptorLeavesGoWithItsOwnHandle(t *testing.T) {
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
-	fd := -1
 	command := exec.CommandContext(ctx, "/bin/cat")
-	command.SysProcAttr = &syscall.SysProcAttr{PidFD: &fd}
-	input := test.StartWithInput(t, command)
-	require.NotEqual(t, -1, fd, "startup must return an independent pidfd")
-
-	file := os.NewFile(uintptr(fd), "startup-pidfd")
+	file, input := test.StartWithPidfd(t, command)
 	process, err := pidfd.Adopt(file)
 	require.NoError(t, err)
 	test.Cleanup(t, process)
 
 	require.NoError(t, process.Close())
 
-	require.NoError(t, command.Process.Signal(syscall.Signal(0)), "Go must own a separate startup handle")
+	require.NoError(t, test.SignalZero(command.Process), "Go must own a separate startup handle")
 
 	require.NoError(t, input.Close())
 
@@ -512,7 +505,7 @@ func TestInvalidProcessIDsReturnNoHandle(t *testing.T) {
 
 func TestMissingProcessesReturnESRCH(t *testing.T) {
 	process, err := pidfd.Open(math.MaxInt32)
-	test.NoResource(t, process, err, unix.ESRCH)
+	test.NoResource(t, process, err, test.ErrNoProcess)
 
 	var pathErr *os.PathError
 	require.ErrorAs(t, err, &pathErr)
@@ -523,7 +516,7 @@ func TestInvalidSignalsPreserveEINVAL(t *testing.T) {
 	process := test.Process(t, os.Getpid())
 	for _, scenario := range []struct {
 		name   string
-		signal syscall.Signal
+		signal test.Signal
 	}{
 		{name: "negative signal", signal: -1},
 		{name: "signal exceeds the kernel range", signal: 65},
@@ -531,11 +524,10 @@ func TestInvalidSignalsPreserveEINVAL(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			err := process.Signal(scenario.signal)
-			require.ErrorIs(t, err, unix.EINVAL)
+			require.ErrorIs(t, err, test.ErrInvalidArgument)
 
-			var errno syscall.Errno
-			require.ErrorAs(t, err, &errno)
-			require.Equal(t, unix.EINVAL, errno)
+			errno := test.ErrorNumber(t, err)
+			require.Equal(t, test.ErrInvalidArgument, errno)
 		})
 	}
 }
@@ -630,7 +622,7 @@ func TestCreatedProcessDescriptorsAreClosedOnExecAndWakeIsNonblocking(t *testing
 
 	test.CloseOnExec(t, pid)
 	test.CloseOnExec(t, wake)
-	require.NotZero(t, test.Fcntl(t, wake, unix.F_GETFL)&unix.O_NONBLOCK, "close interruption must use a nonblocking wake descriptor")
+	require.True(t, test.DescriptorNonblocking(t, wake), "close interruption must use a nonblocking wake descriptor")
 }
 
 func TestClosingProcessHandlesReleasesAllDescriptors(t *testing.T) {
@@ -649,11 +641,9 @@ func TestSignalZeroRejectsAnUnpermittedDifferentUserProcess(t *testing.T) {
 	// Only signal zero is used against this different-UID target. Actual
 	// delivery, success under cross-user capabilities, and PID 1 lifecycle
 	// are outside the test. Missing prerequisites skip only when optional.
-	var stat unix.Stat_t
+	uid := test.ProcessUID(t, 1)
 
-	require.NoError(t, unix.Stat("/proc/1", &stat))
-
-	if os.Getuid() == 0 || int64(stat.Uid) == int64(os.Getuid()) {
+	if os.Getuid() == 0 || int64(uid) == int64(os.Getuid()) {
 		options, err := testenv.FromEnvironment()
 		require.NoError(t, err)
 
@@ -665,10 +655,10 @@ func TestSignalZeroRejectsAnUnpermittedDifferentUserProcess(t *testing.T) {
 
 	process := test.Process(t, 1)
 
-	require.ErrorIs(t, process.Signal(0), unix.EPERM)
+	require.ErrorIs(t, process.Signal(0), test.ErrOperationNotPermitted)
 
 	_, err := process.Wait()
-	require.ErrorIs(t, err, unix.ECHILD)
+	require.ErrorIs(t, err, test.ErrNoChild)
 }
 
 func TestFailedProcessAcquisitionCleansUpEveryConsumedDescriptor(t *testing.T) {
@@ -709,7 +699,7 @@ func checkConstructionFailure(t *testing.T, scenario string) {
 	}
 
 	if scenario == "adopt" {
-		source = test.Pidfd(t, os.Getpid(), 0)
+		source = test.Pidfd(t, os.Getpid(), false)
 	}
 
 	freeSlot := test.ExhaustDescriptors(t)
@@ -724,8 +714,8 @@ func checkConstructionFailure(t *testing.T, scenario string) {
 		}
 
 		process, err := pidfd.OpenProcess(standard)
-		test.NoResource(t, process, err, unix.EMFILE)
-		require.NoError(t, standard.Signal(syscall.Signal(0)), "acquisition must leave the borrowed process usable")
+		test.NoResource(t, process, err, test.ErrTooManyOpenFiles)
+		require.NoError(t, test.SignalZero(standard), "acquisition must leave the borrowed process usable")
 
 		if free >= 0 {
 			require.Equal(t, free, test.DescriptorSlot(t))
@@ -734,11 +724,11 @@ func checkConstructionFailure(t *testing.T, scenario string) {
 		free := freeSlot()
 		process, err := pidfd.Open(os.Getpid())
 		require.Nil(t, process)
-		require.ErrorIs(t, err, unix.EMFILE, "pidfd succeeds but the private eventfd must fail")
+		require.ErrorIs(t, err, test.ErrTooManyOpenFiles, "pidfd succeeds but the private eventfd must fail")
 		require.Equal(t, free, test.DescriptorSlot(t))
 	default:
 		process, err := pidfd.Adopt(source)
-		test.NoResource(t, process, err, unix.EMFILE)
+		test.NoResource(t, process, err, test.ErrTooManyOpenFiles)
 
 		_, err = source.Stat()
 		require.ErrorIs(t, err, os.ErrClosed, "failed Adopt must close its consumed input")

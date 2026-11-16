@@ -10,14 +10,12 @@ import (
 	"math"
 	"os"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/alexfalkowski/go-linux/eventfd"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var _ io.ReadWriteCloser = (*eventfd.Counter)(nil)
@@ -73,7 +71,7 @@ func TestShortReadsFailWithoutConsumingTheCount(t *testing.T) {
 			counter := test.Counter(t, 5, eventfd.Default)
 			n, err := counter.Read(make([]byte, size))
 			require.Zero(t, n)
-			require.ErrorIs(t, err, unix.EINVAL)
+			require.ErrorIs(t, err, test.ErrInvalidArgument)
 
 			require.Equal(t, uint64(5), test.Value(t, counter.ReadValue), "invalid reads must not consume the counter")
 		})
@@ -86,7 +84,7 @@ func TestWrongSizedWritesFailWithoutChangingTheCount(t *testing.T) {
 			counter := test.Counter(t, 5, eventfd.Default)
 			n, err := counter.Write(make([]byte, size))
 			require.Zero(t, n)
-			require.ErrorIs(t, err, unix.EINVAL)
+			require.ErrorIs(t, err, test.ErrInvalidArgument)
 
 			var pathErr *os.PathError
 			require.ErrorAs(t, err, &pathErr)
@@ -99,17 +97,16 @@ func TestWrongSizedWritesFailWithoutChangingTheCount(t *testing.T) {
 
 func TestMaximumUint64AdditionsFailWithoutChangingTheCount(t *testing.T) {
 	counter := test.Counter(t, 5, eventfd.Default)
-	require.ErrorIs(t, counter.Add(math.MaxUint64), unix.EINVAL)
+	require.ErrorIs(t, counter.Add(math.MaxUint64), test.ErrInvalidArgument)
 
 	var record [8]byte
 	binary.NativeEndian.PutUint64(record[:], math.MaxUint64)
 	n, err := counter.Write(record[:])
 	require.Zero(t, n)
-	require.ErrorIs(t, err, unix.EINVAL)
+	require.ErrorIs(t, err, test.ErrInvalidArgument)
 
-	var errno syscall.Errno
-	require.ErrorAs(t, err, &errno)
-	require.Equal(t, unix.EINVAL, errno)
+	errno := test.ErrorNumber(t, err)
+	require.Equal(t, test.ErrInvalidArgument, errno)
 
 	require.Equal(t, uint64(5), test.Value(t, counter.ReadValue), "forbidden values must not change the counter")
 }
@@ -117,7 +114,7 @@ func TestMaximumUint64AdditionsFailWithoutChangingTheCount(t *testing.T) {
 func TestCreatedCountersAreNonblockingAndClosedOnExec(t *testing.T) {
 	_, fd := test.CounterDescriptor(t, 0, eventfd.Default)
 	test.CloseOnExec(t, fd)
-	require.NotZero(t, test.Fcntl(t, fd, unix.F_GETFL)&unix.O_NONBLOCK)
+	require.True(t, test.DescriptorNonblocking(t, fd))
 	test.NoPendingRecord(t, fd)
 }
 
@@ -269,10 +266,10 @@ func TestClosedCountersRejectOperations(t *testing.T) {
 	checkUnavailableCounter(t, counter, os.ErrClosed)
 
 	_, err := counter.Read(nil)
-	require.ErrorIs(t, err, unix.EINVAL, "invalid sizes take precedence after close")
+	require.ErrorIs(t, err, test.ErrInvalidArgument, "invalid sizes take precedence after close")
 
 	_, err = counter.Write(nil)
-	require.ErrorIs(t, err, unix.EINVAL)
+	require.ErrorIs(t, err, test.ErrInvalidArgument)
 }
 
 func TestUnknownCounterModesFailWithoutRetainingDescriptors(t *testing.T) {
@@ -299,6 +296,23 @@ func TestUnknownCounterModesFailWithoutRetainingDescriptors(t *testing.T) {
 
 	after := test.DescriptorCount(t)
 	require.LessOrEqual(t, after, before, "rejected modes must not retain descriptors")
+}
+
+func TestPollRegistrationFailureReturnsNoCounterAndClosesDescriptor(t *testing.T) {
+	const child = "poll-registration-denied"
+	if os.Args[len(os.Args)-1] == child {
+		test.RefusePollRegistration(t)
+		before := test.DescriptorCount(t)
+
+		counter, err := eventfd.New(0, eventfd.Default)
+		test.NoResource(t, counter, err, os.ErrNoDeadline)
+		require.Equal(t, before, test.DescriptorCount(t), "failed poll registration must close the acquired counter")
+		return
+	}
+	ctx, command := test.Command(t, t.Name(), child)
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err())
+	require.NoError(t, err, "poll-registration subprocess: %s", output)
 }
 
 func TestConcurrentAdditionsAreNotLost(t *testing.T) {

@@ -35,12 +35,12 @@ func InvalidProcessFiles() []ProcessFileCase {
 		{Name: "thread handle", Open: func(t *testing.T) *os.File {
 			t.Helper()
 
-			return Pidfd(t, os.Getpid(), unix.PIDFD_THREAD)
+			return pidfdFile(t, os.Getpid(), unix.PIDFD_THREAD)
 		}},
 		{Name: "path handle", Open: func(t *testing.T) *os.File {
 			t.Helper()
 
-			original := Pidfd(t, os.Getpid(), 0)
+			original := pidfdFile(t, os.Getpid(), 0)
 			var fd int
 			var err error
 			FileControl(t, original, func(raw uintptr) {
@@ -52,7 +52,7 @@ func InvalidProcessFiles() []ProcessFileCase {
 		{Name: "inheritable handle", Open: func(t *testing.T) *os.File {
 			t.Helper()
 
-			file := Pidfd(t, os.Getpid(), 0)
+			file := pidfdFile(t, os.Getpid(), 0)
 			var err error
 			FileControl(t, file, func(fd uintptr) {
 				_, err = unix.FcntlInt(fd, unix.F_SETFD, 0)

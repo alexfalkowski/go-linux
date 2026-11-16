@@ -10,14 +10,12 @@ import (
 	"math"
 	"os"
 	"sync"
-	"syscall"
 	"testing"
 	"time"
 
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/timerfd"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var _ io.ReadCloser = (*timerfd.Timer)(nil)
@@ -37,18 +35,17 @@ func TestTimersStartDisarmedUsingTheSelectedClock(t *testing.T) {
 func TestNowReturnsANormalizedReadingOfTheSelectedClock(t *testing.T) {
 	for _, scenario := range test.Clocks() {
 		t.Run(scenario.Name, func(t *testing.T) {
-			var before, after unix.Timespec
-			require.NoError(t, unix.ClockGettime(scenario.ID, &before))
+			before := test.ClockNanoseconds(t, scenario.ID)
 
 			now, err := timerfd.Now(scenario.Clock)
 			require.NoError(t, err)
 
-			require.NoError(t, unix.ClockGettime(scenario.ID, &after))
+			after := test.ClockNanoseconds(t, scenario.ID)
 			require.Equal(t, scenario.Clock, now.Clock)
 
 			reading := now.Seconds*1e9 + now.Nanoseconds
-			require.GreaterOrEqual(t, reading, before.Nano())
-			require.LessOrEqual(t, reading, after.Nano())
+			require.GreaterOrEqual(t, reading, before)
+			require.LessOrEqual(t, reading, after)
 			require.GreaterOrEqual(t, now.Nanoseconds, int64(0))
 			require.Less(t, now.Nanoseconds, int64(1e9))
 		})
@@ -147,12 +144,7 @@ func TestAbsolutePeriodicTimersRetainTheirArmingFlags(t *testing.T) {
 			_, err := timer.SetAt(past, 10*time.Millisecond, flags)
 			require.NoError(t, err)
 
-			options := unix.TFD_TIMER_ABSTIME
-			if flags != 0 {
-				options |= unix.TFD_TIMER_CANCEL_ON_SET
-			}
-
-			require.Contains(t, test.FDInfo(t, fd), fmt.Sprintf("settime flags: 0%o\n", options), "the kernel must retain the requested absolute/cancellation flags")
+			test.AbsoluteTimerFlags(t, fd, flags)
 
 			for range 2 {
 				count := test.Value(t, timer.ReadExpirations)
@@ -297,11 +289,10 @@ func TestShortReadsFailWithoutConsumingExpirations(t *testing.T) {
 
 			n, err := timer.Read(make([]byte, size))
 			require.Zero(t, n)
-			require.ErrorIs(t, err, unix.EINVAL)
+			require.ErrorIs(t, err, test.ErrInvalidArgument)
 
-			var errno syscall.Errno
-			require.ErrorAs(t, err, &errno)
-			require.Equal(t, unix.EINVAL, errno)
+			errno := test.ErrorNumber(t, err)
+			require.Equal(t, test.ErrInvalidArgument, errno)
 
 			var pathErr *os.PathError
 			require.ErrorAs(t, err, &pathErr)
@@ -354,11 +345,11 @@ func TestInvalidAbsoluteArmingLeavesTheTimerUnchanged(t *testing.T) {
 		{name: "unknown flags", flags: 2, err: os.ErrInvalid},
 		{name: "mixed flags", flags: 3, err: os.ErrInvalid},
 		{name: "cancel monotonic", flags: timerfd.CancelOnSet, err: os.ErrInvalid},
-		{name: "overflow seconds", deadline: timerfd.Instant{Seconds: math.MaxInt64}, err: unix.EOVERFLOW},
+		{name: "overflow seconds", deadline: timerfd.Instant{Seconds: math.MaxInt64}, err: test.ErrOverflow},
 		{
 			name:     "overflow nanoseconds",
 			deadline: timerfd.Instant{Seconds: math.MaxInt64 / int64(time.Second), Nanoseconds: math.MaxInt64%int64(time.Second) + 1},
-			err:      unix.EOVERFLOW,
+			err:      test.ErrOverflow,
 		},
 	} {
 		t.Run(values.name, func(t *testing.T) {
@@ -421,7 +412,7 @@ func TestBoottimeRejectsClockChangeCancellation(t *testing.T) {
 func TestCreatedTimersAreNonblockingAndClosedOnExec(t *testing.T) {
 	_, fd := test.TimerDescriptor(t, timerfd.Monotonic)
 	test.CloseOnExec(t, fd)
-	require.NotZero(t, test.Fcntl(t, fd, unix.F_GETFL)&unix.O_NONBLOCK)
+	require.True(t, test.DescriptorNonblocking(t, fd))
 	test.NoPendingRecord(t, fd)
 }
 
@@ -534,7 +525,7 @@ func TestClosedTimersRejectOperations(t *testing.T) {
 	checkUnavailableTimer(t, timer, os.ErrClosed)
 
 	_, err := timer.Read(nil)
-	require.ErrorIs(t, err, unix.EINVAL, "invalid buffers take precedence after close")
+	require.ErrorIs(t, err, test.ErrInvalidArgument, "invalid buffers take precedence after close")
 
 	_, err = timer.SetAfter(-1, 0)
 	require.ErrorIs(t, err, os.ErrInvalid, "invalid arming takes precedence after close")
@@ -580,6 +571,23 @@ func TestInvalidClocksAndClosedTimersLeaveNoDescriptorsBehind(t *testing.T) {
 
 	after := test.DescriptorCount(t)
 	require.LessOrEqual(t, after, before, "rejected clocks and closed timers must not retain descriptors")
+}
+
+func TestPollRegistrationFailureReturnsNoTimerAndClosesDescriptor(t *testing.T) {
+	const child = "poll-registration-denied"
+	if os.Args[len(os.Args)-1] == child {
+		test.RefusePollRegistration(t)
+		before := test.DescriptorCount(t)
+
+		timer, err := timerfd.New(timerfd.Monotonic)
+		test.NoResource(t, timer, err, os.ErrNoDeadline)
+		require.Equal(t, before, test.DescriptorCount(t), "failed poll registration must close the acquired timer")
+		return
+	}
+	ctx, command := test.Command(t, t.Name(), child)
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err())
+	require.NoError(t, err, "poll-registration subprocess: %s", output)
 }
 
 func checkUnchangedTimer(t *testing.T, timer *timerfd.Timer) {

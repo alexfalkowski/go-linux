@@ -10,7 +10,6 @@ import (
 
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 // These ABI tests implement P11's malformed-record acceptance requirement.
@@ -70,7 +69,7 @@ func TestDecoderRejectsMalformedBatchesAndClosesEveryIdentifiableFile(t *testing
 			binary.NativeEndian.PutUint16(p[6:8], 99)
 			return p
 		}},
-		{name: "wrong version", err: unix.EPROTO, change: func(p []byte) []byte {
+		{name: "wrong version", err: test.ErrProtocol, change: func(p []byte) []byte {
 			p[4]++
 			return p
 		}},
@@ -112,8 +111,8 @@ func TestDecoderRejectsMalformedBatchesAndClosesEveryIdentifiableFile(t *testing
 			require.Nil(t, events)
 			require.ErrorIs(t, err, scenario.err)
 
-			_, err = unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-			require.ErrorIs(t, err, unix.EBADF)
+			err = test.DescriptorError(fd)
+			require.ErrorIs(t, err, test.ErrBadDescriptor)
 
 			_, err = reader.Read(make([]byte, 1))
 			require.ErrorIs(t, err, os.ErrClosed)
@@ -133,8 +132,8 @@ func TestDecoderContinuesCleanupAfterMalformedInformation(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	for _, fd := range []int{first, second} {
-		_, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-		require.ErrorIs(t, err, unix.EBADF, "descriptor %d must close even after an earlier malformed extension", fd)
+		err = test.DescriptorError(fd)
+		require.ErrorIs(t, err, test.ErrBadDescriptor, "descriptor %d must close even after an earlier malformed extension", fd)
 	}
 }
 
@@ -149,10 +148,10 @@ func TestDecoderOverflowOwnsNoFile(t *testing.T) {
 	require.Equal(t, QueueOverflow|1<<63, event.Mask)
 
 	_, err = event.Stat()
-	require.ErrorIs(t, err, unix.ENODATA)
+	require.ErrorIs(t, err, test.ErrNoData)
 
 	_, err = event.ReadAt(make([]byte, 1), 0)
-	require.ErrorIs(t, err, unix.ENODATA)
+	require.ErrorIs(t, err, test.ErrNoData)
 
 	require.NoError(t, event.Close())
 
@@ -193,8 +192,8 @@ func TestPermissionBatchCleanupEncodesDenyForEveryUnreadEvent(t *testing.T) {
 		require.EqualValues(t, fd, binary.NativeEndian.Uint32(response[:4]), "response must retain its owned event identity")
 		require.Equal(t, uint32(Deny), binary.NativeEndian.Uint32(response[4:]), "unanswered events must receive Deny")
 
-		_, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-		require.ErrorIs(t, err, unix.EBADF)
+		err = test.DescriptorError(fd)
+		require.ErrorIs(t, err, test.ErrBadDescriptor)
 	}
 }
 
@@ -208,18 +207,18 @@ func TestResponseFailureRetainsOwnershipUntilCloseReleasesGroupAndFile(t *testin
 
 	event := events[0]
 	test.Cleanup(t, event)
-	require.ErrorIs(t, event.Respond(Allow), unix.EBADF, "a read-only pipe rejects the encoded response")
+	require.ErrorIs(t, event.Respond(Allow), test.ErrBadDescriptor, "a read-only pipe rejects the encoded response")
 
 	_, err = event.Stat()
 	require.NoError(t, err, "failed Respond must leave the event caller-owned")
 
-	require.ErrorIs(t, event.Close(), unix.EBADF)
+	require.ErrorIs(t, event.Close(), test.ErrBadDescriptor)
 
 	_, err = reader.Read(make([]byte, 1))
 	require.ErrorIs(t, err, os.ErrClosed, "failed cleanup response must close the group")
 
-	_, err = unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
-	require.ErrorIs(t, err, unix.EBADF, "response errors must not leak the event file")
+	err = test.DescriptorError(fd)
+	require.ErrorIs(t, err, test.ErrBadDescriptor, "response errors must not leak the event file")
 
 	require.ErrorIs(t, event.Close(), os.ErrClosed)
 }

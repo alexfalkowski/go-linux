@@ -10,7 +10,6 @@ import (
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/socket"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestNetlinkEndpointsPreserveAddressesAndMessages(t *testing.T) {
@@ -52,7 +51,7 @@ func TestNetlinkEndpointsPreserveAddressesAndMessages(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	_, err = a.Send(nil, to)
-	require.ErrorIs(t, err, unix.ENODATA, "Netlink cannot send empty messages")
+	require.ErrorIs(t, err, test.ErrNoData, "Netlink cannot send empty messages")
 
 	_, err = a.Send(nil, socket.UnixAddress{Name: "@wrong-family"})
 	require.ErrorIs(t, err, os.ErrInvalid)
@@ -104,7 +103,7 @@ func TestNetlinkBackpressureReturnsEAGAINAndAllowsRetry(t *testing.T) {
 		}
 		queued++
 	}
-	require.ErrorIs(t, sendErr, unix.EAGAIN, "destination backpressure must remain visible without a false deadline timeout")
+	require.ErrorIs(t, sendErr, test.ErrTryAgain, "destination backpressure must remain visible without a false deadline timeout")
 	require.Positive(t, queued, "backpressure must follow successful sends")
 
 	sender, err := socket.OpenNetlink(socket.Usersock, socket.NetlinkAddress{})
@@ -113,7 +112,7 @@ func TestNetlinkBackpressureReturnsEAGAINAndAllowsRetry(t *testing.T) {
 	require.NoError(t, sender.SetWriteDeadline(time.Now().Add(time.Second)))
 
 	n, err := sender.Send([]byte("not queued"), destination)
-	require.ErrorIs(t, err, unix.EAGAIN, "a fresh sender must also return EAGAIN while the destination is full")
+	require.ErrorIs(t, err, test.ErrTryAgain, "a fresh sender must also return EAGAIN while the destination is full")
 	require.Zero(t, n, "EAGAIN must not transfer a partial message")
 
 	buffer := make([]byte, 32)
@@ -152,7 +151,7 @@ func TestNetlinkOptionsAndReadOnlyGroupMembership(t *testing.T) {
 	require.ErrorIs(t, conn.LeaveGroup(1<<31), os.ErrInvalid)
 
 	other, err := socket.OpenNetlink(socket.Route, test.Value(t, conn.LocalAddress).(socket.NetlinkAddress))
-	test.NoResource(t, other, err, unix.EADDRINUSE)
+	test.NoResource(t, other, err, test.ErrAddressInUse)
 }
 
 func TestCreatedSocketsAreNonblockingAndClosedOnExec(t *testing.T) {
@@ -163,5 +162,5 @@ func TestCreatedSocketsAreNonblockingAndClosedOnExec(t *testing.T) {
 
 	fd := test.NewDescriptor(t, before)
 	test.CloseOnExec(t, fd)
-	require.NotZero(t, test.Fcntl(t, fd, unix.F_GETFL)&unix.O_NONBLOCK)
+	require.True(t, test.DescriptorNonblocking(t, fd))
 }

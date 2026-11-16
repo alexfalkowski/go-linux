@@ -15,7 +15,6 @@ import (
 	"github.com/alexfalkowski/go-linux/inotify"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var _ io.ReadCloser = (*inotify.Watcher)(nil)
@@ -69,7 +68,7 @@ func TestWatchRemovalPreservesQueuedEventsAndReportsIgnored(t *testing.T) {
 		return watcher.ReadEvents(make([]byte, 4096))
 	}))
 
-	require.ErrorIs(t, watcher.RemoveWatch(id), unix.EINVAL)
+	require.ErrorIs(t, watcher.RemoveWatch(id), test.ErrInvalidArgument)
 
 	require.NoError(t, os.Mkdir(filepath.Join(directory, "later"), 0o700))
 
@@ -99,7 +98,7 @@ func TestOneShotWatchesReportAutomaticRemoval(t *testing.T) {
 		{Watch: id, Mask: inotify.Ignored},
 	}, events)
 
-	require.ErrorIs(t, watcher.RemoveWatch(id), unix.EINVAL)
+	require.ErrorIs(t, watcher.RemoveWatch(id), test.ErrInvalidArgument)
 }
 
 func TestFileWatchesReportSelfDeletionWithoutAName(t *testing.T) {
@@ -141,7 +140,7 @@ func TestExistingInodeWatchesCanReplaceExtendOrRejectAMask(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = watcher.AddWatch(directory, inotify.Delete|inotify.MaskCreate)
-	require.ErrorIs(t, err, unix.EEXIST)
+	require.ErrorIs(t, err, test.ErrExists)
 
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "original"), nil, 0o600))
 	require.Equal(t, []inotify.Event{{Watch: id, Mask: inotify.Create, Name: "original"}},
@@ -202,7 +201,7 @@ func TestSymlinkWatchOptionsKeepLinuxPathSemantics(t *testing.T) {
 	require.Equal(t, []inotify.Event{{Watch: symlink, Mask: inotify.DeleteSelf}, {Watch: symlink, Mask: inotify.Ignored}}, events)
 
 	_, err = watcher.AddWatch(path, inotify.Create|inotify.OnlyDir)
-	require.ErrorIs(t, err, unix.ENOTDIR)
+	require.ErrorIs(t, err, test.ErrNotDirectory)
 }
 
 func TestExclUnlinkControlsEventsFromUnlinkedChildren(t *testing.T) {
@@ -249,7 +248,7 @@ func TestRawReadsPreserveRecordBoundariesAndDoNotConsumeOnShortBuffers(t *testin
 	for _, size := range []int{0, 1, 15, 16, 31} {
 		n, err := watcher.Read(make([]byte, size))
 		require.Zero(t, n)
-		require.ErrorIs(t, err, unix.EINVAL, "buffer size %d must not consume the first named event", size)
+		require.ErrorIs(t, err, test.ErrInvalidArgument, "buffer size %d must not consume the first named event", size)
 	}
 
 	for _, name := range []string{"a", "b"} {
@@ -284,14 +283,14 @@ func TestInvalidWatchArgumentsLeaveExistingWatchesUnchanged(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	_, err = watcher.AddWatch("", inotify.Create)
-	require.ErrorIs(t, err, unix.ENOENT)
+	require.ErrorIs(t, err, test.ErrNotExist)
 
 	_, err = watcher.AddWatch(filepath.Join(directory, "missing"), inotify.Create)
-	require.ErrorIs(t, err, unix.ENOENT)
+	require.ErrorIs(t, err, test.ErrNotExist)
 
 	test.PathError(t, err, "inotify_add_watch", filepath.Join(directory, "missing"))
 	require.ErrorIs(t, watcher.RemoveWatch(-1), os.ErrInvalid)
-	require.ErrorIs(t, watcher.RemoveWatch(0), unix.EINVAL)
+	require.ErrorIs(t, watcher.RemoveWatch(0), test.ErrInvalidArgument)
 
 	require.NoError(t, os.WriteFile(filepath.Join(directory, "child"), nil, 0o600))
 
@@ -390,7 +389,7 @@ func TestConcurrentWatchOperationsAndCloseRemainSafe(t *testing.T) {
 	close(results)
 	for err := range results {
 		if err != nil {
-			require.True(t, errors.Is(err, os.ErrClosed) || errors.Is(err, unix.EINVAL),
+			require.True(t, errors.Is(err, os.ErrClosed) || errors.Is(err, test.ErrInvalidArgument),
 				"only closed state or a concurrently removed ID is allowed: %v", err)
 		}
 	}
@@ -463,7 +462,7 @@ func TestCreatedWatchersUseNonblockingCloseOnExecDescriptors(t *testing.T) {
 	watcher := test.Watcher(t)
 	fd := test.NewDescriptor(t, before)
 	test.CloseOnExec(t, fd)
-	require.NotZero(t, test.Fcntl(t, fd, unix.F_GETFL)&unix.O_NONBLOCK, "Go polling requires a nonblocking descriptor")
+	require.True(t, test.DescriptorNonblocking(t, fd), "Go polling requires a nonblocking descriptor")
 
 	require.NoError(t, watcher.Close())
 	require.Equal(t, before, test.Descriptors(t), "Close must release the sole acquired descriptor")
@@ -493,7 +492,7 @@ func TestCreationFailureReturnsNoResource(t *testing.T) {
 		test.ExhaustDescriptors(t)
 
 		watcher, err := inotify.New()
-		test.NoResource(t, watcher, err, unix.EMFILE)
+		test.NoResource(t, watcher, err, test.ErrTooManyOpenFiles)
 		return
 	}
 
@@ -501,6 +500,23 @@ func TestCreationFailureReturnsNoResource(t *testing.T) {
 	output, err := command.CombinedOutput()
 	require.NoError(t, ctx.Err())
 	require.NoError(t, err, "descriptor exhaustion subprocess: %s", output)
+}
+
+func TestPollRegistrationFailureReturnsNoWatcherAndClosesDescriptor(t *testing.T) {
+	const child = "poll-registration-denied"
+	if os.Args[len(os.Args)-1] == child {
+		test.RefusePollRegistration(t)
+		before := test.DescriptorCount(t)
+
+		watcher, err := inotify.New()
+		test.NoResource(t, watcher, err, os.ErrNoDeadline)
+		require.Equal(t, before, test.DescriptorCount(t), "failed poll registration must close the acquired watcher")
+		return
+	}
+	ctx, command := test.Command(t, t.Name(), child)
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err())
+	require.NoError(t, err, "poll-registration subprocess: %s", output)
 }
 
 func TestInvalidArgumentsPrecedeClosedState(t *testing.T) {
@@ -515,7 +531,7 @@ func TestInvalidArgumentsPrecedeClosedState(t *testing.T) {
 	for size := range 16 {
 		t.Run(fmt.Sprintf("%d byte buffer", size), func(t *testing.T) {
 			_, err := watcher.Read(make([]byte, size))
-			require.ErrorIs(t, err, unix.EINVAL)
+			require.ErrorIs(t, err, test.ErrInvalidArgument)
 		})
 	}
 }

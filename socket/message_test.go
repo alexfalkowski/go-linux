@@ -12,7 +12,6 @@ import (
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/socket"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestPassedFilesRemainUsableAfterSenderCloses(t *testing.T) {
@@ -70,7 +69,7 @@ func TestAncillaryTruncationClosesAllReceivedRights(t *testing.T) {
 		require.NoError(t, err)
 
 		message, err := b.Receive(make([]byte, 16), 0)
-		require.ErrorIs(t, err, unix.EMSGSIZE)
+		require.ErrorIs(t, err, test.ErrMessageTooLarge)
 		require.NotZero(t, message.Flags&socket.ControlTruncated)
 		require.Nil(t, message.Files, "error must not transfer any cleanup responsibility")
 	}
@@ -88,7 +87,7 @@ func TestFileLimitClosesRightsEvenWhenKernelControlBufferFits(t *testing.T) {
 	require.NoError(t, err)
 
 	message, err := b.Receive(make([]byte, 8), 0)
-	require.ErrorIs(t, err, unix.EMSGSIZE)
+	require.ErrorIs(t, err, test.ErrMessageTooLarge)
 	require.Nil(t, message.Files)
 	require.Equal(t, before, test.DescriptorCount(t))
 }
@@ -180,7 +179,7 @@ func TestFailedSendsReleaseDuplicatesAndLeaveInputsOwned(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	_, err = a.Send(make([]byte, 1<<20), nil, file)
-	require.ErrorIs(t, err, unix.EMSGSIZE)
+	require.ErrorIs(t, err, test.ErrMessageTooLarge)
 	require.Equal(t, before, test.DescriptorCount(t))
 
 	test.WriteAt(t, file, 0, "input retained")

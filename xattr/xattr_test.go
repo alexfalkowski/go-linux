@@ -16,7 +16,6 @@ import (
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/xattr"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestAttributesRoundTripAsWholeBinaryValues(t *testing.T) {
@@ -45,7 +44,7 @@ func TestAttributesRoundTripAsWholeBinaryValues(t *testing.T) {
 			require.NoError(t, xattr.Remove(opened, "user.roundtrip"))
 
 			value, err = xattr.Get(opened, "user.roundtrip")
-			require.ErrorIs(t, err, unix.ENODATA)
+			require.ErrorIs(t, err, test.ErrNoData)
 			require.Nil(t, value)
 
 			names, err = xattr.List(opened)
@@ -61,9 +60,9 @@ func TestAttributesRoundTripAsWholeBinaryValues(t *testing.T) {
 
 func TestSetModesPreserveAtomicExistenceConditions(t *testing.T) {
 	opened := test.TempFile(t, 0)
-	require.ErrorIs(t, xattr.Set(opened, "user.mode", []byte("missing"), xattr.Replace), unix.ENODATA)
+	require.ErrorIs(t, xattr.Set(opened, "user.mode", []byte("missing"), xattr.Replace), test.ErrNoData)
 	require.NoError(t, xattr.Set(opened, "user.mode", []byte("created"), xattr.Create))
-	require.ErrorIs(t, xattr.Set(opened, "user.mode", []byte("duplicate"), xattr.Create), unix.EEXIST)
+	require.ErrorIs(t, xattr.Set(opened, "user.mode", []byte("duplicate"), xattr.Create), test.ErrExists)
 
 	value, err := xattr.Get(opened, "user.mode")
 	require.NoError(t, err)
@@ -82,7 +81,7 @@ func TestSetModesPreserveAtomicExistenceConditions(t *testing.T) {
 	require.Equal(t, []byte{}, value)
 
 	require.NoError(t, xattr.Remove(opened, "user.mode"))
-	require.ErrorIs(t, xattr.Remove(opened, "user.mode"), unix.ENODATA)
+	require.ErrorIs(t, xattr.Remove(opened, "user.mode"), test.ErrNoData)
 }
 
 func TestDirectoryRelativePathsAndStableHandles(t *testing.T) {
@@ -96,14 +95,14 @@ func TestDirectoryRelativePathsAndStableHandles(t *testing.T) {
 	test.Cleanup(t, pathOnly)
 
 	_, err = xattr.Get(pathOnly, "user.path")
-	require.ErrorIs(t, err, unix.EBADF)
+	require.ErrorIs(t, err, test.ErrBadDescriptor)
 
-	require.ErrorIs(t, xattr.Set(pathOnly, "user.path", nil, xattr.Upsert), unix.EBADF)
+	require.ErrorIs(t, xattr.Set(pathOnly, "user.path", nil, xattr.Upsert), test.ErrBadDescriptor)
 
-	require.ErrorIs(t, xattr.Remove(pathOnly, "user.path"), unix.EBADF)
+	require.ErrorIs(t, xattr.Remove(pathOnly, "user.path"), test.ErrBadDescriptor)
 
 	_, err = xattr.List(pathOnly)
-	require.ErrorIs(t, err, unix.EBADF)
+	require.ErrorIs(t, err, test.ErrBadDescriptor)
 
 	require.NoError(t, xattr.SetAt(dir, "data", "user.path", []byte("relative"), xattr.Create, xattr.PathOptions{}))
 
@@ -167,12 +166,12 @@ func TestSymlinkOperationsSelectTheLinkOrItsTarget(t *testing.T) {
 	for _, path := range []string{"link", "dangling"} {
 		t.Run(path, func(t *testing.T) {
 			value, err := xattr.GetAt(dir, path, "user.link", noFollow)
-			require.ErrorIs(t, err, unix.ENODATA, "user attributes are unavailable on symlinks")
+			require.ErrorIs(t, err, test.ErrNoData, "user attributes are unavailable on symlinks")
 			require.Nil(t, value)
 
-			require.ErrorIs(t, xattr.SetAt(dir, path, "user.link", nil, xattr.Upsert, noFollow), unix.EPERM)
+			require.ErrorIs(t, xattr.SetAt(dir, path, "user.link", nil, xattr.Upsert, noFollow), test.ErrOperationNotPermitted)
 
-			require.ErrorIs(t, xattr.RemoveAt(dir, path, "user.link", noFollow), unix.EPERM)
+			require.ErrorIs(t, xattr.RemoveAt(dir, path, "user.link", noFollow), test.ErrOperationNotPermitted)
 
 			names, err := xattr.ListAt(dir, path, noFollow)
 			require.NoError(t, err)
@@ -185,13 +184,13 @@ func TestSymlinkOperationsSelectTheLinkOrItsTarget(t *testing.T) {
 	test.Cleanup(t, link)
 
 	value, err = xattr.Get(link, "user.link")
-	require.ErrorIs(t, err, unix.EBADF)
+	require.ErrorIs(t, err, test.ErrBadDescriptor)
 	require.Nil(t, value)
 
 	require.NoError(t, xattr.RemoveAt(dir, "link", "user.link", xattr.PathOptions{}))
 
 	value, err = xattr.GetAt(dir, "target", "user.link", xattr.PathOptions{})
-	require.ErrorIs(t, err, unix.ENODATA)
+	require.ErrorIs(t, err, test.ErrNoData)
 	require.Nil(t, value)
 }
 
@@ -203,11 +202,11 @@ func TestErrorsPreserveInputsAndReturnNoPartialResults(t *testing.T) {
 		path string
 		attr string
 	}{
-		{name: "missing path", path: "missing", attr: "user.a", want: unix.ENOENT},
-		{name: "NUL path", path: "bad\x00path", attr: "user.a", want: unix.EINVAL},
-		{name: "NUL name", path: ".", attr: "user.bad\x00name", want: unix.EINVAL},
-		{name: "empty name", path: ".", want: unix.ERANGE},
-		{name: "long name", path: ".", attr: strings.Repeat("x", 256), want: unix.ERANGE},
+		{name: "missing path", path: "missing", attr: "user.a", want: test.ErrNotExist},
+		{name: "NUL path", path: "bad\x00path", attr: "user.a", want: test.ErrInvalidArgument},
+		{name: "NUL name", path: ".", attr: "user.bad\x00name", want: test.ErrInvalidArgument},
+		{name: "empty name", path: ".", want: test.ErrRange},
+		{name: "long name", path: ".", attr: strings.Repeat("x", 256), want: test.ErrRange},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			value, err := xattr.GetAt(dir, scenario.path, scenario.attr, xattr.PathOptions{})
@@ -234,7 +233,7 @@ func TestErrorsPreserveInputsAndReturnNoPartialResults(t *testing.T) {
 		require.ErrorIs(t, xattr.Set(nil, "user.mode", nil, mode), os.ErrInvalid)
 	}
 
-	require.ErrorIs(t, xattr.Set(dir, "user.large", make([]byte, 65537), xattr.Upsert), unix.E2BIG)
+	require.ErrorIs(t, xattr.Set(dir, "user.large", make([]byte, 65537), xattr.Upsert), test.ErrArgumentListTooLong)
 
 	_, err := dir.Stat()
 	require.NoError(t, err, "errors leave borrowed handles open")
@@ -293,7 +292,7 @@ func TestConcurrentSizeChangesReturnWholeValues(t *testing.T) {
 	var successes int
 	for range 300 {
 		value, err := xattr.Get(opened, "user.race")
-		if errors.Is(err, unix.ERANGE) {
+		if errors.Is(err, test.ErrRange) {
 			require.Nil(t, value)
 			continue
 		}
@@ -360,7 +359,7 @@ func TestListsRemainCompleteDuringConcurrentAttributeChanges(t *testing.T) {
 	var successes int
 	for range 300 {
 		names, err := xattr.List(opened)
-		if errors.Is(err, unix.ERANGE) {
+		if errors.Is(err, test.ErrRange) {
 			require.Nil(t, names)
 			continue
 		}
@@ -380,24 +379,24 @@ func TestListsRemainCompleteDuringConcurrentAttributeChanges(t *testing.T) {
 
 func TestUnsupportedNamespacesAndNonDirectoryAnchorsStayObservable(t *testing.T) {
 	opened := test.TempFile(t, 0)
-	require.ErrorIs(t, xattr.Set(opened, "unsupported.attribute", nil, xattr.Upsert), unix.EOPNOTSUPP)
+	require.ErrorIs(t, xattr.Set(opened, "unsupported.attribute", nil, xattr.Upsert), test.ErrNotSupported)
 
 	value, err := xattr.Get(opened, "unsupported.attribute")
-	require.ErrorIs(t, err, unix.EOPNOTSUPP)
+	require.ErrorIs(t, err, test.ErrNotSupported)
 	require.Nil(t, value)
 
-	require.ErrorIs(t, xattr.Remove(opened, "unsupported.attribute"), unix.EOPNOTSUPP)
+	require.ErrorIs(t, xattr.Remove(opened, "unsupported.attribute"), test.ErrNotSupported)
 
 	_, err = xattr.GetAt(opened, "child", "user.a", xattr.PathOptions{})
-	require.ErrorIs(t, err, unix.ENOTDIR)
+	require.ErrorIs(t, err, test.ErrNotDirectory)
 
 	names, err := xattr.ListAt(opened, "child", xattr.PathOptions{})
-	require.ErrorIs(t, err, unix.ENOTDIR)
+	require.ErrorIs(t, err, test.ErrNotDirectory)
 	require.Nil(t, names)
 
-	require.ErrorIs(t, xattr.SetAt(opened, "child", "user.a", nil, xattr.Upsert, xattr.PathOptions{}), unix.ENOTDIR)
+	require.ErrorIs(t, xattr.SetAt(opened, "child", "user.a", nil, xattr.Upsert, xattr.PathOptions{}), test.ErrNotDirectory)
 
-	require.ErrorIs(t, xattr.RemoveAt(opened, "child", "user.a", xattr.PathOptions{}), unix.ENOTDIR)
+	require.ErrorIs(t, xattr.RemoveAt(opened, "child", "user.a", xattr.PathOptions{}), test.ErrNotDirectory)
 }
 
 func TestPathOnlyDirectoryAnchorsNonemptyLookups(t *testing.T) {
@@ -438,7 +437,7 @@ func TestAttributeCallsPreserveBorrowedFileState(t *testing.T) {
 		_, err = xattr.List(opened)
 		require.NoError(t, err)
 
-		require.ErrorIs(t, xattr.Set(opened, "user.borrowed", nil, xattr.Create), unix.EEXIST)
+		require.ErrorIs(t, xattr.Set(opened, "user.borrowed", nil, xattr.Create), test.ErrExists)
 
 		require.NoError(t, xattr.Remove(opened, "user.borrowed"))
 	}

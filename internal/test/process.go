@@ -7,11 +7,47 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
+
+// Signal names the native signal representation for invalid-input tables.
+type Signal = syscall.Signal
+
+// AbortSignal selects the child's abort/core-status fixture.
+const AbortSignal = syscall.SIGABRT
+
+// KillSignal selects the child's forced-termination fixture.
+const KillSignal = syscall.SIGKILL
+
+// SignalZero independently observes a standard process's existence/permissions.
+func SignalZero(process *os.Process) error {
+	return process.Signal(syscall.Signal(0))
+}
+
+// StartWithPidfd starts a bounded command and owns its independently acquired
+// startup handle. The caller can transfer that file to pidfd.Adopt.
+func StartWithPidfd(t *testing.T, command *exec.Cmd) (*os.File, io.WriteCloser) {
+	t.Helper()
+	fd := -1
+	command.SysProcAttr = &syscall.SysProcAttr{PidFD: &fd}
+	input := StartWithInput(t, command)
+	require.NotEqual(t, -1, fd, "startup must return an independent pidfd")
+	return OwnDescriptor(t, fd, "startup-pidfd"), input
+}
+
+// ProcessUID independently observes a process owner for permission prerequisites.
+func ProcessUID(t *testing.T, id int) uint32 {
+	t.Helper()
+	var stat unix.Stat_t
+	require.NoError(t, unix.Stat(filepath.Join("/proc", strconv.Itoa(id)), &stat))
+	return stat.Uid
+}
 
 // ExecutableCopy copies the running test binary to a private executable inode
 // so exec-open fixtures mark only their own program, never a host executable.

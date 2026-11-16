@@ -11,7 +11,6 @@ import (
 	"github.com/alexfalkowski/go-linux/fanotify"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestPermissionResponsesAndAbandonedEvents(t *testing.T) {
@@ -64,7 +63,7 @@ func TestPermissionResponsesAndAbandonedEvents(t *testing.T) {
 				require.NoError(t, result.Value.Close())
 			} else {
 				require.Nil(t, result.Value)
-				require.ErrorIs(t, result.Err, unix.EPERM)
+				require.ErrorIs(t, result.Err, test.ErrOperationNotPermitted)
 			}
 		})
 	}
@@ -235,5 +234,5 @@ func TestIterationDeniesPermissionOnEarlyExit(t *testing.T) {
 
 	result := test.Receive(t, opened)
 	require.Nil(t, result.Value)
-	require.ErrorIs(t, result.Err, unix.EPERM)
+	require.ErrorIs(t, result.Err, test.ErrOperationNotPermitted)
 }

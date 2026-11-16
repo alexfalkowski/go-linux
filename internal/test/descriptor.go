@@ -33,11 +33,13 @@ func OwnDescriptor(t *testing.T, fd int, name string) *os.File {
 }
 
 // Pidfd acquires a raw process file for ownership/adoption scenarios.
-func Pidfd(t *testing.T, id, flags int) *os.File {
+func Pidfd(t *testing.T, id int, nonblocking bool) *os.File {
 	t.Helper()
-	fd, err := unix.PidfdOpen(id, flags)
-	require.NoError(t, err)
-	return OwnDescriptor(t, fd, "fixture-pidfd")
+	var flags int
+	if nonblocking {
+		flags = unix.PIDFD_NONBLOCK
+	}
+	return pidfdFile(t, id, flags)
 }
 
 // FileFlags observes a standard-library file's status flags before adoption.
@@ -171,6 +173,31 @@ func Fcntl(t *testing.T, fd, command int) int {
 	return flags
 }
 
+// DescriptorNonblocking independently observes whether Linux set O_NONBLOCK.
+func DescriptorNonblocking(t *testing.T, fd int) bool {
+	t.Helper()
+	return Fcntl(t, fd, unix.F_GETFL)&unix.O_NONBLOCK != 0
+}
+
+// DescriptorFlags independently observes status bits for before/after comparisons.
+func DescriptorFlags(t *testing.T, fd int) int {
+	t.Helper()
+	return Fcntl(t, fd, unix.F_GETFL)
+}
+
+// DescriptorReadOnly independently observes the descriptor's access mode.
+func DescriptorReadOnly(t *testing.T, fd int) bool {
+	t.Helper()
+	return Fcntl(t, fd, unix.F_GETFL)&unix.O_ACCMODE == unix.O_RDONLY
+}
+
+// DescriptorError independently observes whether a descriptor is still valid.
+// Callers assert the expected errno beside their ownership scenario.
+func DescriptorError(fd int) error {
+	_, err := unix.FcntlInt(uintptr(fd), unix.F_GETFD, 0)
+	return err
+}
+
 // CloseOnExec requires the observed descriptor to have FD_CLOEXEC set.
 func CloseOnExec(t *testing.T, fd int) {
 	t.Helper()
@@ -276,4 +303,11 @@ func newDescriptor(t *testing.T, before map[int]string, target string) int {
 		return fd
 	}
 	return 0
+}
+
+func pidfdFile(t *testing.T, id, flags int) *os.File {
+	t.Helper()
+	fd, err := unix.PidfdOpen(id, flags)
+	require.NoError(t, err)
+	return OwnDescriptor(t, fd, "fixture-pidfd")
 }

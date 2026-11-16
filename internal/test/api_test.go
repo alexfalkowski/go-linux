@@ -4,15 +4,16 @@ package test_test
 
 import (
 	"reflect"
-	"syscall"
 	"testing"
 
 	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/eventfd"
 	"github.com/alexfalkowski/go-linux/fanotify"
 	"github.com/alexfalkowski/go-linux/inotify"
+	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mount"
+	"github.com/alexfalkowski/go-linux/netlink"
 	"github.com/alexfalkowski/go-linux/pidfd"
 	"github.com/alexfalkowski/go-linux/socket"
 	"github.com/alexfalkowski/go-linux/timerfd"
@@ -31,13 +32,15 @@ func TestResourcesKeepDescriptorAccessPrivate(t *testing.T) {
 		{name: "timer", owner: &timerfd.Timer{}},
 		{name: "process", owner: &pidfd.Process{}},
 		{name: "message socket", owner: &socket.Conn{}},
+		{name: "netlink request connection", owner: &netlink.Conn{}},
+		{name: "netlink multicast listener", owner: &netlink.Listener{}},
 		{name: "filesystem configuration", owner: &mount.Config{}},
 		{name: "mount", owner: &mount.Handle{}},
 		{name: "readiness set", owner: &epoll.Poller{}},
 		{name: "readiness registration", owner: &epoll.Registration{}},
 	} {
 		t.Run(resource.name, func(t *testing.T) {
-			require.NotImplements(t, (*syscall.Conn)(nil), resource.owner)
+			require.NotImplements(t, (*test.DescriptorConnection)(nil), resource.owner)
 			require.NotImplements(t, (*interface{ Fd() uintptr })(nil), resource.owner)
 
 			typeOf := reflect.TypeOf(resource.owner).Elem()
