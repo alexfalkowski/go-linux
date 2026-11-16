@@ -16,9 +16,9 @@ case "$action" in
 
     readonly partition="$2"
     case "$partition" in
-      rootless-arm64 | rootless-amd64 | mount-arm64 | mount-amd64 | fanotify-arm64 | fanotify-amd64 | timerfd-arm64 | timerfd-amd64) ;;
+      rootless-arm64 | rootless-amd64 | netlink-arm64 | netlink-amd64 | mount-arm64 | mount-amd64 | fanotify-arm64 | fanotify-amd64 | timerfd-arm64 | timerfd-amd64) ;;
       *)
-        printf 'partition must select rootless, mount, fanotify, or timerfd and arm64 or amd64\n' >&2
+        printf 'partition must select rootless, netlink, mount, fanotify, or timerfd and arm64 or amd64\n' >&2
         exit 2
         ;;
     esac
@@ -39,7 +39,7 @@ case "$action" in
     fi
 
     profiles=()
-    for facility in rootless mount fanotify timerfd; do
+    for facility in rootless netlink mount fanotify timerfd; do
       for arch in arm64 amd64; do
         profile="${workspace_directory}/${facility}-${arch}/profile.cov"
         if [[ ! -f $profile || ! -s $profile || -L $profile ]]; then
@@ -55,7 +55,6 @@ case "$action" in
     done
 
     # Explicit raw inputs exclude old merged reports and unrelated artifacts.
-    mkdir -p "$reports_directory"
     gocovmerge -o "${reports_directory}/profile.cov" "${profiles[@]}"
     ;;
   *)

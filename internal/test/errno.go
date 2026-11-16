@@ -10,6 +10,9 @@ const ErrArgumentListTooLong = syscall.E2BIG
 // ErrPermissionDenied preserves Linux EACCES for exact error assertions.
 const ErrPermissionDenied = syscall.EACCES
 
+// ErrAddressNotAvailable preserves Linux EADDRNOTAVAIL for exact error assertions.
+const ErrAddressNotAvailable = syscall.EADDRNOTAVAIL
+
 // ErrAddressInUse preserves Linux EADDRINUSE for exact error assertions.
 const ErrAddressInUse = syscall.EADDRINUSE
 
