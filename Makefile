@@ -42,9 +42,19 @@ coverage-workspace-stage: export partition := $(value partition)
 coverage-workspace-stage:
 	@bash scripts/coverage-workspace stage "$$partition"
 
-# Merge all eight CI workspace profiles into profile.cov before running coverage.
+# Merge all ten CI workspace profiles into profile.cov before running coverage.
 coverage-workspace-merge:
 	@bash scripts/coverage-workspace merge
+
+# Record prerequisites and run both required isolated Netlink suites.
+verify-netlink:
+	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
+	@$(MAKE) specs package= PACKAGES="$(MODULE)/netlink $(MODULE)/netlink/route" profile=namespaces required=true
+
+# Run required Netlink verification in privileged Docker (image and native arch required).
+verify-netlink-container: export image := $(value image)
+verify-netlink-container:
+	@bash scripts/netlink "$$image" "$$GO_LINUX_TEST_ARCH"
 
 # Record namespace prerequisites and run required isolated mount tests (arch optional).
 verify-mount:
@@ -87,7 +97,7 @@ vet:
 
 # Check repository-owned Bash scripts with ShellCheck.
 scripts-lint:
-	@shellcheck -x scripts/coverage scripts/coverage-workspace scripts/rootless scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
+	@shellcheck -x scripts/coverage scripts/coverage-workspace scripts/rootless scripts/netlink scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
 
 # Validate CircleCI configuration with the official CLI (requires CircleCI API access).
 ci-validate:

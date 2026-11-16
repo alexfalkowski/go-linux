@@ -14,6 +14,7 @@ import (
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mount"
 	"github.com/alexfalkowski/go-linux/netlink"
+	"github.com/alexfalkowski/go-linux/netlink/route"
 	"github.com/alexfalkowski/go-linux/pidfd"
 	"github.com/alexfalkowski/go-linux/socket"
 	"github.com/alexfalkowski/go-linux/timerfd"
@@ -34,6 +35,8 @@ func TestResourcesKeepDescriptorAccessPrivate(t *testing.T) {
 		{name: "message socket", owner: &socket.Conn{}},
 		{name: "netlink request connection", owner: &netlink.Conn{}},
 		{name: "netlink multicast listener", owner: &netlink.Listener{}},
+		{name: "routing request connection", owner: &route.Conn{}},
+		{name: "routing multicast listener", owner: &route.Listener{}},
 		{name: "filesystem configuration", owner: &mount.Config{}},
 		{name: "mount", owner: &mount.Handle{}},
 		{name: "readiness set", owner: &epoll.Poller{}},

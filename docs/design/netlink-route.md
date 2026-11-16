@@ -1,0 +1,19 @@
+# Routing Netlink decisions
+
+## Typed facilities over the shared exchange
+
+The base Netlink package already owns sender validation, sequence matching, multipart completion, memory bounds, diagnostics, polling, and descriptor lifetime. Routing depends on that package rather than reimplementing its exchange or adding protocol-specific branches to the transport. Request and multicast sockets remain separate; multiplexing them would require a receive loop, pending-request registry, buffering policy, and cancellation model without a current requirement. Standard `net` supplies network I/O and basic interface inspection, but does not express Linux configuration, table IDs, or change notifications.
+
+Fixed headers use native-endian fields and maintained `x/sys/unix` sizes/constants, with the Linux 7.0 [routing UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/rtnetlink.h), [link UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/if_link.h), and [address UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/if_addr.h) as the baseline. There are no unsafe structure casts or copied syscall tables. `netip` preserves IPv4/IPv6 identity and address prefix host bits. Linux indices, scopes, masks, table IDs, and installer protocols retain their native meanings instead of being coerced into superficially similar standard-library flags.
+
+## Observation and request boundaries
+
+Observed records preserve opaque attributes and unknown output bits so a newer kernel or advanced route does not become an inaccurate simplified record. Interpretation validates only known singleton fields; unknown nests are not recursively validated. Parsers are public because base Netlink consumers can decode the same records without opening another socket. List operations discard partial results on failure: a typed list must not look like a successful inventory after interruption. Applications needing partial wire diagnostics can use the base exchange directly.
+
+Mutations have separate address/route configs. Reusing observations as requests would risk dropping opaque multipath, encapsulation, lifetimes, or source selectors while claiming to replace a complete object. Dummy creation and common link changes establish a useful bounded interface without a registry of speculative link-type implementations. A caller must explicitly choose an IP family, masked route destination, mutable link mask, and sufficiently precise deletion identity. These choices avoid implicit cross-family queries and accidental whole-record rewrites.
+
+## Preserve kernel application semantics
+
+Native NEW/DEL operations with explicit exclusive-create or replace flags retain errno and kernel matching semantics. Preflight existence checks and userspace delete/recreate would add races and could not promise rollback. Address replacement is particularly nonuniform: the Linux 7.0 [IPv4 handler](https://github.com/torvalds/linux/blob/v7.0/net/ipv4/devinet.c) and [IPv6 handler](https://github.com/torvalds/linux/blob/v7.0/net/ipv6/addrconf.c) can create an absent address even without CREATE, and IPv4 replacement retains several properties. The usage contract exposes this restriction instead of inventing a racy change-only guarantee. A multi-property link request likewise need not apply atomically.
+
+Kernel objects persist independently of the configuration connection. Local socket cleanup is unconditional on acquisition failure, while a transport failure after mutation cannot establish which kernel effects occurred. Automatic retries, rollback, and transactions would imply guarantees Linux does not supply. Lossy notifications similarly require consumer reconciliation over a separate connection; an atomic state-plus-subscription abstraction would need a substantially stronger protocol than a dump followed by reads.
