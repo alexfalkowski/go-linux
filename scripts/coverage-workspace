@@ -6,6 +6,23 @@ set -eo pipefail
 readonly reports_directory="test/reports"
 readonly workspace_directory="/tmp/go-linux-reports"
 readonly action="${1:-}"
+readonly facilities=(
+  rootless
+  netlink
+  namespace
+  mount
+  fanotify
+  timerfd
+)
+readonly architectures=(arm64 amd64)
+
+partitions=()
+for facility in "${facilities[@]}"; do
+  for arch in "${architectures[@]}"; do
+    partitions+=("${facility}-${arch}")
+  done
+done
+readonly partitions
 
 case "$action" in
   stage)
@@ -15,13 +32,17 @@ case "$action" in
     fi
 
     readonly partition="$2"
-    case "$partition" in
-      rootless-arm64 | rootless-amd64 | netlink-arm64 | netlink-amd64 | mount-arm64 | mount-amd64 | fanotify-arm64 | fanotify-amd64 | timerfd-arm64 | timerfd-amd64) ;;
-      *)
-        printf 'partition must select rootless, netlink, mount, fanotify, or timerfd and arm64 or amd64\n' >&2
-        exit 2
-        ;;
-    esac
+    valid_partition=false
+    for candidate in "${partitions[@]}"; do
+      if [[ $partition == "$candidate" ]]; then
+        valid_partition=true
+        break
+      fi
+    done
+    if [[ $valid_partition == false ]]; then
+      printf 'partition must select a facility (%s) and architecture (%s)\n' "${facilities[*]}" "${architectures[*]}" >&2
+      exit 2
+    fi
 
     readonly profile="${reports_directory}/profile.cov"
     if [[ ! -f $profile || ! -s $profile || -L $profile ]]; then
@@ -39,19 +60,17 @@ case "$action" in
     fi
 
     profiles=()
-    for facility in rootless netlink mount fanotify timerfd; do
-      for arch in arm64 amd64; do
-        profile="${workspace_directory}/${facility}-${arch}/profile.cov"
-        if [[ ! -f $profile || ! -s $profile || -L $profile ]]; then
-          printf 'missing or empty coverage profile: %s\n' "$profile" >&2
-          exit 1
-        fi
-        if ! awk 'NR == 1 && $0 != "mode: atomic" { exit 1 } END { if (NR < 2) exit 1 }' "$profile"; then
-          printf 'expected a nonempty atomic coverage profile: %s\n' "$profile" >&2
-          exit 1
-        fi
-        profiles+=("$profile")
-      done
+    for partition in "${partitions[@]}"; do
+      profile="${workspace_directory}/${partition}/profile.cov"
+      if [[ ! -f $profile || ! -s $profile || -L $profile ]]; then
+        printf 'missing or empty coverage profile: %s\n' "$profile" >&2
+        exit 1
+      fi
+      if ! awk 'NR == 1 && $0 != "mode: atomic" { exit 1 } END { if (NR < 2) exit 1 }' "$profile"; then
+        printf 'expected a nonempty atomic coverage profile: %s\n' "$profile" >&2
+        exit 1
+      fi
+      profiles+=("$profile")
     done
 
     # Explicit raw inputs exclude old merged reports and unrelated artifacts.

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Run namespace transitions only in private children inside privileged Docker.
+
+set -eo pipefail
+
+# shellcheck source=scripts/container.sh
+source "$(dirname "$0")/container.sh"
+
+if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
+  printf 'usage: make verify-namespace-container image=<tag> arch=<amd64|arm64> [kernel=<supported|7.0|newer>]\n' >&2
+  exit 2
+fi
+
+namespace_image=$1
+namespace_arch=$2
+
+printf 'executor=machine container=%s arch=%s privileged=true\n' "$namespace_image" "$namespace_arch"
+
+run_privileged_container "$namespace_image" namespace "$namespace_arch" "kernel=${GO_LINUX_TEST_KERNEL:-supported}"

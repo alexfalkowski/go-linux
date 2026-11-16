@@ -62,7 +62,7 @@ func TestLinkMutationsAndNotifications(t *testing.T) {
 	require.Equal(t, "fixture1", event.Link.Name)
 }
 
-func TestAddressMutationsAndNotifications(t *testing.T) {
+func TestAddressLifecycleAndNotifications(t *testing.T) {
 	if !test.NetworkNamespace(t) {
 		return
 	}
@@ -71,7 +71,7 @@ func TestAddressMutationsAndNotifications(t *testing.T) {
 	link := test.RouteLink(t, conn, "fixture0")
 	listener := test.RouteListener(t, route.IPv4AddressGroup, route.IPv6AddressGroup)
 
-	for _, tc := range []struct {
+	for _, scenario := range []struct {
 		name   string
 		family route.Family
 		config route.AddressConfig
@@ -84,61 +84,106 @@ func TestAddressMutationsAndNotifications(t *testing.T) {
 			Index: link.Index, Prefix: netip.MustParsePrefix("2001:db8::1/64"), Flags: route.NoDAD | route.NoPrefixRoute,
 		}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			require.NoError(t, conn.AddAddress(tc.config))
-			require.ErrorIs(t, conn.AddAddress(tc.config), test.ErrExists)
-			addresses, err := conn.Addresses(tc.family)
-			require.NoError(t, err)
-			position := slices.IndexFunc(addresses, func(address route.Address) bool {
-				return address.Index == link.Index && address.Prefix == tc.config.Prefix
-			})
-			require.NotEqual(t, -1, position, "added address must appear in the dump")
-			found := addresses[position]
-			require.Equal(t, tc.config.Peer, found.Peer)
-			require.Equal(t, tc.config.Broadcast, found.Broadcast)
-			require.Equal(t, tc.config.Label, found.Label)
-			require.Equal(t, tc.config.Flags, found.Flags&tc.config.Flags, "requested extended flags survive")
-			require.Equal(t, tc.config.Scope, found.Scope)
+		t.Run(scenario.name, func(t *testing.T) {
+			require.NoError(t, conn.AddAddress(scenario.config))
+			require.ErrorIs(t, conn.AddAddress(scenario.config), test.ErrExists)
+
+			found := test.RouteAddress(t, conn, scenario.family, scenario.config)
+			require.Equal(t, scenario.config.Peer, found.Peer)
+			require.Equal(t, scenario.config.Broadcast, found.Broadcast)
+			require.Equal(t, scenario.config.Label, found.Label)
+			require.Equal(t, scenario.config.Flags, found.Flags&scenario.config.Flags, "requested extended flags survive")
+			require.Equal(t, scenario.config.Scope, found.Scope)
 			event := test.RouteEvent(t, listener, func(event route.Event) bool {
-				return event.Type == route.NewAddress && event.Address.Prefix == tc.config.Prefix
+				return event.Type == route.NewAddress && event.Address.Prefix == scenario.config.Prefix
 			})
 			require.Equal(t, link.Index, event.Address.Index)
 
-			changed := tc.config
-			changed.Priority = 17
-			if tc.family == route.IPv6 {
-				changed.Flags &^= route.NoPrefixRoute
-			}
-			require.NoError(t, conn.ChangeAddress(changed))
-			addresses, err = conn.Addresses(tc.family)
-			require.NoError(t, err)
-			position = slices.IndexFunc(addresses, func(address route.Address) bool {
-				return address.Index == link.Index && address.Prefix == changed.Prefix
-			})
-			require.NotEqual(t, -1, position, "changed address remains present")
-			require.Equal(t, changed.Priority, addresses[position].Priority, "replacement changes prefix-route priority")
-			require.Equal(t, changed.Flags&route.NoPrefixRoute, addresses[position].Flags&route.NoPrefixRoute, "family-specific flag replacement")
+			require.NoError(t, conn.DeleteAddress(scenario.config))
+			require.ErrorIs(t, conn.DeleteAddress(scenario.config), test.ErrAddressNotAvailable)
 
-			require.NoError(t, conn.DeleteAddress(changed))
-			require.ErrorIs(t, conn.DeleteAddress(changed), test.ErrAddressNotAvailable)
-			addresses, err = conn.Addresses(tc.family)
+			addresses, err := conn.Addresses(scenario.family)
 			require.NoError(t, err)
 			for _, address := range addresses {
-				require.NotEqual(t, changed.Prefix, address.Prefix)
+				require.NotEqual(t, scenario.config.Prefix, address.Prefix, "deleted addresses leave the dump")
 			}
 			event = test.RouteEvent(t, listener, func(event route.Event) bool {
-				return event.Type == route.DelAddress && event.Address.Prefix == changed.Prefix
+				return event.Type == route.DelAddress && event.Address.Prefix == scenario.config.Prefix
 			})
 			require.Equal(t, link.Index, event.Address.Index)
+		})
+	}
+}
 
-			require.NoError(t, conn.ChangeAddress(changed), "Linux replacement may create an absent address")
-			addresses, err = conn.Addresses(tc.family)
-			require.NoError(t, err)
-			position = slices.IndexFunc(addresses, func(address route.Address) bool {
-				return address.Prefix == changed.Prefix
-			})
-			require.NotEqual(t, -1, position, "replacement creates the previously removed address")
+func TestAddressReplacementChangesPriorityAndFlags(t *testing.T) {
+	if !test.NetworkNamespace(t) {
+		return
+	}
+	conn := test.Route(t)
+	require.NoError(t, conn.AddLink("fixture0", route.Dummy))
+	link := test.RouteLink(t, conn, "fixture0")
+
+	for _, scenario := range []struct {
+		name        string
+		family      route.Family
+		config      route.AddressConfig
+		replacement route.AddressFlags
+	}{
+		{name: "IPv4 retains no-prefix-route", family: route.IPv4, replacement: route.NoPrefixRoute, config: route.AddressConfig{
+			Index: link.Index, Prefix: netip.MustParsePrefix("192.0.2.1/24"), Peer: netip.MustParseAddr("192.0.2.2"),
+			Broadcast: netip.MustParseAddr("192.0.2.255"), Label: "fixture0:one", Flags: route.NoPrefixRoute, Scope: route.LinkScope,
+		}},
+		{name: "IPv6 clears no-prefix-route", family: route.IPv6, replacement: route.NoDAD, config: route.AddressConfig{
+			Index: link.Index, Prefix: netip.MustParsePrefix("2001:db8::1/64"), Flags: route.NoDAD | route.NoPrefixRoute,
+		}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			require.NoError(t, conn.AddAddress(scenario.config))
+
+			changed := scenario.config
+			changed.Priority = 17
+			changed.Flags = scenario.replacement
+			require.NoError(t, conn.ChangeAddress(changed))
+
+			found := test.RouteAddress(t, conn, scenario.family, changed)
+			require.Equal(t, changed.Priority, found.Priority, "replacement changes prefix-route priority")
+			require.Equal(t, changed.Flags&route.NoPrefixRoute, found.Flags&route.NoPrefixRoute, "replacement applies family-specific flags")
 			require.NoError(t, conn.DeleteAddress(changed))
+		})
+	}
+}
+
+func TestAddressReplacementRecreatesDeletedAddress(t *testing.T) {
+	if !test.NetworkNamespace(t) {
+		return
+	}
+	conn := test.Route(t)
+	require.NoError(t, conn.AddLink("fixture0", route.Dummy))
+	link := test.RouteLink(t, conn, "fixture0")
+
+	for _, scenario := range []struct {
+		name   string
+		family route.Family
+		config route.AddressConfig
+	}{
+		{name: "IPv4", family: route.IPv4, config: route.AddressConfig{
+			Index: link.Index, Prefix: netip.MustParsePrefix("192.0.2.1/24"), Peer: netip.MustParseAddr("192.0.2.2"),
+			Broadcast: netip.MustParseAddr("192.0.2.255"), Label: "fixture0:one", Flags: route.NoPrefixRoute, Scope: route.LinkScope, Priority: 17,
+		}},
+		{name: "IPv6", family: route.IPv6, config: route.AddressConfig{
+			Index: link.Index, Prefix: netip.MustParsePrefix("2001:db8::1/64"), Flags: route.NoDAD, Priority: 17,
+		}},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			config := scenario.config
+			require.NoError(t, conn.AddAddress(config))
+			require.NoError(t, conn.DeleteAddress(config))
+
+			require.NoError(t, conn.ChangeAddress(config))
+
+			found := test.RouteAddress(t, conn, scenario.family, config)
+			require.Equal(t, config.Prefix, found.Prefix, "replacement recreates the deleted address")
+			require.NoError(t, conn.DeleteAddress(config))
 		})
 	}
 }

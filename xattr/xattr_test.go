@@ -84,27 +84,27 @@ func TestSetModesPreserveAtomicExistenceConditions(t *testing.T) {
 	require.ErrorIs(t, xattr.Remove(opened, "user.mode"), test.ErrNoData)
 }
 
-func TestDirectoryRelativePathsAndStableHandles(t *testing.T) {
-	root := t.TempDir()
-	dir := test.OpenFile(t, root)
-	require.NoError(t, os.WriteFile(filepath.Join(root, "data"), nil, 0o600))
-
-	opened := test.OpenFile(t, filepath.Join(root, "data"))
-	pathOnly, err := file.Open(dir, "data", file.OpenOptions{Flags: file.Path})
+func TestPathOnlyFilesRejectAttributeOperations(t *testing.T) {
+	opened := test.TempFile(t, 0)
+	dir := test.OpenFile(t, filepath.Dir(opened.Name()))
+	pathOnly, err := file.Open(dir, filepath.Base(opened.Name()), file.OpenOptions{Flags: file.Path})
 	require.NoError(t, err)
 	test.Cleanup(t, pathOnly)
 
 	_, err = xattr.Get(pathOnly, "user.path")
 	require.ErrorIs(t, err, test.ErrBadDescriptor)
-
 	require.ErrorIs(t, xattr.Set(pathOnly, "user.path", nil, xattr.Upsert), test.ErrBadDescriptor)
-
 	require.ErrorIs(t, xattr.Remove(pathOnly, "user.path"), test.ErrBadDescriptor)
-
 	_, err = xattr.List(pathOnly)
 	require.ErrorIs(t, err, test.ErrBadDescriptor)
+}
 
-	require.NoError(t, xattr.SetAt(dir, "data", "user.path", []byte("relative"), xattr.Create, xattr.PathOptions{}))
+func TestRelativeAndAbsoluteAttributePaths(t *testing.T) {
+	opened := test.TempFile(t, 0)
+	dir := test.OpenFile(t, filepath.Dir(opened.Name()))
+	name := filepath.Base(opened.Name())
+
+	require.NoError(t, xattr.SetAt(dir, name, "user.path", []byte("relative"), xattr.Create, xattr.PathOptions{}))
 
 	value, err := xattr.Get(opened, "user.path")
 	require.NoError(t, err)
@@ -112,38 +112,45 @@ func TestDirectoryRelativePathsAndStableHandles(t *testing.T) {
 
 	require.NoError(t, xattr.Set(opened, "user.path", []byte("handle"), xattr.Replace))
 
-	value, err = xattr.GetAt(dir, filepath.Join(root, "data"), "user.path", xattr.PathOptions{})
+	value, err = xattr.GetAt(dir, opened.Name(), "user.path", xattr.PathOptions{})
 	require.NoError(t, err)
 	require.Equal(t, "handle", string(value))
 
-	names, err := xattr.ListAt(dir, "data", xattr.PathOptions{})
+	names, err := xattr.ListAt(dir, name, xattr.PathOptions{})
 	require.NoError(t, err)
 	require.Contains(t, names, "user.path")
+	require.NoError(t, xattr.RemoveAt(dir, name, "user.path", xattr.PathOptions{}))
+}
 
-	require.NoError(t, xattr.RemoveAt(dir, "data", "user.path", xattr.PathOptions{}))
-
+func TestEmptyAttributePathSelectsDirectory(t *testing.T) {
+	dir := test.OpenFile(t, t.TempDir())
 	require.NoError(t, xattr.Set(dir, "user.directory", []byte("dir"), xattr.Create))
 
-	value, err = xattr.GetAt(dir, "", "user.directory", xattr.PathOptions{NoFollow: true})
+	value, err := xattr.GetAt(dir, "", "user.directory", xattr.PathOptions{NoFollow: true})
 	require.NoError(t, err)
 	require.Equal(t, "dir", string(value))
+}
 
-	require.NoError(t, os.Rename(root, root+"-moved"))
+func TestAttributeHandlesSurviveRenameAndUnlink(t *testing.T) {
+	parent := t.TempDir()
+	root := filepath.Join(parent, "original")
+	require.NoError(t, os.Mkdir(root, 0o700))
+	require.NoError(t, os.WriteFile(filepath.Join(root, "data"), nil, 0o600))
+	dir := test.OpenFile(t, root)
+	opened := test.OpenFile(t, filepath.Join(root, "data"))
+	moved := filepath.Join(parent, "moved")
 
-	t.Cleanup(func() {
-		require.NoError(t, os.RemoveAll(root+"-moved"))
-	})
+	require.NoError(t, os.Rename(root, moved))
 	require.NoError(t, xattr.SetAt(dir, "data", "user.unlinked", []byte("still open"), xattr.Upsert, xattr.PathOptions{}))
+	require.NoError(t, os.Remove(filepath.Join(moved, "data")))
 
-	require.NoError(t, os.Remove(filepath.Join(root+"-moved", "data")))
-
-	value, err = xattr.Get(opened, "user.unlinked")
+	value, err := xattr.Get(opened, "user.unlinked")
 	require.NoError(t, err)
 	require.Equal(t, "still open", string(value))
 
 	require.NoError(t, xattr.Remove(opened, "user.unlinked"))
 
-	names, err = xattr.List(opened)
+	names, err := xattr.List(opened)
 	require.NoError(t, err)
 	require.NotContains(t, names, "user.unlinked")
 }

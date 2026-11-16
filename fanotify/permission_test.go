@@ -149,64 +149,86 @@ func TestExecOpenPermissionAndNotification(t *testing.T) {
 	require.NoError(t, ctx.Err())
 }
 
-func TestIterationClosesCurrentAndUnreadFilesOnBreakAndPanic(t *testing.T) {
+func TestIterationCleansUpOnBreak(t *testing.T) {
 	if !test.FanotifyNamespace(t) {
 		return
 	}
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
+	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 
-	for _, scenario := range []string{"break", "panic"} {
-		t.Run(scenario, func(t *testing.T) {
-			group := test.Value(t, func() (*fanotify.Group, error) {
-				return fanotify.New(fanotify.Notification)
-			})
-			test.Cleanup(t, group)
-			require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
-
-			root := t.TempDir()
-			require.NoError(t, group.AddMark(root, fanotify.CloseWrite|fanotify.EventOnChild, fanotify.OnlyDir))
-
-			for _, name := range []string{"first", "second", "third"} {
-				require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0o600))
-			}
-
-			before := test.Descriptors(t)
-			var borrowed *fanotify.Event
-			iterate := func() {
-				for event, err := range group.Events() {
-					require.NoError(t, err)
-
-					borrowed = event
-					if scenario == "panic" {
-						panic("loop body")
-					}
-					break
-				}
-			}
-			if scenario == "panic" {
-				require.PanicsWithValue(t, "loop body", iterate)
-			} else {
-				iterate()
-			}
-
-			require.NotNil(t, borrowed)
-
-			_, err := borrowed.Stat()
-			require.ErrorIs(t, err, os.ErrClosed)
-			require.Equal(t, before, test.Descriptors(t), "iteration must release the whole read-ahead batch")
-
-			require.NoError(t, group.SetReadDeadline(time.Now().Add(20*time.Millisecond)))
-
-			var terminal int
-			for event, err := range group.Events() {
-				require.Nil(t, event)
-				require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-
-				terminal++
-			}
-
-			require.Equal(t, 1, terminal, "iteration must yield exactly one deadline error")
-		})
+	root := t.TempDir()
+	require.NoError(t, group.AddMark(root, fanotify.CloseWrite|fanotify.EventOnChild, fanotify.OnlyDir))
+	for _, name := range []string{"first", "second", "third"} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0o600))
 	}
+
+	before := test.Descriptors(t)
+
+	var borrowed *fanotify.Event
+	for event, err := range group.Events() {
+		require.NoError(t, err)
+		borrowed = event
+		break
+	}
+
+	require.NotNil(t, borrowed)
+	_, err = borrowed.Stat()
+	require.ErrorIs(t, err, os.ErrClosed)
+	require.Equal(t, before, test.Descriptors(t), "break releases the current event and unread batch")
+
+	// A new iterator must find the queue empty and yield one terminal error.
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(20*time.Millisecond)))
+	var terminal int
+	for event, err := range group.Events() {
+		require.Nil(t, event)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		terminal++
+	}
+	require.Equal(t, 1, terminal, "the unread events were drained")
+}
+
+func TestIterationCleansUpOnPanic(t *testing.T) {
+	if !test.FanotifyNamespace(t) {
+		return
+	}
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
+	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
+
+	root := t.TempDir()
+	require.NoError(t, group.AddMark(root, fanotify.CloseWrite|fanotify.EventOnChild, fanotify.OnlyDir))
+	for _, name := range []string{"first", "second", "third"} {
+		require.NoError(t, os.WriteFile(filepath.Join(root, name), nil, 0o600))
+	}
+
+	before := test.Descriptors(t)
+
+	var borrowed *fanotify.Event
+	require.PanicsWithValue(t, "loop body", func() {
+		for event, err := range group.Events() {
+			require.NoError(t, err)
+			borrowed = event
+			panic("loop body")
+		}
+	})
+
+	require.NotNil(t, borrowed)
+	_, err = borrowed.Stat()
+	require.ErrorIs(t, err, os.ErrClosed)
+	require.Equal(t, before, test.Descriptors(t), "panic releases the current event and unread batch")
+
+	// A new iterator must find the queue empty and yield one terminal error.
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(20*time.Millisecond)))
+	var terminal int
+	for event, err := range group.Events() {
+		require.Nil(t, event)
+		require.ErrorIs(t, err, os.ErrDeadlineExceeded)
+		terminal++
+	}
+	require.Equal(t, 1, terminal, "the unread events were drained")
 }
 
 func TestIterationDeniesPermissionOnEarlyExit(t *testing.T) {
