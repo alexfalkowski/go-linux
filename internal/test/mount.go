@@ -37,13 +37,44 @@ func MountAttributesName(attributes mount.Attributes) string {
 	return strings.Join(names, ", ")
 }
 
-// MountFilesystem inspects a mount's filesystem through its observed descriptor.
-func MountFilesystem(t *testing.T, fd int) unix.Statfs_t {
+// MountIsTmpfs independently identifies a fixture mount through its descriptor.
+func MountIsTmpfs(t *testing.T, fd int) bool {
 	t.Helper()
 
 	var stat unix.Statfs_t
 	require.NoError(t, unix.Fstatfs(fd, &stat))
-	return stat
+	return stat.Type == unix.TMPFS_MAGIC
+}
+
+// PathIsTmpfs independently identifies a filesystem after handle closure.
+func PathIsTmpfs(t *testing.T, path string) bool {
+	t.Helper()
+	var stat unix.Statfs_t
+	require.NoError(t, unix.Statfs(path, &stat))
+	return stat.Type == unix.TMPFS_MAGIC
+}
+
+// MountOpenError independently observes fsopen's errno, closing any acquisition.
+func MountOpenError(name string) error {
+	fd, err := unix.Fsopen(name, unix.FSOPEN_CLOEXEC)
+	if err == nil {
+		unix.Close(fd)
+	}
+	return err
+}
+
+// MountCloneError independently observes open_tree's errno, closing any acquisition.
+func MountCloneError(path string) error {
+	fd, err := unix.OpenTree(unix.AT_FDCWD, path, unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC)
+	if err == nil {
+		unix.Close(fd)
+	}
+	return err
+}
+
+// MountUnmountError independently observes umount2's errno for a missing path.
+func MountUnmountError(path string) error {
+	return unix.Unmount(path, 0)
 }
 
 // AttachMount attaches a handle and registers unmount before directory cleanup.

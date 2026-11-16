@@ -4,10 +4,22 @@ package test
 
 import (
 	"os"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+// DescriptorConnection names the native interface owners must not expose.
+type DescriptorConnection = syscall.Conn
+
+// ErrorNumber observes the wrapped errno independently of errors.Is matching.
+func ErrorNumber(t *testing.T, err error) syscall.Errno {
+	t.Helper()
+	var number syscall.Errno
+	require.ErrorAs(t, err, &number)
+	return number
+}
 
 // Value returns a successful observation. Use it when the value is the behavior
 // under test; keep failure and partial-result assertions explicit in scenarios.

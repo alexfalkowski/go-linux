@@ -12,10 +12,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/alexfalkowski/go-linux/inotify"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/mount"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -77,7 +77,7 @@ func TestInvalidMountAcquisitionArgumentsRetainNoDescriptors(t *testing.T) {
 	before := test.DescriptorCount(t)
 	for range 10 {
 		config, err := mount.Open("tmpfs\x00other")
-		test.NoResource(t, config, err, unix.EINVAL)
+		test.NoResource(t, config, err, test.ErrInvalidArgument)
 
 		for _, flags := range []mount.CloneFlags{0, 1, 1 << 31} {
 			handle, err := mount.Clone(nil, "", flags)
@@ -103,7 +103,7 @@ func TestUnmountRejectsUnknownFlagsAndNULPaths(t *testing.T) {
 	}{
 		{name: "unsupported flag", path: "/unused", flags: 1, err: os.ErrInvalid},
 		{name: "known and unknown flags", path: "/unused", flags: mount.Detach | 4, err: os.ErrInvalid},
-		{name: "NUL in path", path: "invalid\x00mount", err: unix.EINVAL},
+		{name: "NUL in path", path: "invalid\x00mount", err: test.ErrInvalidArgument},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			err := mount.Unmount(scenario.path, scenario.flags)
@@ -147,7 +147,7 @@ func TestUnmountReleasesAttachmentsWithExplicitReferenceRules(t *testing.T) {
 
 			file := test.OpenFile(t, filename)
 			if !scenario.retainReferences {
-				require.ErrorIs(t, mount.Unmount(path, 0), unix.EBUSY)
+				require.ErrorIs(t, mount.Unmount(path, 0), test.ErrBusy)
 
 				require.NoError(t, file.Close())
 				require.NoError(t, handle.Close())
@@ -170,6 +170,43 @@ func TestUnmountReleasesAttachmentsWithExplicitReferenceRules(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUnmountReportsFilesystemRemovalAndInvalidatesWatch(t *testing.T) {
+	if !test.MountNamespace(t) {
+		return
+	}
+
+	path := t.TempDir()
+	config := test.MountConfig(t)
+	require.NoError(t, config.Create())
+	handle, err := config.Mount(mount.NoSUID | mount.NoDev)
+	require.NoError(t, err)
+	test.Cleanup(t, handle)
+	require.NoError(t, handle.Attach(nil, path))
+	attached := true
+	t.Cleanup(func() {
+		if attached {
+			require.NoError(t, mount.Unmount(path, mount.Detach))
+		}
+	})
+
+	name := filepath.Join(path, "watched")
+	require.NoError(t, os.WriteFile(name, nil, 0o600))
+	watcher := test.Watcher(t)
+	id, err := watcher.AddWatch(name, inotify.Attrib)
+	require.NoError(t, err)
+
+	// Release filesystem references so unmount tears down the watched tmpfs.
+	require.NoError(t, handle.Close())
+	require.NoError(t, config.Close())
+	require.NoError(t, mount.Unmount(path, 0))
+	attached = false
+
+	events, err := watcher.ReadEvents(make([]byte, 4096))
+	require.NoError(t, err)
+	require.Equal(t, []inotify.Event{{Watch: id, Mask: inotify.Unmount}, {Watch: id, Mask: inotify.Ignored}}, events)
+	require.ErrorIs(t, watcher.RemoveWatch(id), test.ErrInvalidArgument, "unmount must remove the watch automatically")
 }
 
 func TestCloningAClosedDirectoryReturnsNoHandle(t *testing.T) {
@@ -215,20 +252,20 @@ func TestInvalidMountAttributesAndEmptyTargetsAreRejected(t *testing.T) {
 
 func TestFailedMountAcquisitionPreservesErrnoAndRetainsNoDescriptor(t *testing.T) {
 	before := test.DescriptorCount(t)
-	_, expected := unix.Fsopen("go-linux-nonexistent-filesystem", unix.FSOPEN_CLOEXEC)
+	expected := test.MountOpenError("go-linux-nonexistent-filesystem")
 	require.Error(t, expected)
 
 	config, err := mount.Open("go-linux-nonexistent-filesystem")
 	test.NoResource(t, config, err, expected)
 
 	path := filepath.Join(t.TempDir(), "missing")
-	_, expected = unix.OpenTree(unix.AT_FDCWD, path, unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC)
+	expected = test.MountCloneError(path)
 	require.Error(t, expected)
 
 	handle, err := mount.Clone(nil, path, 0)
 	test.NoResource(t, handle, err, expected)
 
-	expected = unix.Unmount(path, 0)
+	expected = test.MountUnmountError(path)
 	require.Error(t, expected)
 
 	require.ErrorIs(t, mount.Unmount(path, 0), expected)
@@ -237,18 +274,18 @@ func TestFailedMountAcquisitionPreservesErrnoAndRetainsNoDescriptor(t *testing.T
 
 func TestDiagnosticRetrievalErrorsDoNotReplaceTheOperationError(t *testing.T) {
 	err := &mount.Error{
-		Err:             os.NewSyscallError("fsconfig", unix.EINVAL),
-		DiagnosticError: unix.EMSGSIZE,
+		Err:             os.NewSyscallError("fsconfig", test.ErrInvalidArgument),
+		DiagnosticError: test.ErrMessageTooLarge,
 		Diagnostics:     []mount.Diagnostic{{Severity: 'e', Message: "invalid option"}},
 	}
 
-	require.ErrorIs(t, err, unix.EINVAL)
-	require.NotErrorIs(t, err, unix.EMSGSIZE, "retrieval failure must not replace or masquerade as the primary errno")
+	require.ErrorIs(t, err, test.ErrInvalidArgument)
+	require.NotErrorIs(t, err, test.ErrMessageTooLarge, "retrieval failure must not replace or masquerade as the primary errno")
 
 	var syscallErr *os.SyscallError
 	require.ErrorAs(t, err, &syscallErr)
 	require.Contains(t, err.Error(), "invalid option")
-	require.Contains(t, err.Error(), "diagnostics: "+unix.EMSGSIZE.Error())
+	require.Contains(t, err.Error(), "diagnostics: "+test.ErrMessageTooLarge.Error())
 }
 
 func TestMountRequiresExplicitFilesystemCreation(t *testing.T) {
@@ -258,7 +295,7 @@ func TestMountRequiresExplicitFilesystemCreation(t *testing.T) {
 
 	config := test.MountConfig(t)
 	handle, err := config.Mount(0)
-	test.NoResource(t, handle, err, unix.EINVAL)
+	test.NoResource(t, handle, err, test.ErrInvalidArgument)
 }
 
 func TestFilesystemParametersAndMountRestrictionsReachTheKernel(t *testing.T) {
@@ -286,8 +323,7 @@ func TestFilesystemParametersAndMountRestrictionsReachTheKernel(t *testing.T) {
 	fd := test.NewDescriptor(t, before)
 	test.CloseOnExec(t, fd)
 
-	statfs := test.MountFilesystem(t, fd)
-	require.Equal(t, int64(unix.TMPFS_MAGIC), statfs.Type)
+	require.True(t, test.MountIsTmpfs(t, fd), "the detached fixture must use tmpfs")
 
 	attributes := test.Value(t, handle.Attributes)
 	require.Equal(t, all, attributes)
@@ -374,7 +410,7 @@ func TestConfigurationErrorsPreserveCompleteDiagnostics(t *testing.T) {
 	key := strings.Repeat("x", 255)
 
 	err := config.SetFlag(key)
-	require.ErrorIs(t, err, unix.EINVAL)
+	require.ErrorIs(t, err, test.ErrInvalidArgument)
 
 	var failure *mount.Error
 	require.ErrorAs(t, err, &failure)
@@ -397,19 +433,19 @@ func TestRejectedParametersLeaveTheConfigurationContextUsable(t *testing.T) {
 	}{
 		{name: "invalid mode", configure: func(c *mount.Config) error {
 			return c.SetString("mode", "invalid")
-		}, err: unix.EINVAL},
+		}, err: test.ErrInvalidArgument},
 
 		{name: "flag instead of string", configure: func(c *mount.Config) error {
 			return c.SetFlag("size")
-		}, err: unix.EINVAL},
+		}, err: test.ErrInvalidArgument},
 
 		{name: "NUL in string", configure: func(c *mount.Config) error {
 			return c.SetString("mode", "\x00")
-		}, err: unix.EINVAL},
+		}, err: test.ErrInvalidArgument},
 
 		{name: "256 byte key", configure: func(c *mount.Config) error {
 			return c.SetFlag(strings.Repeat("x", 256))
-		}, err: unix.EINVAL},
+		}, err: test.ErrInvalidArgument},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			config := test.MountConfig(t)
@@ -432,7 +468,7 @@ func TestCreatingAnAlreadyPreparedFilesystemReturnsEBUSY(t *testing.T) {
 	require.NoError(t, config.Create())
 
 	err := config.Create()
-	require.ErrorIs(t, err, unix.EBUSY)
+	require.ErrorIs(t, err, test.ErrBusy)
 
 	var failure *mount.Error
 	require.ErrorAs(t, err, &failure)
@@ -553,7 +589,7 @@ func TestAttachedMountSurvivesClosingItsHandleAndTargetDirectory(t *testing.T) {
 	path := t.TempDir()
 	dir := test.OpenFile(t, path)
 
-	require.ErrorIs(t, handle.Attach(dir, "missing"), unix.ENOENT)
+	require.ErrorIs(t, handle.Attach(dir, "missing"), test.ErrNotExist)
 
 	test.AttachMount(t, handle, dir, "", path)
 
@@ -590,9 +626,7 @@ func TestAttachedMountSurvivesClosingItsHandleAndTargetDirectory(t *testing.T) {
 
 	require.NoError(t, os.WriteFile(filepath.Join(path, "persists"), []byte("mounted"), 0o600), "Close must leave attachment intact")
 
-	var stat unix.Statfs_t
-	require.NoError(t, unix.Statfs(path, &stat))
-	require.Equal(t, int64(unix.TMPFS_MAGIC), stat.Type)
+	require.True(t, test.PathIsTmpfs(t, path), "closing a handle must preserve the attached tmpfs")
 
 	data, err := os.ReadFile(filepath.Join(path, "persists"))
 	require.NoError(t, err)
@@ -677,7 +711,7 @@ func TestRecursiveAttributesAffectTheCloneAndItsChildMounts(t *testing.T) {
 			require.NoError(t, handle.SetAttributes(mount.AttributeChange{Set: mount.ReadOnly, Recursive: true}))
 
 			for _, directory := range []string{path, filepath.Join(path, "nested")} {
-				require.ErrorIs(t, os.WriteFile(filepath.Join(directory, "new"), nil, 0o600), unix.EROFS, directory)
+				require.ErrorIs(t, os.WriteFile(filepath.Join(directory, "new"), nil, 0o600), test.ErrReadOnlyFilesystem, directory)
 			}
 
 			require.NoError(t, os.WriteFile(filepath.Join(source, "original"), nil, 0o600), "source mount remains writable")
@@ -736,7 +770,7 @@ func TestMountAcquisitionAndCloseLeaveNoDescriptorsBehind(t *testing.T) {
 			path string
 			err  error
 		}{
-			{name: "missing target", dir: dir, path: "missing", err: unix.ENOENT},
+			{name: "missing target", dir: dir, path: "missing", err: test.ErrNotExist},
 			{name: "absolute clone", path: path},
 			{name: "relative clone", dir: dir, path: "."},
 		} {
@@ -752,7 +786,7 @@ func TestMountAcquisitionAndCloseLeaveNoDescriptorsBehind(t *testing.T) {
 
 		_ = test.Value(t, dir.Stat)
 		config, err = mount.Open("go-linux-nonexistent-filesystem")
-		test.NoResource(t, config, err, unix.ENODEV)
+		test.NoResource(t, config, err, test.ErrNoDevice)
 	}
 
 	require.Equal(t, before, test.DescriptorCount(t), "acquisition and Close must leave no descriptors")
@@ -795,13 +829,13 @@ func TestMountAcquisitionFailsWithoutAnOwnerWhenDescriptorsAreExhausted(t *testi
 	test.ExhaustDescriptors(t)
 
 	got, err := mount.Open("tmpfs")
-	test.NoResource(t, got, err, unix.EMFILE)
+	test.NoResource(t, got, err, test.ErrTooManyOpenFiles)
 
 	handle, err := mount.Clone(nil, path, 0)
-	test.NoResource(t, handle, err, unix.EMFILE)
+	test.NoResource(t, handle, err, test.ErrTooManyOpenFiles)
 
 	handle, err = config.Mount(0)
-	test.NoResource(t, handle, err, unix.EMFILE)
+	test.NoResource(t, handle, err, test.ErrTooManyOpenFiles)
 }
 
 func TestMountExamplesRunInsideAnIsolatedNamespace(t *testing.T) {

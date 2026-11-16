@@ -12,7 +12,6 @@ import (
 	"github.com/alexfalkowski/go-linux/file"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestStatReportsMetadataWithoutChangingTheFileOffset(t *testing.T) {
@@ -93,7 +92,7 @@ func TestStatAtDistinguishesLinksTargetsAndStableHandles(t *testing.T) {
 	require.NoError(t, os.Remove(filepath.Join(root, "data")))
 
 	_, err = file.StatAt(dir, "link", file.StatOptions{Mask: file.MaskBasic})
-	require.ErrorIs(t, err, unix.ENOENT)
+	require.ErrorIs(t, err, test.ErrNotExist)
 
 	stillOpen, err := file.Stat(opened, file.MaskBasic)
 	require.NoError(t, err)
@@ -126,8 +125,8 @@ func TestStatAtReturnsZeroMetadataAndPreservesErrors(t *testing.T) {
 		path    string
 		options file.StatOptions
 	}{
-		{name: "missing", path: "missing", wantErr: unix.ENOENT},
-		{name: "embedded NUL", path: "bad\x00name", wantErr: unix.EINVAL},
+		{name: "missing", path: "missing", wantErr: test.ErrNotExist},
+		{name: "embedded NUL", path: "bad\x00name", wantErr: test.ErrInvalidArgument},
 		{name: "unknown mask", path: ".", wantErr: os.ErrInvalid, options: file.StatOptions{Mask: 1 << 31}},
 		{name: "unknown sync", path: ".", wantErr: os.ErrInvalid, options: file.StatOptions{Sync: 1}},
 		{name: "combined sync", path: ".", wantErr: os.ErrInvalid, options: file.StatOptions{Sync: file.SyncDont | file.SyncForce}},
@@ -194,7 +193,7 @@ func TestStatMatchesIndependentKernelMetadata(t *testing.T) {
 
 	require.Equal(t, time.Unix(want.Ctime.Sec, int64(want.Ctime.Nsec)).UTC(), got.ChangeTime)
 
-	if want.Mask&unix.STATX_BTIME != 0 {
+	if file.StatMask(want.Mask)&file.MaskBirthTime != 0 {
 		require.Equal(t, time.Unix(want.Btime.Sec, int64(want.Btime.Nsec)).UTC(), got.BirthTime)
 	}
 
@@ -207,7 +206,7 @@ func TestStatMatchesIndependentKernelMetadata(t *testing.T) {
 	require.NotZero(t, metadata.Attributes&file.MountRoot)
 
 	device := test.OpenFile(t, "/dev/null")
-	wantDevice := test.FileStatx(t, device, unix.STATX_TYPE)
+	wantDevice := test.FileStatx(t, device, uint32(file.MaskType))
 	gotDevice, err := file.Stat(device, file.MaskType)
 	require.NoError(t, err)
 	require.Equal(t, wantDevice.Rdev_major, gotDevice.RdevMajor)

@@ -3,6 +3,7 @@
 package test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -35,4 +36,23 @@ type ClockCase struct {
 	Name  string
 	Clock timerfd.Clock
 	ID    int32
+}
+
+// ClockNanoseconds independently reads the selected Linux clock for ABI checks.
+func ClockNanoseconds(t *testing.T, clock int32) int64 {
+	t.Helper()
+	var stamp unix.Timespec
+	require.NoError(t, unix.ClockGettime(clock, &stamp))
+	return stamp.Nano()
+}
+
+// AbsoluteTimerFlags independently reads Linux's retained arming flags from
+// fdinfo and compares their native spelling with the requested public flags.
+func AbsoluteTimerFlags(t *testing.T, fd int, flags timerfd.SetFlags) {
+	t.Helper()
+	options := unix.TFD_TIMER_ABSTIME
+	if flags&timerfd.CancelOnSet != 0 {
+		options |= unix.TFD_TIMER_CANCEL_ON_SET
+	}
+	require.Contains(t, FDInfo(t, fd), fmt.Sprintf("settime flags: 0%o\n", options), "the kernel must retain absolute/cancellation flags")
 }

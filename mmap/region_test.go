@@ -17,7 +17,6 @@ import (
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/mmap"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var _ io.Closer = (*mmap.Region)(nil)
@@ -150,7 +149,7 @@ func TestFailedMappingsLeaveNoRegionOrDescriptor(t *testing.T) {
 	before := test.DescriptorCount(t)
 	for range 20 {
 		failed, err := mmap.Map(reader, 0, 1, mmap.Options{Mode: mmap.Shared, Protection: mmap.Write})
-		test.NoResource(t, failed, err, unix.EACCES)
+		test.NoResource(t, failed, err, test.ErrPermissionDenied)
 	}
 
 	after := test.DescriptorCount(t)
@@ -174,11 +173,11 @@ func TestReadOnlyFilesAllowPrivateWritesAndRejectSharedWrites(t *testing.T) {
 	copy(private.Bytes(), "copy")
 	require.Equal(t, "data", string(shared.Bytes()), "a read-only source still permits private writable copies")
 
-	require.ErrorIs(t, shared.Protect(mmap.Read|mmap.Write), unix.EACCES)
+	require.ErrorIs(t, shared.Protect(mmap.Read|mmap.Write), test.ErrPermissionDenied)
 	require.Equal(t, "data", string(shared.Bytes()), "failed permission upgrade must retain the readable view")
 
 	region, err := mmap.Map(reader, 0, 4, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
-	test.NoResource(t, region, err, unix.EACCES)
+	test.NoResource(t, region, err, test.ErrPermissionDenied)
 
 	test.PathError(t, err, "mmap", reader.Name())
 }
@@ -278,7 +277,7 @@ func TestInvalidMappingArgumentsReturnNoRegion(t *testing.T) {
 		{name: "negative length", length: -1, err: os.ErrInvalid},
 		{name: "negative offset", offset: -page, length: 1, err: os.ErrInvalid},
 		{name: "unaligned offset", offset: 1, length: 1, err: os.ErrInvalid},
-		{name: "offset overflow", offset: math.MaxInt64 - page + 1, length: int(page), err: unix.EOVERFLOW},
+		{name: "offset overflow", offset: math.MaxInt64 - page + 1, length: int(page), err: test.ErrOverflow},
 		{name: "unknown mode", length: 1, options: mmap.Options{Mode: 255}, err: os.ErrInvalid},
 		{name: "unknown protection", length: 1, options: mmap.Options{Protection: 128}, err: os.ErrInvalid},
 		{name: "execute protection", length: 1, options: mmap.Options{Protection: 4}, err: os.ErrInvalid},
@@ -310,7 +309,7 @@ func TestInvalidMappingSourcesReturnNoRegion(t *testing.T) {
 		{name: "nil file", err: os.ErrInvalid},
 		{name: "closed file", file: closed, err: os.ErrClosed},
 		{name: "invalid offset precedes closed state", file: closed, offset: 1, err: os.ErrInvalid},
-		{name: "directory is not mappable", file: directory, err: unix.ENODEV},
+		{name: "directory is not mappable", file: directory, err: test.ErrNoDevice},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			region, err := mmap.Map(scenario.file, scenario.offset, 1, mmap.Options{Protection: mmap.Read})
@@ -322,7 +321,7 @@ func TestInvalidMappingSourcesReturnNoRegion(t *testing.T) {
 func TestImpossibleAnonymousAllocationsReturnENOMEMWithoutAnOwner(t *testing.T) {
 	region, err := mmap.Anonymous(math.MaxInt, mmap.Options{Protection: mmap.Read | mmap.Write})
 	require.Nil(t, region, "an impossible address-space request must not return an owner")
-	require.ErrorIs(t, err, unix.ENOMEM)
+	require.ErrorIs(t, err, test.ErrNoMemory)
 
 	test.PathError(t, err, "mmap", "anonymous")
 }

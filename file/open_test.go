@@ -12,7 +12,6 @@ import (
 	"github.com/alexfalkowski/go-linux/file"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestOpenReturnsAnIndependentStandardFile(t *testing.T) {
@@ -46,8 +45,8 @@ func TestOpenSelectsOneAccessMode(t *testing.T) {
 		readErr  error
 		writeErr error
 	}{
-		{name: "read only", flags: file.ReadOnly, writeErr: unix.EBADF},
-		{name: "write only", flags: file.WriteOnly, readErr: unix.EBADF},
+		{name: "read only", flags: file.ReadOnly, writeErr: test.ErrBadDescriptor},
+		{name: "write only", flags: file.WriteOnly, readErr: test.ErrBadDescriptor},
 		{name: "read write", flags: file.ReadWrite},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
@@ -111,7 +110,7 @@ func TestOpenPreservesAppendTruncateAndExclusiveSemantics(t *testing.T) {
 	}
 
 	opened, err := file.Open(dir, "data", file.OpenOptions{Flags: file.Create | file.Exclusive, Perm: 0o600})
-	require.ErrorIs(t, err, unix.EEXIST)
+	require.ErrorIs(t, err, test.ErrExists)
 	require.Nil(t, opened)
 
 	_, err = dir.Stat()
@@ -157,24 +156,24 @@ func TestOpenEnforcesResolutionAndPreservesPathSemantics(t *testing.T) {
 		{name: "ordinary absolute", path: filepath.Join(anchor, "data"), want: "inside"},
 		{name: "beneath regular", path: "data", want: "inside", options: file.OpenOptions{Resolve: file.Beneath | file.NoXDev}},
 		{name: "beneath safe link", path: "link", want: "inside", options: file.OpenOptions{Resolve: file.Beneath}},
-		{name: "beneath with no symlinks", path: "link", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.Beneath | file.NoSymlinks}},
+		{name: "beneath with no symlinks", path: "link", wantErr: test.ErrSymlinkLoop, options: file.OpenOptions{Resolve: file.Beneath | file.NoSymlinks}},
 		{name: "no magic permits ordinary link", path: "link", want: "inside", options: file.OpenOptions{Resolve: file.NoMagicLinks}},
-		{name: "beneath parent escape", path: "../outside", wantErr: unix.EXDEV, options: file.OpenOptions{Resolve: file.Beneath}},
-		{name: "beneath link escape", path: "escape", wantErr: unix.EXDEV, options: file.OpenOptions{Resolve: file.Beneath}},
-		{name: "beneath absolute", path: filepath.Join(anchor, "data"), wantErr: unix.EXDEV, options: file.OpenOptions{Resolve: file.Beneath}},
+		{name: "beneath parent escape", path: "../outside", wantErr: test.ErrCrossDevice, options: file.OpenOptions{Resolve: file.Beneath}},
+		{name: "beneath link escape", path: "escape", wantErr: test.ErrCrossDevice, options: file.OpenOptions{Resolve: file.Beneath}},
+		{name: "beneath absolute", path: filepath.Join(anchor, "data"), wantErr: test.ErrCrossDevice, options: file.OpenOptions{Resolve: file.Beneath}},
 		{name: "in root absolute", path: "/data", want: "inside", options: file.OpenOptions{Resolve: file.InRoot}},
 		{name: "in root clamps parent", path: "../../data", want: "inside", options: file.OpenOptions{Resolve: file.InRoot}},
 		{name: "in root absolute link", path: "absolute", want: "inside", options: file.OpenOptions{Resolve: file.InRoot}},
-		{name: "in root with no symlinks", path: "absolute", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.InRoot | file.NoSymlinks}},
-		{name: "no symlinks final", path: "link", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.NoSymlinks}},
-		{name: "no symlinks intermediate", path: "linkdir/../data", wantErr: unix.ELOOP, options: file.OpenOptions{Resolve: file.NoSymlinks}},
-		{name: "nofollow final", path: "link", wantErr: unix.ELOOP, options: file.OpenOptions{Flags: file.NoFollow}},
+		{name: "in root with no symlinks", path: "absolute", wantErr: test.ErrSymlinkLoop, options: file.OpenOptions{Resolve: file.InRoot | file.NoSymlinks}},
+		{name: "no symlinks final", path: "link", wantErr: test.ErrSymlinkLoop, options: file.OpenOptions{Resolve: file.NoSymlinks}},
+		{name: "no symlinks intermediate", path: "linkdir/../data", wantErr: test.ErrSymlinkLoop, options: file.OpenOptions{Resolve: file.NoSymlinks}},
+		{name: "nofollow final", path: "link", wantErr: test.ErrSymlinkLoop, options: file.OpenOptions{Flags: file.NoFollow}},
 		{name: "nofollow intermediate", path: "linkdir/../data", want: "inside", options: file.OpenOptions{Flags: file.NoFollow}},
-		{name: "empty name", wantErr: unix.ENOENT},
-		{name: "missing file", path: "missing", wantErr: unix.ENOENT},
-		{name: "trailing slash", path: "data/", wantErr: unix.ENOTDIR},
-		{name: "directory required", path: "data", wantErr: unix.ENOTDIR, options: file.OpenOptions{Flags: file.Directory}},
-		{name: "embedded NUL", path: "bad\x00name", wantErr: unix.EINVAL},
+		{name: "empty name", wantErr: test.ErrNotExist},
+		{name: "missing file", path: "missing", wantErr: test.ErrNotExist},
+		{name: "trailing slash", path: "data/", wantErr: test.ErrNotDirectory},
+		{name: "directory required", path: "data", wantErr: test.ErrNotDirectory, options: file.OpenOptions{Flags: file.Directory}},
+		{name: "embedded NUL", path: "bad\x00name", wantErr: test.ErrInvalidArgument},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			opened, err := file.Open(dir, scenario.path, scenario.options)
@@ -209,7 +208,7 @@ func TestPathOnlyHandlesCanInspectSymlinksAndAnchorDirectories(t *testing.T) {
 	require.Equal(t, os.ModeSymlink, metadata.Mode.Type())
 
 	_, err = link.Read(make([]byte, 1))
-	require.ErrorIs(t, err, unix.EBADF)
+	require.ErrorIs(t, err, test.ErrBadDescriptor)
 
 	anchor, err := file.Open(dir, ".", file.OpenOptions{Flags: file.Path | file.Directory})
 	require.NoError(t, err)
@@ -233,13 +232,13 @@ func TestOpenRejectsMountCrossingsAndMagicLinks(t *testing.T) {
 	require.NotEqual(t, rootStat.MountID, procStat.MountID, "fixture must cross a mount")
 
 	opened, err := file.Open(root, "proc", file.OpenOptions{Flags: file.Path, Resolve: file.NoXDev})
-	require.ErrorIs(t, err, unix.EXDEV)
+	require.ErrorIs(t, err, test.ErrCrossDevice)
 	require.Nil(t, opened)
 
 	source := test.TempFile(t, 0)
 	magicLink := fmt.Sprintf("self/fd/%d", test.FileDescriptor(t, source))
 	opened, err = file.Open(proc, magicLink, file.OpenOptions{Flags: file.Path, Resolve: file.NoMagicLinks})
-	require.ErrorIs(t, err, unix.ELOOP)
+	require.ErrorIs(t, err, test.ErrSymlinkLoop)
 	require.Nil(t, opened)
 
 	link, err := file.Open(proc, magicLink, file.OpenOptions{Flags: file.Path | file.NoFollow, Resolve: file.NoMagicLinks})
@@ -254,7 +253,7 @@ func TestOpenRejectsMountCrossingsAndMagicLinks(t *testing.T) {
 func TestCachedLookupPreservesItsRequestedGuarantee(t *testing.T) {
 	dir := test.OpenFile(t, t.TempDir())
 	opened, err := file.Open(dir, ".", file.OpenOptions{Flags: file.Path | file.Directory, Resolve: file.Cached})
-	if errors.Is(err, unix.EAGAIN) {
+	if errors.Is(err, test.ErrTryAgain) {
 		require.Nil(t, opened)
 	} else {
 		require.NoError(t, err)
@@ -262,11 +261,11 @@ func TestCachedLookupPreservesItsRequestedGuarantee(t *testing.T) {
 	}
 
 	opened, err = file.Open(dir, "new", file.OpenOptions{Flags: file.Create | file.ReadWrite, Perm: 0o600, Resolve: file.Cached})
-	require.ErrorIs(t, err, unix.EAGAIN, "creation needs uncached work and must not be retried without Cached")
+	require.ErrorIs(t, err, test.ErrTryAgain, "creation needs uncached work and must not be retried without Cached")
 	require.Nil(t, opened)
 
 	_, err = file.StatAt(dir, "new", file.StatOptions{Mask: file.MaskType})
-	require.ErrorIs(t, err, unix.ENOENT, "failed cached creation must not create an entry")
+	require.ErrorIs(t, err, test.ErrNotExist, "failed cached creation must not create an entry")
 }
 
 func TestOpenRejectsInvalidOptionsBeforeAcquiringAResource(t *testing.T) {

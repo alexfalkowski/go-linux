@@ -10,7 +10,6 @@ import (
 	"github.com/alexfalkowski/go-linux/file"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestUnavailableAnchorsRejectEveryOperation(t *testing.T) {
@@ -42,13 +41,13 @@ func TestUnavailableAnchorsRejectEveryOperation(t *testing.T) {
 
 	regular := test.TempFile(t, 0)
 	opened, err := file.Open(regular, "child", file.OpenOptions{})
-	require.ErrorIs(t, err, unix.ENOTDIR)
+	require.ErrorIs(t, err, test.ErrNotDirectory)
 	require.Nil(t, opened)
 
 	_, err = file.StatAt(regular, "child", file.StatOptions{})
-	require.ErrorIs(t, err, unix.ENOTDIR)
+	require.ErrorIs(t, err, test.ErrNotDirectory)
 
-	require.ErrorIs(t, file.Rename(live, ".", regular, "child", file.Replace), unix.ENOTDIR)
+	require.ErrorIs(t, file.Rename(live, ".", regular, "child", file.Replace), test.ErrNotDirectory)
 }
 
 func TestOpenedDescriptorsAreCloseOnExecAndFullyReleased(t *testing.T) {
@@ -67,7 +66,7 @@ func TestOpenedDescriptorsAreCloseOnExecAndFullyReleased(t *testing.T) {
 		require.NoError(t, opened.Close())
 
 		opened, err = file.Open(dir, "absent", file.OpenOptions{Resolve: file.Beneath})
-		require.ErrorIs(t, err, unix.ENOENT)
+		require.ErrorIs(t, err, test.ErrNotExist)
 		require.Nil(t, opened)
 	}
 
@@ -114,7 +113,7 @@ func TestConcurrentAnchorCloseCannotLeakOrRetargetOperations(t *testing.T) {
 		}
 
 		if err := test.Receive(t, rename); !errors.Is(err, os.ErrClosed) {
-			require.ErrorIs(t, err, unix.ENOENT)
+			require.ErrorIs(t, err, test.ErrNotExist)
 		}
 	}
 
@@ -134,7 +133,7 @@ func TestOpenExhaustionLeavesBorrowedAnchorUsable(t *testing.T) {
 	dir := test.OpenFile(t, t.TempDir())
 	freeSlot := test.ExhaustDescriptors(t)
 	opened, err := file.Open(dir, ".", file.OpenOptions{})
-	require.ErrorIs(t, err, unix.EMFILE)
+	require.ErrorIs(t, err, test.ErrTooManyOpenFiles)
 	require.Nil(t, opened)
 
 	_, err = file.Stat(dir, file.MaskBasic)

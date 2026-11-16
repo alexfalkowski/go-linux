@@ -10,7 +10,6 @@ import (
 	"github.com/alexfalkowski/go-linux/file"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestRenameMovesBetweenDirectoryAnchorsAndReplaces(t *testing.T) {
@@ -46,7 +45,7 @@ func TestRenameNoReplaceLeavesExistingEntriesIntact(t *testing.T) {
 	require.NoError(t, os.Symlink("absent", filepath.Join(root, "destination")))
 
 	err := file.Rename(dir, "source", dir, "destination", file.NoReplace)
-	require.ErrorIs(t, err, unix.EEXIST, "a dangling destination symlink still exists")
+	require.ErrorIs(t, err, test.ErrExists, "a dangling destination symlink still exists")
 
 	contents, err := os.ReadFile(filepath.Join(root, "source"))
 	require.NoError(t, err)
@@ -59,7 +58,7 @@ func TestRenameNoReplaceLeavesExistingEntriesIntact(t *testing.T) {
 	require.NoError(t, file.Rename(dir, "source", dir, "new", file.NoReplace))
 
 	_, err = os.Stat(filepath.Join(root, "source"))
-	require.ErrorIs(t, err, unix.ENOENT)
+	require.ErrorIs(t, err, test.ErrNotExist)
 
 	contents, err = os.ReadFile(filepath.Join(root, "new"))
 	require.NoError(t, err)
@@ -86,7 +85,7 @@ func TestRenameExchangeSwapsDifferentTypesWithoutFollowingFinalLinks(t *testing.
 	require.Equal(t, "nested", string(contents))
 
 	err = file.Rename(dir, "link", dir, "missing", file.Exchange)
-	require.ErrorIs(t, err, unix.ENOENT)
+	require.ErrorIs(t, err, test.ErrNotExist)
 
 	contents, err = os.ReadFile(filepath.Join(root, "link", "child"))
 	require.NoError(t, err)
@@ -101,9 +100,9 @@ func TestRenamePreservesBothNamesAndErrno(t *testing.T) {
 		old     string
 		mode    file.RenameMode
 	}{
-		{name: "missing source", old: "missing", wantErr: unix.ENOENT},
-		{name: "empty source", wantErr: unix.ENOENT},
-		{name: "embedded NUL", old: "bad\x00name", wantErr: unix.EINVAL},
+		{name: "missing source", old: "missing", wantErr: test.ErrNotExist},
+		{name: "empty source", wantErr: test.ErrNotExist},
+		{name: "embedded NUL", old: "bad\x00name", wantErr: test.ErrInvalidArgument},
 		{name: "unknown mode", old: "source", mode: 1 << 31, wantErr: os.ErrInvalid},
 		{name: "incompatible modes", old: "source", mode: file.NoReplace | file.Exchange, wantErr: os.ErrInvalid},
 	} {

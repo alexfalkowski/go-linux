@@ -25,7 +25,7 @@ Scope tests to the changed package, for example:
 package=file make specs profile=rootless required=true arch=amd64
 ```
 
-The gotestsum harness runs with race detection and coverage. Reports are written under `test/reports/`: `specs.json` retains test events and skips, `specs.xml` is JUnit, and `profile.cov` is the coverage input. `make coverage` creates `final.cov` and `coverage.html` from that run. A later test run replaces the reports, so retain any results you need before changing package or profile. CI stores each job's reports separately.
+The gotestsum harness runs with race detection and coverage. Reports are written under `test/reports/`: `specs.json` retains test events and skips, `specs.xml` is JUnit, and `profile.cov` is the coverage input. `make coverage` creates `final.cov` and `coverage.html` from that run. A later test run replaces the reports, so retain any results you need before changing package or profile. CI stores each job's reports separately. Reexecuted fixtures assert operation results in the child; the parent coverage profile does not aggregate child statement counters.
 
 CI stages each raw profile with `make coverage-workspace-stage partition=<facility>-<arch>`, selecting `rootless`, `mount`, `fanotify`, or `timerfd` and `arm64` or `amd64`. Each partition has its own directory under `/tmp/go-linux-reports`. After all eight jobs pass, the separate coverage job attaches that workspace and runs `make coverage-workspace-merge` followed by `make coverage`. Merging requires all eight nonempty atomic profiles from the same revision and uses `gocovmerge`, included in the Go image; missing inputs or incompatible profiles fail the job. Only raw inputs are merged, and `make coverage` applies `.gocov` exclusions.
 
@@ -34,6 +34,12 @@ The coverage job retains the combined reports and uploads `final.cov` once throu
 The inotify overflow fixture fills only its own instance queue and never changes host limits. It bounds generation at `max_queued_events <= 65536`; a larger existing host limit skips the fixture in optional mode and fails with `required=true`. Decoder fixtures still cover the overflow record independently.
 
 The socket backpressure fixture fills only a test-owned Unix datagram endpoint, using the existing `/proc/sys/net/unix/max_dgram_qlen` value without changing it. Limits above 65536 skip optional coverage and fail with `required=true`; bounded native producers distinguish destination-queue exhaustion from a single sender's buffer limit.
+
+The eventfd, timerfd, inotify, and socket constructor suites use bounded subprocesses to reject EPOLL_CTL_ADD with a thread-local seccomp filter after Go's poller is initialized. They verify os.ErrNoDeadline, nil owners, and descriptor cleanup. The same filter loader supports Netlink's setup-failure fixtures; no parent thread receives these restrictions.
+
+Netlink's ordinary-user tests use read-only controller/route queries, parser fixtures, and test-owned sockets. Kernel socket filters on those sockets exercise missing ACKs and malformed framing; independently queued kernel replies exercise sequence/echo mismatches. Bounded subprocesses confine descriptor exhaustion and thread-local seccomp denial of individual setup operations, checking errno and cleanup without changing parent or host policy.
+
+Run `make specs package=netlink profile=namespaces required=true` for kernel multicast, dump ordering/interruption, and receive-queue overflow fixtures, using the [isolated container command](#netlink-isolation) when the agent shell denies namespace creation. Each fixture reexecutes in mapped user/network namespaces; only the child changes loopback state or adds private addresses. The dump fixtures pause between sending and receiving while a separate connection changes the address generation. The overflow fixture reduces only its own socket receive buffer and generates 32 private loopback changes; it verifies ENOBUFS and a separate recovery dump without changing host limits. Rootless profile runs skip these unselected fixtures; required namespace runs fail if child creation/mapping is unavailable.
 
 ## Profiles and prerequisites
 
@@ -68,6 +74,23 @@ Omit `package` for the complete rootless suite used by CI. The launcher download
 
 A root setup process remaps the image's `circleci` user and home to the invoking UID. Docker's init remains root at PID 1, providing the different-UID target required by signal-permission tests; its KILL capability permits forwarding signals to the nonroot child. All checks run with the invoking UID/GID, no supplementary groups, and empty capability sets; no-new-privileges is enabled from startup. The checkout is mounted separately at `/work`, so account setup does not change its ownership. The Docker bind mount must preserve the test UID/GID's write access; rootless-daemon UID mappings require corresponding checkout ownership. `make verify-rootless` refreshes dependencies, records the environment, and runs lint, script lint, security checks, vet, tests with race detection, and coverage. Modules, build artifacts, and tool caches are disposable container state. Reports are bind-mounted to the checked-in `test/reports/` directory. The local verification command does not upload coverage; `make codecov-upload-container image=<tag>` remains available for an explicit upload of an existing `final.cov` from the Go image.
 
+## Netlink isolation
+
+Netlink's isolated fixtures need permitted mapped user/network namespaces and network administration inside those private namespaces. They do not require fanotify's initial-user-namespace CAP_SYS_ADMIN. On a native Linux Docker host, this command also works with the observed rootless Docker daemon when the agent shell itself returns EPERM:
+
+```sh
+docker run --rm --pull=never --network=none --privileged --user root \
+  --mount "type=bind,src=$PWD,dst=/work" --workdir /work \
+  alexfalkowski/go:5.23 bash -eo pipefail -c '
+    make test-environment profile=namespaces required=true arch=amd64
+    make specs package=netlink profile=namespaces required=true arch=amd64
+  '
+```
+
+Use the Go image from CI and ensure it is already cached (`--pull=never`); image acquisition needs registry/network access separately. The container has no external network. The tests create further private namespaces before changing loopback or fixture addresses, and reports are written to the mounted checkout's `test/reports/`. Select the native architecture in both Make commands. Rootless Docker support is observed for this configuration, not a promise for every host's security policy; prerequisite and operation failures remain failures.
+
+Containers retain the host kernel. This command establishes Linux 7.0 baseline evidence only on a host booted into Linux 7.0. Use native amd64 and arm64 runners rather than interpreting emulation as native coverage. The dump fixtures verify the actual kernel interruption marker independently, then use controlled kernel reply queues and socket filtering to verify ACK-before-DONE ordering, interruption draining, and subsequent connection reuse through Conn.Dump. These controlled conditions do not establish naturally occurring malformed kernel replies. Remaining source-reviewed paths are tracked under R01.
+
 ## Mount verification
 
 Use a native Linux Docker host that permits privileged containers. Select the Go image from [.circleci/config.yml](../.circleci/config.yml) and the host architecture; the current amd64 invocation is:
@@ -76,7 +99,7 @@ Use a native Linux Docker host that permits privileged containers. Select the Go
 make verify-mount-container image=alexfalkowski/go:5.23 arch=amd64
 ```
 
-The launcher runs dependency setup and `make verify-mount`, which records `environment.json` and runs required mount-only tests in the namespace profile. Reports are bind-mounted back to `test/reports/`. Each fixture creates separate user/mount namespaces and makes propagation private before mounting. Required prerequisite or operation failures fail the command. The caller must provide the permitted isolation environment; changing a container image does not change its host kernel.
+The launcher runs dependency setup and `make verify-mount`, which records `environment.json` and runs the mount package's required namespace suite. This includes an inotify observer that verifies Unmount followed by Ignored when a private tmpfs filesystem is unmounted. Reports are bind-mounted back to `test/reports/`. Each fixture creates separate user/mount namespaces and makes propagation private before mounting. Required prerequisite or operation failures fail the command. The caller must provide the permitted isolation environment; changing a container image does not change its host kernel. Dependency setup requires a writable checkout and vendor directory; use a writable disposable source copy when existing dependency ownership prevents refresh.
 
 With tools installed directly, `make verify-mount arch=amd64` runs the same discovery and mount suite.
 
@@ -125,11 +148,14 @@ Both fanotify jobs ran as UID 0 with initial-user-namespace CAP_SYS_ADMIN and pa
 
 These results establish the recorded revision and scenarios, not exhaustive kernel behavior or later revisions. CI runs the configured image toolchain rather than a separate minimum-Go-version matrix. Inspect the retained environment and test reports when accepting a new revision; compilation alone, image names, privileges, or source inspection do not establish runtime coverage. Remaining gaps and source-reviewed paths are tracked in the implementation plan.
 
-Additional local ordinary-user evidence covers a newer kernel:
+Additional local evidence covers a newer kernel:
 
 | Scope | Go / kernel / architecture | Observed prerequisites | Evidence and limits |
 | --- | --- | --- | --- |
 | `xattr` real-filesystem behavior, examples, and rootless container launcher | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection directly and through the launcher with the pinned Moby profile; this is not Linux 7.0 or arm64 evidence. Namespace creation fails with EPERM and is not needed by these tests. |
+| `eventfd`, `timerfd`, `inotify`, and `socket` poll-registration failure cleanup | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; child-local seccomp loading permitted | Required rootless package suites pass with race detection and no skips, including kernel-refused registration, nil-owner errors, and descriptor cleanup. Native Linux 7.0 amd64/arm64 evidence remains CI-owned. |
+| `mount` namespace operations and inotify unmount observation | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 0 inside a privileged rootless-Docker container; mapped user/mount namespaces and private tmpfs operations permitted | All 40 cases pass with race detection and no skips through the configured container launcher, including Unmount then Ignored for the watched filesystem. The launcher ran from a disposable source copy because dependency refresh could not write the original vendor tree; source and dependency declarations matched. Native Linux 7.0 amd64/arm64 evidence remains CI-owned. |
 | `inotify` lifecycle, decoding, examples, and actual queue overflow | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes directly with race detection and no skips; decoder fuzzing also passes. Native Linux 7.0 amd64/arm64 evidence remains pending. Namespace creation fails with EPERM and is not needed by these tests. |
 | `fanotify` decoder and resource cleanup | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; Docker daemon is rootless | Parser/ABI cleanup and invalid-input tests run with race detection, and decoder fuzzing passes; selected live fixtures fail for missing CAP_SYS_ADMIN. This is not notification or permission-operation evidence. |
 | `socket` message I/O, ancillary ownership, and polling | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection and no skips, including binary abstract Unix names/replies, Unix datagram/seqpacket pairs, Netlink transport/options/membership, descriptor passing and truncation, credentials, deadlines, concurrent close, and descriptor-exhaustion cleanup. Linux 7.0 amd64/arm64 runtime evidence remains pending. |
+| `netlink` framing, discovery, request exchanges, and isolated kernel fixtures | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | Ordinary suite: UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2. Isolated suite: UID 0 inside a privileged rootless-Docker container, private user/network namespaces available. | The required isolated suite passes all 99 cases with race detection and no skips using the configured Go image. Coverage includes multicast, ACK-before-DONE ordering, interrupted-dump draining/reuse, receive-queue ENOBUFS, malformed framing, response mismatches, timeouts, and setup failure cleanup. Ordinary-user runs skip the six unselected isolated fixtures. All four parser fuzz targets pass. The direct agent-shell namespace probe still fails with EPERM; Linux 7.0 amd64/arm64 evidence belongs to CI, with remaining source-reviewed paths tracked under R01. |

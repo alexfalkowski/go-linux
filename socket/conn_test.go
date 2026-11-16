@@ -17,7 +17,6 @@ import (
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/socket"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var _ io.Closer = (*socket.Conn)(nil)
@@ -117,7 +116,7 @@ func TestFailedBindReturnsNoOwnerAndPreservesExistingSocket(t *testing.T) {
 	before := test.DescriptorCount(t)
 	for range 16 {
 		b, err := socket.ListenUnix(address)
-		test.NoResource(t, b, err, unix.EADDRINUSE)
+		test.NoResource(t, b, err, test.ErrAddressInUse)
 	}
 
 	require.Equal(t, before, test.DescriptorCount(t), "failed binds must close newly acquired sockets")
@@ -163,7 +162,7 @@ func TestAbstractUnixAddressesPreserveBinaryNamesAndReplyDestinations(t *testing
 
 	alias := socket.UnixAddress{Name: "\x00" + addresses[0].Name[1:]}
 	conn, err := socket.ListenUnix(alias)
-	test.NoResource(t, conn, err, unix.EADDRINUSE)
+	test.NoResource(t, conn, err, test.ErrAddressInUse)
 }
 
 func TestAuthenticatedRepliesPreserveNativeUnixPathnameNamespaces(t *testing.T) {
@@ -231,7 +230,7 @@ func TestLiteralUnixPathnamesPreserveTheFullKernelLength(t *testing.T) {
 
 			before := test.DescriptorCount(t)
 			duplicate, err := socket.ListenUnix(address)
-			test.NoResource(t, duplicate, err, unix.EADDRINUSE)
+			test.NoResource(t, duplicate, err, test.ErrAddressInUse)
 			require.Equal(t, before, test.DescriptorCount(t), "failed literal pathname binds must release their descriptor")
 
 			server, err := socket.ListenUnix(socket.UnixAddress{Name: "service"})
@@ -256,7 +255,7 @@ func TestLiteralUnixPathnamesPreserveTheFullKernelLength(t *testing.T) {
 			file := test.TempFile(t, 4)
 			before = test.DescriptorCount(t)
 			_, err = server.Send([]byte("missing"), socket.UnixAddress{Name: "@missing", Pathname: true}, file)
-			require.ErrorIs(t, err, unix.ENOENT)
+			require.ErrorIs(t, err, test.ErrNotExist)
 			require.Equal(t, before, test.DescriptorCount(t), "failed literal pathname sends must close their borrowed duplicates")
 			test.WriteAt(t, file, 0, "open")
 		})
@@ -358,7 +357,7 @@ func TestAddressedUnixBackpressureReturnsEAGAINAndRetainsBorrowedFiles(t *testin
 			require.NoError(t, sender.SetWriteDeadline(time.Now().Add(time.Second)))
 
 			n, err := sender.Send([]byte("retry"), destination, file)
-			require.ErrorIs(t, err, unix.EAGAIN, "an unconnected sender has no destination-capacity polling notification")
+			require.ErrorIs(t, err, test.ErrTryAgain, "an unconnected sender has no destination-capacity polling notification")
 			require.Zero(t, n, "EAGAIN must not send a partial record")
 			require.Equal(t, before, test.DescriptorCount(t), "EAGAIN must close all temporary file duplicates")
 
@@ -486,22 +485,22 @@ func TestSocketCreationAndPairFailureReleaseAcquiredDescriptors(t *testing.T) {
 		file := test.TempFile(t, 0)
 		release := test.ExhaustDescriptors(t)
 		a, b, err := socket.Pair(socket.Datagram)
-		require.ErrorIs(t, err, unix.EMFILE)
+		require.ErrorIs(t, err, test.ErrTooManyOpenFiles)
 		require.Nil(t, a)
 		require.Nil(t, b)
 
 		_, err = initial.Send([]byte("no duplicate slot"), nil, file)
-		require.ErrorIs(t, err, unix.EMFILE)
+		require.ErrorIs(t, err, test.ErrTooManyOpenFiles)
 
 		release()
 		// Only one slot is free: socketpair must clean up its partial acquisition.
 		a, b, err = socket.Pair(socket.Datagram)
-		require.ErrorIs(t, err, unix.EMFILE)
+		require.ErrorIs(t, err, test.ErrTooManyOpenFiles)
 		require.Nil(t, a)
 		require.Nil(t, b)
 
 		_, err = initial.Send([]byte("only one duplicate slot"), nil, file, file)
-		require.ErrorIs(t, err, unix.EMFILE, "failure after the first duplicate must release it")
+		require.ErrorIs(t, err, test.ErrTooManyOpenFiles, "failure after the first duplicate must release it")
 
 		conn, err := socket.OpenNetlink(socket.Route, socket.NetlinkAddress{})
 		require.NoError(t, err, "the free slot must remain available after failed pair creation")
@@ -514,4 +513,30 @@ func TestSocketCreationAndPairFailureReleaseAcquiredDescriptors(t *testing.T) {
 	output, err := command.CombinedOutput()
 	require.NoError(t, ctx.Err())
 	require.NoError(t, err, "descriptor-exhaustion subprocess: %s", output)
+}
+
+func TestPollRegistrationFailureReturnsNoSocketsAndClosesDescriptors(t *testing.T) {
+	const child = "poll-registration-denied"
+	if os.Args[len(os.Args)-1] == child {
+		test.RefusePollRegistration(t)
+		before := test.DescriptorCount(t)
+		for _, mode := range []socket.Kind{socket.Datagram, socket.SeqPacket} {
+			a, b, err := socket.Pair(mode)
+			test.NoResource(t, a, err, os.ErrNoDeadline)
+			test.NoResource(t, b, err, os.ErrNoDeadline)
+			require.Equal(t, before, test.DescriptorCount(t), "failed poll registration must close both acquired sockets")
+		}
+
+		conn, err := socket.ListenUnix(socket.UnixAddress{Name: "@poll-registration-denied"})
+		test.NoResource(t, conn, err, os.ErrNoDeadline)
+		require.Equal(t, before, test.DescriptorCount(t), "failed poll registration must close the Unix socket")
+		conn, err = socket.OpenNetlink(socket.Generic, socket.NetlinkAddress{})
+		test.NoResource(t, conn, err, os.ErrNoDeadline)
+		require.Equal(t, before, test.DescriptorCount(t), "failed poll registration must close the Netlink socket")
+		return
+	}
+	ctx, command := test.Command(t, t.Name(), child)
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err())
+	require.NoError(t, err, "poll-registration subprocess: %s", output)
 }

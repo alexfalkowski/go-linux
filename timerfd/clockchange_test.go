@@ -10,7 +10,6 @@ import (
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/timerfd"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestRealtimeClockChangesCancelPendingReads(t *testing.T) {
@@ -35,7 +34,7 @@ func TestRealtimeClockChangesCancelPendingReads(t *testing.T) {
 
 			got := test.Receive(t, done)
 			require.Zero(t, got.Value, "cancellation must not manufacture an expiration")
-			require.ErrorIs(t, got.Err, unix.ECANCELED)
+			require.ErrorIs(t, got.Err, test.ErrCanceled)
 
 			// Consuming cancellation permits ordinary rearming and count reads.
 			_, err = timer.SetAfter(20*time.Millisecond, 0)
@@ -63,7 +62,7 @@ func TestRearmingAnUnreadCanceledTimerAppliesTheNewSchedule(t *testing.T) {
 
 	deadline.Seconds++
 	old, err := timer.SetAt(deadline, 0, timerfd.CancelOnSet)
-	require.ErrorIs(t, err, unix.ECANCELED)
+	require.ErrorIs(t, err, test.ErrCanceled)
 	require.Equal(t, timerfd.State{}, old, "an error must return no previous state")
 
 	test.ArmedTimer(t, test.Value(t, timer.State), time.Second, 0)

@@ -13,7 +13,6 @@ import (
 	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -382,7 +381,7 @@ func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 		{name: "nil file", interests: epoll.Readable, err: os.ErrInvalid},
 		{name: "unknown flag", file: reader, interests: 1 << 26, err: os.ErrInvalid},
 		{name: "closed file", file: closed, interests: epoll.Readable, err: os.ErrClosed},
-		{name: "ordinary file", file: file, interests: epoll.Readable, err: unix.EPERM},
+		{name: "ordinary file", file: file, interests: epoll.Readable, err: test.ErrOperationNotPermitted},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			registration, err := poller.Add(scenario.file, scenario.interests)

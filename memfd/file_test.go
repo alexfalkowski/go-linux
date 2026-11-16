@@ -16,7 +16,6 @@ import (
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mmap"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var (
@@ -80,7 +79,7 @@ func TestTruncationChangesSizeAndZeroFillsGrowth(t *testing.T) {
 func TestFilesRejectNegativeSizesAndDeadlines(t *testing.T) {
 	file := test.Memfd(t, memfd.Options{})
 
-	require.ErrorIs(t, file.Truncate(-1), unix.EINVAL)
+	require.ErrorIs(t, file.Truncate(-1), test.ErrInvalidArgument)
 
 	require.ErrorIs(t, file.SetDeadline(time.Time{}), os.ErrNoDeadline)
 }
@@ -117,7 +116,7 @@ func TestDefaultFilesLockExecuteBitsAndRemainWritable(t *testing.T) {
 	require.Zero(t, stat.Mode().Perm()&0o111, "default execute bits must be clear")
 	require.Equal(t, memfd.SealExec, test.Value(t, file.Seals))
 
-	require.ErrorIs(t, file.Chmod(0o700), unix.EPERM, "default execute bits must be locked")
+	require.ErrorIs(t, file.Chmod(0o700), test.ErrOperationNotPermitted, "default execute bits must be locked")
 
 	require.NoError(t, file.AddSeals(memfd.SealExec))
 
@@ -157,7 +156,7 @@ func TestFileCreationRejectsInvalidNames(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			file, err := memfd.New(scenario.label, memfd.Options{})
-			test.NoResource(t, file, err, unix.EINVAL)
+			test.NoResource(t, file, err, test.ErrInvalidArgument)
 
 			test.PathError(t, err, "memfd_create", scenario.label)
 		})
@@ -169,7 +168,7 @@ func TestRejectedFileNamesLeaveNoDescriptorBehind(t *testing.T) {
 
 	for range 32 {
 		file, err := memfd.New(strings.Repeat("a", 250), memfd.Options{})
-		test.NoResource(t, file, err, unix.EINVAL)
+		test.NoResource(t, file, err, test.ErrInvalidArgument)
 	}
 
 	after := test.DescriptorCount(t)
@@ -193,7 +192,7 @@ func TestSizeSealsRejectOnlyTheRestrictedResize(t *testing.T) {
 			require.NoError(t, file.AddSeals(scenario.seal))
 			require.Equal(t, memfd.SealExec|scenario.seal, test.Value(t, file.Seals))
 
-			require.ErrorIs(t, file.Truncate(scenario.denied), unix.EPERM, "sealed resize must fail")
+			require.ErrorIs(t, file.Truncate(scenario.denied), test.ErrOperationNotPermitted, "sealed resize must fail")
 			require.NoError(t, file.Truncate(scenario.allowed), "opposite resize must remain allowed")
 
 			_, err := file.WriteAt([]byte("a"), 0)
@@ -201,7 +200,7 @@ func TestSizeSealsRejectOnlyTheRestrictedResize(t *testing.T) {
 
 			if scenario.seal == memfd.SealGrow {
 				_, err := file.WriteAt([]byte("a"), scenario.allowed)
-				require.ErrorIs(t, err, unix.EPERM, "grow seal must reject extending writes")
+				require.ErrorIs(t, err, test.ErrOperationNotPermitted, "grow seal must reject extending writes")
 			}
 		})
 	}
@@ -214,7 +213,7 @@ func TestWriteSealRequiresUnmappingAndRejectsNewWrites(t *testing.T) {
 	mapping, err := test.WritableMapping(t, file)
 	require.NoError(t, err)
 
-	require.ErrorIs(t, file.AddSeals(memfd.SealWrite|memfd.SealGrow), unix.EBUSY)
+	require.ErrorIs(t, file.AddSeals(memfd.SealWrite|memfd.SealGrow), test.ErrBusy)
 	require.Equal(t, memfd.SealExec, test.Value(t, file.Seals))
 
 	require.NoError(t, mapping.Close())
@@ -223,10 +222,10 @@ func TestWriteSealRequiresUnmappingAndRejectsNewWrites(t *testing.T) {
 	require.Equal(t, memfd.SealExec|memfd.SealWrite, test.Value(t, file.Seals))
 
 	_, err = file.WriteAt([]byte("a"), 0)
-	require.ErrorIs(t, err, unix.EPERM)
+	require.ErrorIs(t, err, test.ErrOperationNotPermitted)
 
 	_, err = test.WritableMapping(t, file)
-	require.ErrorIs(t, err, unix.EPERM)
+	require.ErrorIs(t, err, test.ErrOperationNotPermitted)
 
 	require.NoError(t, file.Truncate(1), "write seal alone must permit shrinking")
 	require.NoError(t, file.Truncate(2), "write seal alone must permit growing")
@@ -246,12 +245,12 @@ func TestFutureWriteSealPreservesExistingWritableMappings(t *testing.T) {
 	require.Equal(t, "a", string(test.ReadAt(t, file, 0, 1)), "existing shared mapping must remain writable")
 
 	_, err = file.WriteAt([]byte("b"), 0)
-	require.ErrorIs(t, err, unix.EPERM, "descriptor writes must be denied")
+	require.ErrorIs(t, err, test.ErrOperationNotPermitted, "descriptor writes must be denied")
 
 	_, err = test.WritableMapping(t, file)
-	require.ErrorIs(t, err, unix.EPERM)
+	require.ErrorIs(t, err, test.ErrOperationNotPermitted)
 
-	require.ErrorIs(t, file.AddSeals(memfd.SealWrite), unix.EBUSY)
+	require.ErrorIs(t, file.AddSeals(memfd.SealWrite), test.ErrBusy)
 
 	require.NoError(t, mapping.Close())
 
@@ -286,7 +285,7 @@ func TestSealLockRejectsFurtherSealChanges(t *testing.T) {
 
 	for _, mask := range []memfd.Seals{0, memfd.SealGrow, memfd.SealShrink} {
 		err := file.AddSeals(mask)
-		require.ErrorIs(t, err, unix.EPERM, "locked seals must reject mask %#x", mask)
+		require.ErrorIs(t, err, test.ErrOperationNotPermitted, "locked seals must reject mask %#x", mask)
 
 		test.PathError(t, err, "F_ADD_SEALS", file.Name())
 	}
@@ -309,13 +308,13 @@ func TestSealingExecutableFilesAlsoLocksWritesAndSize(t *testing.T) {
 	require.NoError(t, file.AddSeals(memfd.SealExec))
 	require.Equal(t, memfd.SealExec|memfd.SealWrite|memfd.SealFutureWrite|memfd.SealShrink|memfd.SealGrow, test.Value(t, file.Seals))
 
-	require.ErrorIs(t, file.Chmod(0o600), unix.EPERM, "execute bits must stay locked")
+	require.ErrorIs(t, file.Chmod(0o600), test.ErrOperationNotPermitted, "execute bits must stay locked")
 
 	_, err = file.WriteAt([]byte("x"), 0)
-	require.ErrorIs(t, err, unix.EPERM, "execute seal must imply write seal on executable files")
+	require.ErrorIs(t, err, test.ErrOperationNotPermitted, "execute seal must imply write seal on executable files")
 
-	require.ErrorIs(t, file.Truncate(0), unix.EPERM, "execute seal must imply shrink seal")
-	require.ErrorIs(t, file.Truncate(8), unix.EPERM, "execute seal must imply grow seal")
+	require.ErrorIs(t, file.Truncate(0), test.ErrOperationNotPermitted, "execute seal must imply shrink seal")
+	require.ErrorIs(t, file.Truncate(8), test.ErrOperationNotPermitted, "execute seal must imply grow seal")
 }
 
 func TestUnavailableFilesRejectOperations(t *testing.T) {

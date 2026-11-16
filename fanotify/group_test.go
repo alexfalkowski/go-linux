@@ -14,7 +14,6 @@ import (
 	"github.com/alexfalkowski/go-linux/fanotify"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 var _ io.ReaderAt = (*fanotify.Event)(nil)
@@ -95,7 +94,7 @@ func TestNotificationFilesAndMarks(t *testing.T) {
 	for _, size := range []int{0, 1, 23} {
 		events, err := group.ReadEvents(make([]byte, size))
 		require.Nil(t, events)
-		require.ErrorIs(t, err, unix.EINVAL)
+		require.ErrorIs(t, err, test.ErrInvalidArgument)
 	}
 
 	var observed fanotify.Mask
@@ -121,7 +120,7 @@ func TestNotificationFilesAndMarks(t *testing.T) {
 		require.ErrorIs(t, err, os.ErrClosed)
 	}
 
-	require.ErrorIs(t, group.RemoveMark(path, fanotify.Open, 0), unix.ENOENT)
+	require.ErrorIs(t, group.RemoveMark(path, fanotify.Open, 0), test.ErrNotExist)
 
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(-time.Second)))
 
@@ -149,7 +148,7 @@ func TestGroupAndEventFilesAreCloseOnExec(t *testing.T) {
 
 	fd := test.NewDescriptor(t, before)
 	test.CloseOnExec(t, fd)
-	require.NotZero(t, test.Fcntl(t, fd, unix.F_GETFL)&unix.O_NONBLOCK)
+	require.True(t, test.DescriptorNonblocking(t, fd))
 
 	path := test.TempFile(t, 4).Name()
 	require.NoError(t, group.AddMark(path, fanotify.CloseWrite, 0))
@@ -164,7 +163,7 @@ func TestGroupAndEventFilesAreCloseOnExec(t *testing.T) {
 
 	fd = test.NewDescriptor(t, before)
 	test.CloseOnExec(t, fd)
-	require.Equal(t, unix.O_RDONLY, test.Fcntl(t, fd, unix.F_GETFL)&unix.O_ACCMODE)
+	require.True(t, test.DescriptorReadOnly(t, fd), "event files must be read-only")
 
 	info, err := events[0].Stat()
 	require.NoError(t, err)
@@ -186,7 +185,7 @@ func TestKernelCreationFailureReturnsNoGroup(t *testing.T) {
 	freeSlot := test.ExhaustDescriptors(t)
 	group, err := fanotify.New(fanotify.Notification)
 	require.Nil(t, group)
-	require.ErrorIs(t, err, unix.EMFILE)
+	require.ErrorIs(t, err, test.ErrTooManyOpenFiles)
 
 	freeSlot()
 	group, err = fanotify.New(fanotify.Notification)
@@ -215,10 +214,10 @@ func TestInvalidMarksAndClosedGroups(t *testing.T) {
 	}
 
 	require.ErrorIs(t, group.AddMark("bad\x00path", fanotify.Open, 0), os.ErrInvalid)
-	require.ErrorIs(t, group.AddMark("", fanotify.Open, 0), unix.ENOENT)
+	require.ErrorIs(t, group.AddMark("", fanotify.Open, 0), test.ErrNotExist)
 
 	path := test.TempFile(t, 0).Name()
-	require.ErrorIs(t, group.AddMark(path, fanotify.Open, fanotify.OnlyDir), unix.ENOTDIR)
+	require.ErrorIs(t, group.AddMark(path, fanotify.Open, fanotify.OnlyDir), test.ErrNotDirectory)
 
 	require.ErrorIs(t, group.Flush(fanotify.OnlyDir), os.ErrInvalid)
 

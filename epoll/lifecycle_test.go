@@ -12,7 +12,6 @@ import (
 	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/sys/unix"
 )
 
 func TestClosingTheSourceRetainsTheRegistrationUntilRemoval(t *testing.T) {
@@ -159,7 +158,7 @@ func TestPollerDescriptorsHaveAtomicCloseOnExecAndAreReleased(t *testing.T) {
 
 	wakeFD := test.NewEventfdDescriptor(t, before)
 	test.CloseOnExec(t, wakeFD)
-	require.NotZero(t, test.Fcntl(t, wakeFD, unix.F_GETFL)&unix.O_NONBLOCK, "close wakeups must not block")
+	require.True(t, test.DescriptorNonblocking(t, wakeFD), "close wakeups must not block")
 
 	test.Registration(t, poller, reader, epoll.Readable)
 	require.NoError(t, poller.Close())
@@ -226,7 +225,7 @@ func checkAcquisitionFailure(t *testing.T, addSource, releaseSlot bool) {
 
 	if poller != nil {
 		registration, err := poller.Add(reader, epoll.Readable)
-		test.NoResource(t, registration, err, unix.EMFILE)
+		test.NoResource(t, registration, err, test.ErrTooManyOpenFiles)
 
 		_, err = writer.WriteString("x")
 		require.NoError(t, err)
@@ -243,7 +242,7 @@ func checkAcquisitionFailure(t *testing.T, addSource, releaseSlot bool) {
 		}
 
 		created, err := epoll.New()
-		test.NoResource(t, created, err, unix.EMFILE)
+		test.NoResource(t, created, err, test.ErrTooManyOpenFiles)
 
 		if slot >= 0 {
 			require.Equal(t, slot, test.DescriptorSlot(t), "wake allocation failure must release the epoll descriptor")
