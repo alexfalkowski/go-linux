@@ -32,6 +32,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests
 - [cgroup](docs/cgroup.md): explicit v2 group lifecycle, membership, resource limits, and populated/frozen notifications.
 - [capability](docs/capability.md): thread capability sets, irreversible bounding drops, and explicit ambient transitions.
 - [seccomp](docs/seccomp.md): bounded syscall filters, mandatory native ABI guards, and explicit thread synchronization.
+- [landlock](docs/landlock.md): owned access rulesets, typed filesystem/port rules, IPC scopes, and explicit thread synchronization.
 
 ## 🚀 Setup
 
