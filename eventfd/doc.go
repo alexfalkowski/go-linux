@@ -10,6 +10,8 @@
 //
 // Descriptors are nonblocking and close-on-exec, but Counter I/O waits through
 // Go's poller until it can proceed, a deadline expires, or Close interrupts it.
+// Register adds the counter to an explicit epoll readiness set while keeping
+// descriptor access private. The registration has an independent lifetime.
 //
 // See [eventfd(2)] for Linux counter semantics.
 //

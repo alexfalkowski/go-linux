@@ -6,7 +6,7 @@ The [usage guide](../epoll.md) owns readiness and registration workflows; [verif
 
 Add privately duplicates a borrowed standard file under lifetime protection. Depending on the caller to keep its original open would allow close/reuse races; consuming it would prevent ordinary I/O. A duplicate supplies independent ownership and permits multiple registrations for one source. The cost is deliberate: registrations can keep pipes or sockets alive and delay peer EOF until removed. Status flags and offsets still belong to the shared open description, so epoll leaves them unchanged.
 
-Opaque eventfd, timerfd, and pidfd owners are not connected through a universal descriptor interface. Each future integration needs a typed operation that establishes its own lifetime and readiness contract.
+Opaque eventfd and timerfd owners join a set through their own typed Register methods. They depend on epoll and delegate to Add internally, reusing its lifetime protection, duplication, validation, and cleanup. Epoll continues to accept standard files without importing the facility packages, so the dependency direction stays acyclic. This avoids a universal descriptor interface or callback that would expose syscall plumbing. Pidfd integration remains a separate ownership and readiness decision.
 
 ## Stable identity across removal and reuse
 

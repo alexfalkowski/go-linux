@@ -40,6 +40,12 @@ Methods are safe concurrently. Readers compete for records rather than receiving
 
 `Counter` implements `io.Reader`, `io.Writer`, and `io.Closer`. Reads require at least eight bytes and return exactly one native-endian eight-byte record, leaving a larger buffer's tail untouched. Writes require exactly eight bytes containing one native-endian value. Smaller reads and non-eight-byte writes, including empty buffers, match `unix.EINVAL` without changing the count. Buffer validation precedes closed-state checks; valid records use Go's deadline/closed-state checks before kernel value validation. Counter I/O is a record protocol; arbitrary stream utilities such as `io.Copy` are unsuitable.
 
-The counter keeps its descriptor private. Use typed I/O and deadlines; external poll registration and kernel-producer integration require a facility-specific operation and are outside the current API.
+## Explicit readiness
+
+Call `counter.Register(poller, epoll.Readable)` to join an [epoll readiness set](epoll.md). The [registration example](../eventfd/example_test.go) creates both owners, adds a count, waits for the matching registration, and consumes it through `ReadValue`. `epoll.Readable` reports a nonzero count; `epoll.Writable` reports capacity to add at least one, which does not guarantee capacity for an arbitrary `Add` value. Trigger modes and complete interest masks follow `epoll.Poller.Add`.
+
+Register privately duplicates the counter with close-on-exec without changing its flags or deadlines. Close the returned registration or its poller separately; closing either leaves the counter usable. Closing the counter interrupts its I/O but leaves the registration alive, retaining the kernel counter until that reference is also released. Failure returns nil, releases any acquired duplicate, and leaves the counter open. A nil poller, zero counter, or unknown interest bits match `os.ErrInvalid`; valid registration on a closed counter or poller matches `os.ErrClosed`. Other errors retain Poller.Add's behavior.
+
+Readiness is advisory and does not reserve records or capacity against competing I/O. Keep I/O bounded with counter deadlines; a Wait timeout does not set those deadlines, and counter deadlines do not affect Wait. The descriptor stays private. Kernel-producer integration remains outside the current API.
 
 Kernel errors retain their errno through `errors.Is` and `errors.As`. Policy denials are returned without a fallback or blanket unsupported classification. See the [package documentation](../eventfd/doc.go), [design note](design/eventfd.md), and [verification commands](verification.md).

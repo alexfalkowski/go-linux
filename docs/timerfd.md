@@ -54,7 +54,13 @@ Descriptors are atomically nonblocking and close-on-exec, while high-level reads
 
 Always call `Close`. It releases the descriptor and wakes poll-blocked reads with `os.ErrClosed`; repeated close and valid operations after close also match `os.ErrClosed`. The zero `Timer` owns no resource and reports `os.ErrInvalid`. Invalid arguments take precedence after close; the zero value reports `os.ErrInvalid` first. Nil receivers are unsupported. Do not copy a timer after first use. Methods are safe concurrently, but sequences of calls are not transactions. A successful operation can win a race with close. The kernel destroys the timer when its last descriptor closes.
 
-The timer keeps its descriptor private; use arming, state, reads, and read deadlines directly. External poll registration is outside the current API.
+## Explicit readiness
+
+Call `timer.Register(poller, epoll.Readable)` to join an [epoll readiness set](epoll.md). The [registration example](../timerfd/example_test.go) creates both owners, arms a one-shot timer, waits for its registration, and consumes the expiration through `ReadExpirations`. Readable means unread expirations or a pending clock cancellation; the subsequent read retains the timer's clock-change results and errors. Trigger modes and complete interest masks follow `epoll.Poller.Add`.
+
+Register privately duplicates the timer with close-on-exec without changing arming, flags, or read deadlines. Close the returned registration or its poller separately; closing either leaves the timer usable. Closing the timer interrupts its reads but leaves the registration and kernel schedule alive until the duplicate is released. Failure returns nil, releases any acquired duplicate, and leaves the timer open. A nil poller, zero timer, or unknown interest bits match `os.ErrInvalid`; valid registration on a closed timer or poller matches `os.ErrClosed`. Other errors retain Poller.Add's behavior.
+
+Readiness is advisory: another reader can consume expirations, and rearming or disarming clears pending counts. Bound subsequent I/O with `SetReadDeadline`; its deadline is independent of the Wait timeout. The timer keeps its descriptor private.
 
 Kernel failures preserve errno identity through `errors.Is` and `errors.As`; policy denials remain observable. Initial omissions include alarm/wakeup clocks, clock adjustment, tick injection, adoption helpers, contexts, and exported ordinary files. See [GoDoc](../timerfd/doc.go), the [design note](design/timerfd.md), and [verification guidance](verification.md).
 
