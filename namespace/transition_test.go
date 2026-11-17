@@ -5,7 +5,6 @@ package namespace_test
 import (
 	"io"
 	"os"
-	"runtime"
 	"testing"
 
 	"github.com/alexfalkowski/go-linux/internal/test"
@@ -16,7 +15,7 @@ import (
 func TestMain(m *testing.M) {
 	// Go parks its startup thread rather than destroying it. Reserve that
 	// thread so the teardown tests observe ordinary worker threads.
-	runtime.LockOSThread()
+	test.LockThread()
 	os.Exit(m.Run())
 }
 

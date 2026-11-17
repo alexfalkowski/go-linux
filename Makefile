@@ -58,12 +58,12 @@ verify-netlink-container: export image := $(value image)
 verify-netlink-container:
 	@bash scripts/netlink "$$image" "$$GO_LINUX_TEST_ARCH"
 
-# Record prerequisites and run required isolated namespace API scenarios.
+# Record prerequisites and run required isolated namespace and capability scenarios.
 verify-namespace:
 	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
-	@$(MAKE) specs package=namespace profile=namespaces required=true
+	@$(MAKE) specs package= PACKAGES="$(MODULE)/namespace $(MODULE)/capability" profile=namespaces required=true
 
-# Run required namespace verification in privileged Docker (image and native arch required).
+# Run required namespace and capability verification in privileged Docker (image and native arch required).
 verify-namespace-container: export image := $(value image)
 verify-namespace-container:
 	@bash scripts/namespace "$$image" "$$GO_LINUX_TEST_ARCH"

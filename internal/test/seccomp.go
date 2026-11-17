@@ -35,6 +35,22 @@ func RefusePollRegistration(t *testing.T) {
 	})
 }
 
+// RefuseCapabilityCalls returns EACCES for capget, capset, and prctl on a
+// bounded capability fixture's thread, establishing real policy-denial errors
+// without production hooks. The caller must leave the thread locked on exit.
+func RefuseCapabilityCalls(t *testing.T) {
+	t.Helper()
+	require.Equal(t, "capability-isolated", os.Args[len(os.Args)-1], "capability restriction requires a dedicated child")
+	restrictThread(t, []unix.SockFilter{
+		{Code: unix.BPF_LD | unix.BPF_W | unix.BPF_ABS, K: 0},
+		{Code: unix.BPF_JMP | unix.BPF_JEQ | unix.BPF_K, K: unix.SYS_CAPGET, Jt: 3},
+		{Code: unix.BPF_JMP | unix.BPF_JEQ | unix.BPF_K, K: unix.SYS_CAPSET, Jt: 2},
+		{Code: unix.BPF_JMP | unix.BPF_JEQ | unix.BPF_K, K: unix.SYS_PRCTL, Jt: 1},
+		{Code: unix.BPF_RET | unix.BPF_K, K: unix.SECCOMP_RET_ALLOW},
+		{Code: unix.BPF_RET | unix.BPF_K, K: unix.SECCOMP_RET_ERRNO | uint32(unix.EACCES)},
+	})
+}
+
 // restrictThread is shared by the concrete child-only fault fixtures. Never
 // unlock the thread: Go retires it when the test goroutine exits, so restrictions
 // cannot leak into unrelated goroutines. The kernel copies the filter on load.
@@ -61,7 +77,7 @@ func restrictThread(t *testing.T, filters []unix.SockFilter) {
 	pins.Pin(&filters[0])
 	defer pins.Unpin()
 
-	runtime.LockOSThread()
+	LockThread()
 	require.NoError(t, unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0))
 	require.NoError(t, unix.Prctl(unix.PR_SET_SECCOMP, unix.SECCOMP_MODE_FILTER, uintptr(unsafe.Pointer(&program)), 0, 0))
 	runtime.KeepAlive(filters)
