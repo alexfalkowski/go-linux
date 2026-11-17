@@ -83,7 +83,9 @@ var ErrUnexpectedReply = errors.New("netlink: unexpected reply")
 func MarshalMessages(messages []Message) ([]byte, error) {
 	var size int
 	for _, message := range messages {
-		if uint64(len(message.Data)) > math.MaxUint32-unix.NLMSG_HDRLEN || len(message.Data) > math.MaxInt-19 {
+		wireOverflow := uint64(len(message.Data)) > math.MaxUint32-unix.NLMSG_HDRLEN
+		sliceOverflow := len(message.Data) > math.MaxInt-19
+		if wireOverflow || sliceOverflow {
 			return nil, os.ErrInvalid
 		}
 		n := align(unix.NLMSG_HDRLEN + len(message.Data))

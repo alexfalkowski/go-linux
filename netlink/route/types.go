@@ -107,7 +107,8 @@ func validOptionalIP(address netip.Addr, family Family) bool {
 
 func parseIP(data []byte, family Family) (netip.Addr, error) {
 	address, ok := netip.AddrFromSlice(data)
-	if !ok || !family.valid() || ipFamily(address) != family {
+	validAddress := ok && family.valid() && ipFamily(address) == family
+	if !validAddress {
 		return netip.Addr{}, netlink.ErrMalformed
 	}
 	return address, nil

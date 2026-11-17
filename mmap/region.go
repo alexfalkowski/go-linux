@@ -257,7 +257,10 @@ func (r *Region) stateError() error {
 }
 
 func mappingFlags(offset int64, length int, options Options) (int, error) {
-	if length <= 0 || offset < 0 || offset%int64(os.Getpagesize()) != 0 || options.Protection & ^(Read|Write) != 0 {
+	invalidLength := length <= 0
+	invalidOffset := offset < 0 || offset%int64(os.Getpagesize()) != 0
+	unknownProtection := options.Protection & ^(Read|Write) != 0
+	if invalidLength || invalidOffset || unknownProtection {
 		return 0, os.ErrInvalid
 	}
 	if offset > math.MaxInt64-int64(length) {

@@ -75,11 +75,12 @@ func ExampleEvent_Respond() { //nolint:testableexamples // Executed by TestExamp
 	opened := make(chan error, 1)
 	go func() {
 		file, err := os.Open(file.Name())
-		if err == nil {
-			err = file.Close()
+		if err != nil {
+			opened <- err
+			return
+		} else {
+			opened <- file.Close()
 		}
-
-		opened <- err
 	}()
 
 	for event, err := range group.Events() {

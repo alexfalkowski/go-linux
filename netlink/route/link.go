@@ -55,7 +55,9 @@ const Dummy LinkKind = "dummy"
 // Unknown link kinds are retained. Malformed input matches netlink.ErrMalformed
 // and returns no record. Attribute and hardware-address bytes borrow message.Data.
 func ParseLink(message netlink.Message) (Link, error) {
-	if (message.Header.Type != unix.RTM_NEWLINK && message.Header.Type != unix.RTM_DELLINK) || len(message.Data) < unix.SizeofIfInfomsg {
+	wrongType := message.Header.Type != unix.RTM_NEWLINK && message.Header.Type != unix.RTM_DELLINK
+	shortHeader := len(message.Data) < unix.SizeofIfInfomsg
+	if wrongType || shortHeader {
 		return Link{}, netlink.ErrMalformed
 	}
 
@@ -163,7 +165,11 @@ func (c *Conn) AddLink(name string, kind LinkKind) error {
 // follow a partial change. Linux determines device-specific restrictions.
 func (c *Conn) ChangeLink(index int, change LinkChange) error {
 	const supported = Up | NoARP | Promiscuous | AllMulticast | Multicast
-	if !validIndex(index) || (change.Name != "" && !validName(change.Name)) || change.Change & ^supported != 0 || change.Flags & ^change.Change != 0 {
+	invalidIndex := !validIndex(index)
+	invalidName := change.Name != "" && !validName(change.Name)
+	unknownFlags := change.Change & ^supported != 0
+	unselectedFlags := change.Flags & ^change.Change != 0
+	if invalidIndex || invalidName || unknownFlags || unselectedFlags {
 		return os.ErrInvalid
 	}
 
@@ -220,8 +226,10 @@ func (l *Link) decodeAttributes() error {
 		switch attribute.ID() {
 		case unix.IFLA_IFNAME:
 			l.Name, err = attribute.String()
-			if err == nil && !validName(l.Name) {
-				err = netlink.ErrMalformed
+			if err != nil {
+				return err
+			} else if !validName(l.Name) {
+				return netlink.ErrMalformed
 			}
 		case unix.IFLA_MTU:
 			l.MTU, err = attribute.Uint32()

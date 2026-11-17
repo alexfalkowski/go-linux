@@ -31,7 +31,7 @@ func TestLinkDecoderPreservesLinuxFieldsAndUnknownAttributes(t *testing.T) {
 	require.Equal(t, route.DelLink, event.Type)
 }
 
-func TestAddressDecoderPeerFlagsAndFallback(t *testing.T) {
+func TestAddressDecoderPreservesPeerAndExtendedFlags(t *testing.T) {
 	message, attributes := test.RouteAddressRecord(t)
 
 	address, err := route.ParseAddress(message)
@@ -44,9 +44,12 @@ func TestAddressDecoderPeerFlagsAndFallback(t *testing.T) {
 	event, err := route.ParseEvent(message)
 	require.NoError(t, err)
 	require.Equal(t, route.Event{Type: route.NewAddress, Address: &address}, event)
+}
 
-	message = test.RouteIPv6AddressRecord(t)
-	event, err = route.ParseEvent(message)
+func TestIPv6AddressDecoderFallsBackToHeaderFlags(t *testing.T) {
+	message := test.RouteIPv6AddressRecord(t)
+
+	event, err := route.ParseEvent(message)
 	require.NoError(t, err)
 	require.Equal(t, route.DelAddress, event.Type)
 	require.Equal(t, netip.MustParsePrefix("2001:db8::1/64"), event.Address.Prefix)
@@ -54,7 +57,7 @@ func TestAddressDecoderPeerFlagsAndFallback(t *testing.T) {
 	require.Equal(t, test.RouteSecondaryAddressFlag, event.Address.Flags, "fixed-header flags are fallback")
 }
 
-func TestRouteDecoderDefaultsSelectorsAndExtendedTable(t *testing.T) {
+func TestRouteDecoderPreservesSelectorsAndExtendedTable(t *testing.T) {
 	message, attributes := test.RouteRecord(t)
 
 	entry, err := route.ParseRoute(message)
@@ -68,7 +71,9 @@ func TestRouteDecoderDefaultsSelectorsAndExtendedTable(t *testing.T) {
 	event, err := route.ParseEvent(message)
 	require.NoError(t, err)
 	require.Equal(t, route.Event{Type: route.NewRoute, Route: &entry}, event)
+}
 
+func TestRouteDecoderSuppliesExplicitDefaultDestination(t *testing.T) {
 	for _, family := range []route.Family{route.IPv4, route.IPv6} {
 		event, err := route.ParseEvent(test.RouteDefaultRecord(t, family))
 		require.NoError(t, err)
@@ -88,6 +93,9 @@ func TestDecodersRejectMalformedRecords(t *testing.T) {
 			require.Equal(t, route.Event{}, event)
 		})
 	}
+}
+
+func TestEventDecoderRejectsUnsupportedMessageTypes(t *testing.T) {
 	_, err := route.ParseEvent(netlink.Message{Header: netlink.Header{Type: netlink.Noop}})
 	require.ErrorIs(t, err, netlink.ErrUnexpectedReply)
 }

@@ -133,7 +133,7 @@ func TestDirectoryWatchesAreNotRecursive(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 }
 
-func TestExistingInodeWatchesCanReplaceExtendOrRejectAMask(t *testing.T) {
+func TestMaskCreateRejectsExistingWatchWithoutChangingIt(t *testing.T) {
 	watcher := test.Watcher(t)
 	directory := t.TempDir()
 	id, err := watcher.AddWatch(directory, inotify.Create|inotify.MaskCreate)
@@ -147,6 +147,13 @@ func TestExistingInodeWatchesCanReplaceExtendOrRejectAMask(t *testing.T) {
 		test.Value(t, func() ([]inotify.Event, error) {
 			return watcher.ReadEvents(make([]byte, 4096))
 		}))
+}
+
+func TestAddingWatchReplacesExistingMask(t *testing.T) {
+	watcher := test.Watcher(t)
+	directory := t.TempDir()
+	id, err := watcher.AddWatch(directory, inotify.Create)
+	require.NoError(t, err)
 
 	replaced, err := watcher.AddWatch(directory, inotify.Delete)
 	require.NoError(t, err)
@@ -159,6 +166,13 @@ func TestExistingInodeWatchesCanReplaceExtendOrRejectAMask(t *testing.T) {
 	events, err := watcher.ReadEvents(make([]byte, 4096))
 	require.NoError(t, err)
 	require.Equal(t, []inotify.Event{{Watch: id, Mask: inotify.Delete, Name: "unreported"}}, events)
+}
+
+func TestMaskAddExtendsExistingMask(t *testing.T) {
+	watcher := test.Watcher(t)
+	directory := t.TempDir()
+	id, err := watcher.AddWatch(directory, inotify.Delete)
+	require.NoError(t, err)
 
 	extended, err := watcher.AddWatch(directory, inotify.Create|inotify.MaskAdd)
 	require.NoError(t, err)
@@ -168,7 +182,7 @@ func TestExistingInodeWatchesCanReplaceExtendOrRejectAMask(t *testing.T) {
 
 	require.NoError(t, os.Remove(filepath.Join(directory, "both")))
 
-	events, err = watcher.ReadEvents(make([]byte, 4096))
+	events, err := watcher.ReadEvents(make([]byte, 4096))
 	require.NoError(t, err)
 	require.Equal(t, []inotify.Event{
 		{Watch: id, Mask: inotify.Create, Name: "both"}, {Watch: id, Mask: inotify.Delete, Name: "both"},
@@ -199,8 +213,13 @@ func TestSymlinkWatchOptionsKeepLinuxPathSemantics(t *testing.T) {
 	events, err := watcher.ReadEvents(make([]byte, 4096))
 	require.NoError(t, err)
 	require.Equal(t, []inotify.Event{{Watch: symlink, Mask: inotify.DeleteSelf}, {Watch: symlink, Mask: inotify.Ignored}}, events)
+}
 
-	_, err = watcher.AddWatch(path, inotify.Create|inotify.OnlyDir)
+func TestOnlyDirRejectsRegularFiles(t *testing.T) {
+	watcher := test.Watcher(t)
+	path := test.TempFile(t, 0).Name()
+
+	_, err := watcher.AddWatch(path, inotify.Create|inotify.OnlyDir)
 	require.ErrorIs(t, err, test.ErrNotDirectory)
 }
 

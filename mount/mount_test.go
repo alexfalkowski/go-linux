@@ -23,47 +23,13 @@ var (
 	_ io.Closer = (*mount.Handle)(nil)
 )
 
-func TestZeroMountOwnersRejectOperations(t *testing.T) {
+func TestZeroMountConfigurationRejectsOperations(t *testing.T) {
 	var config mount.Config
-	var handle mount.Handle
-	for _, operation := range []struct {
-		name string
-		run  func() error
-	}{
-		{name: "set configuration flag", run: func() error {
-			return config.SetFlag("rw")
-		}},
 
-		{name: "set configuration string", run: func() error {
-			return config.SetString("mode", "0700")
-		}},
-
-		{name: "create filesystem", run: config.Create},
-		{name: "close configuration", run: config.Close},
-		{name: "change mount attributes", run: func() error {
-			return handle.SetAttributes(mount.AttributeChange{})
-		}},
-
-		{name: "attach mount", run: func() error {
-			return handle.Attach(nil, "/unused")
-		}},
-
-		{name: "inspect root metadata", run: func() error {
-			_, err := handle.Stat()
-			return err
-		}},
-
-		{name: "inspect mount attributes", run: func() error {
-			_, err := handle.Attributes()
-			return err
-		}},
-
-		{name: "close mount", run: handle.Close},
-	} {
-		t.Run(operation.name, func(t *testing.T) {
-			require.ErrorIs(t, operation.run(), os.ErrInvalid)
-		})
-	}
+	require.ErrorIs(t, config.SetFlag("rw"), os.ErrInvalid)
+	require.ErrorIs(t, config.SetString("mode", "0700"), os.ErrInvalid)
+	require.ErrorIs(t, config.Create(), os.ErrInvalid)
+	require.ErrorIs(t, config.Close(), os.ErrInvalid)
 
 	got, err := config.Mount(0)
 	test.NoResource(t, got, err, os.ErrInvalid)
@@ -71,6 +37,18 @@ func TestZeroMountOwnersRejectOperations(t *testing.T) {
 	records, err := config.Diagnostics()
 	require.ErrorIs(t, err, os.ErrInvalid)
 	require.Nil(t, records)
+}
+
+func TestZeroMountHandleRejectsOperations(t *testing.T) {
+	var handle mount.Handle
+
+	require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{}), os.ErrInvalid)
+	require.ErrorIs(t, handle.Attach(nil, "/unused"), os.ErrInvalid)
+	_, err := handle.Stat()
+	require.ErrorIs(t, err, os.ErrInvalid)
+	_, err = handle.Attributes()
+	require.ErrorIs(t, err, os.ErrInvalid)
+	require.ErrorIs(t, handle.Close(), os.ErrInvalid)
 }
 
 func TestInvalidMountAcquisitionArgumentsRetainNoDescriptors(t *testing.T) {
@@ -265,11 +243,15 @@ func TestFailedMountAcquisitionPreservesErrnoAndRetainsNoDescriptor(t *testing.T
 	handle, err := mount.Clone(nil, path, 0)
 	test.NoResource(t, handle, err, expected)
 
-	expected = test.MountUnmountError(path)
+	require.Equal(t, before, test.DescriptorCount(t), "failed kernel acquisitions must not retain descriptors")
+}
+
+func TestFailedUnmountPreservesKernelError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing")
+	expected := test.MountUnmountError(path)
 	require.Error(t, expected)
 
 	require.ErrorIs(t, mount.Unmount(path, 0), expected)
-	require.Equal(t, before, test.DescriptorCount(t), "failed kernel acquisitions must not retain descriptors")
 }
 
 func TestDiagnosticRetrievalErrorsDoNotReplaceTheOperationError(t *testing.T) {
@@ -347,25 +329,10 @@ func TestClosingConfigurationLeavesItsMountUsable(t *testing.T) {
 
 	require.NoError(t, config.Close())
 
-	for _, scenario := range []struct {
-		name string
-		run  func() error
-	}{
-		{name: "flag parameters", run: func() error {
-			return config.SetFlag("rw")
-		}},
-
-		{name: "string parameters", run: func() error {
-			return config.SetString("mode", "0700")
-		}},
-
-		{name: "creation", run: config.Create},
-		{name: "repeated close", run: config.Close},
-	} {
-		t.Run(scenario.name, func(t *testing.T) {
-			require.ErrorIs(t, scenario.run(), os.ErrClosed)
-		})
-	}
+	require.ErrorIs(t, config.SetFlag("rw"), os.ErrClosed)
+	require.ErrorIs(t, config.SetString("mode", "0700"), os.ErrClosed)
+	require.ErrorIs(t, config.Create(), os.ErrClosed)
+	require.ErrorIs(t, config.Close(), os.ErrClosed)
 
 	got, err := config.Mount(0)
 	test.NoResource(t, got, err, os.ErrClosed)
@@ -546,7 +513,8 @@ func TestConcurrentConfigurationKeepsEachErrorWithItsDiagnostics(t *testing.T) {
 
 			err := config.SetFlag(key)
 			var failure *mount.Error
-			if !errors.As(err, &failure) || len(failure.Diagnostics) != 1 || !strings.Contains(failure.Diagnostics[0].Message, key) {
+			attributed := errors.As(err, &failure) && len(failure.Diagnostics) == 1 && strings.Contains(failure.Diagnostics[0].Message, key)
+			if !attributed {
 				results <- fmt.Errorf("diagnostics not attributed to %s: %w", key, err)
 				return
 			}
@@ -558,7 +526,14 @@ func TestConcurrentConfigurationKeepsEachErrorWithItsDiagnostics(t *testing.T) {
 	for range 16 {
 		require.NoError(t, <-results)
 	}
+}
 
+func TestConfigurationCloseSafelyRacesWithParameterChanges(t *testing.T) {
+	if !test.MountNamespace(t) {
+		return
+	}
+	config := test.MountConfig(t)
+	results := make(chan error, 8)
 	var workers sync.WaitGroup
 	for range 8 {
 		workers.Go(func() {
@@ -596,33 +571,13 @@ func TestAttachedMountSurvivesClosingItsHandleAndTargetDirectory(t *testing.T) {
 	require.NoError(t, dir.Close(), "target is borrowed only for the operation")
 	require.NoError(t, handle.Close())
 
-	for _, operation := range []struct {
-		name string
-		run  func() error
-	}{
-		{name: "repeated close", run: handle.Close},
-		{name: "change attributes", run: func() error {
-			return handle.SetAttributes(mount.AttributeChange{})
-		}},
-
-		{name: "attach", run: func() error {
-			return handle.Attach(nil, path)
-		}},
-
-		{name: "read metadata", run: func() error {
-			_, err := handle.Stat()
-			return err
-		}},
-
-		{name: "read attributes", run: func() error {
-			_, err := handle.Attributes()
-			return err
-		}},
-	} {
-		t.Run(operation.name, func(t *testing.T) {
-			require.ErrorIs(t, operation.run(), os.ErrClosed)
-		})
-	}
+	require.ErrorIs(t, handle.Close(), os.ErrClosed)
+	require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{}), os.ErrClosed)
+	require.ErrorIs(t, handle.Attach(nil, path), os.ErrClosed)
+	_, err := handle.Stat()
+	require.ErrorIs(t, err, os.ErrClosed)
+	_, err = handle.Attributes()
+	require.ErrorIs(t, err, os.ErrClosed)
 
 	require.NoError(t, os.WriteFile(filepath.Join(path, "persists"), []byte("mounted"), 0o600), "Close must leave attachment intact")
 

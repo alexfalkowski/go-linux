@@ -175,6 +175,14 @@ func TestFailedSendsReleaseDuplicatesAndLeaveInputsOwned(t *testing.T) {
 		})
 	}
 
+	test.WriteAt(t, file, 0, "input retained")
+}
+
+func TestRejectedMessagePayloadsReleaseBorrowedDuplicates(t *testing.T) {
+	a, _ := test.MessagePair(t, socket.Datagram)
+	file := test.TempFile(t, 0)
+	before := test.DescriptorCount(t)
+
 	_, err := a.Send(nil, nil, file)
 	require.ErrorIs(t, err, os.ErrInvalid)
 
@@ -185,15 +193,19 @@ func TestFailedSendsReleaseDuplicatesAndLeaveInputsOwned(t *testing.T) {
 	test.WriteAt(t, file, 0, "input retained")
 }
 
-func TestUnixCredentialsDescribePeerAndMessageSender(t *testing.T) {
-	a, b := test.MessagePair(t, socket.SeqPacket)
+func TestUnixPeerCredentialsDescribeConnectedProcess(t *testing.T) {
+	_, b := test.MessagePair(t, socket.SeqPacket)
 	peer, err := b.PeerCredentials()
 	require.NoError(t, err)
 	require.Equal(t, socket.Credentials{PID: int32(os.Getpid()), UID: uint32(os.Geteuid()), GID: uint32(os.Getegid())}, peer) //nolint:gosec // Linux IDs fit these ABI fields.
+}
+
+func TestUnixMessageCredentialsCanBeEnabledAndDisabled(t *testing.T) {
+	a, b := test.MessagePair(t, socket.SeqPacket)
 
 	require.NoError(t, b.SetPassCredentials(true))
 
-	_, err = a.Send([]byte("identified"), nil)
+	_, err := a.Send([]byte("identified"), nil)
 	require.NoError(t, err)
 
 	message, err := b.Receive(make([]byte, 32), 0)

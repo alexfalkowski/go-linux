@@ -120,18 +120,18 @@ func ListAt(dir *os.File, path string, options PathOptions) ([]string, error) {
 		})
 		return err
 	})
+	if err != nil {
+		return nil, &os.PathError{Op: "listxattrat", Path: path, Err: err}
+	}
+
 	names := make([]string, 0)
-	for err == nil && len(value) != 0 {
+	for len(value) != 0 {
 		end := bytes.IndexByte(value, 0)
 		if end <= 0 {
-			err = unix.EIO
-			break
+			return nil, &os.PathError{Op: "listxattrat", Path: path, Err: unix.EIO}
 		}
 		names = append(names, string(value[:end]))
 		value = value[end+1:]
-	}
-	if err != nil {
-		return nil, &os.PathError{Op: "listxattrat", Path: path, Err: err}
 	}
 	return names, nil
 }

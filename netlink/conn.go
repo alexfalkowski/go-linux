@@ -31,7 +31,9 @@ func (options Options) normalized() (Options, error) {
 	if options.MaxResponseBytes == 0 {
 		options.MaxResponseBytes = 16 << 20
 	}
-	if options.DatagramSize < unix.NLMSG_HDRLEN || uint64(options.DatagramSize) > 1<<31-1 || options.MaxResponseBytes < unix.NLMSG_HDRLEN {
+	invalidDatagramSize := options.DatagramSize < unix.NLMSG_HDRLEN || uint64(options.DatagramSize) > 1<<31-1
+	invalidResponseLimit := options.MaxResponseBytes < unix.NLMSG_HDRLEN
+	if invalidDatagramSize || invalidResponseLimit {
 		return Options{}, os.ErrInvalid
 	}
 
@@ -210,7 +212,9 @@ type responseState struct {
 
 func (s *responseState) accept(message Message) error {
 	header := message.Header
-	if s.response.Complete || header.Sequence != s.request.Sequence || (header.PortID != s.portID && header.PortID != 0) {
+	wrongSequence := header.Sequence != s.request.Sequence
+	wrongPort := header.PortID != s.portID && header.PortID != 0
+	if s.response.Complete || wrongSequence || wrongPort {
 		s.response.Complete = false
 		return ErrUnexpectedReply
 	}
@@ -328,7 +332,10 @@ func validateRequest(header Header, dump bool) error {
 		allowed = Request | Acknowledge | Replace | Exclusive | Create | Append
 	}
 
-	if header.Type < unix.NLMSG_MIN_TYPE || header.Flags & ^allowed != 0 || header.Sequence != 0 || header.PortID != 0 {
+	reservedType := header.Type < unix.NLMSG_MIN_TYPE
+	unknownFlags := header.Flags & ^allowed != 0
+	callerAssignedIdentity := header.Sequence != 0 || header.PortID != 0
+	if reservedType || unknownFlags || callerAssignedIdentity {
 		return os.ErrInvalid
 	}
 	return nil

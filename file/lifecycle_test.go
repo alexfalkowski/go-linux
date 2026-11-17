@@ -38,7 +38,10 @@ func TestUnavailableAnchorsRejectEveryOperation(t *testing.T) {
 			require.ErrorIs(t, file.Rename(live, "a", scenario.dir, "b", file.Replace), scenario.wantErr)
 		})
 	}
+}
 
+func TestRegularFilesCannotAnchorChildOperations(t *testing.T) {
+	live := test.OpenFile(t, t.TempDir())
 	regular := test.TempFile(t, 0)
 	opened, err := file.Open(regular, "child", file.OpenOptions{})
 	require.ErrorIs(t, err, test.ErrNotDirectory)
@@ -50,7 +53,7 @@ func TestUnavailableAnchorsRejectEveryOperation(t *testing.T) {
 	require.ErrorIs(t, file.Rename(live, ".", regular, "child", file.Replace), test.ErrNotDirectory)
 }
 
-func TestOpenedDescriptorsAreCloseOnExecAndFullyReleased(t *testing.T) {
+func TestOpenedDescriptorsAreCloseOnExec(t *testing.T) {
 	dir := test.OpenFile(t, t.TempDir())
 	before := test.Descriptors(t)
 	opened, err := file.Open(dir, ".", file.OpenOptions{Flags: file.Path | file.Directory})
@@ -58,6 +61,11 @@ func TestOpenedDescriptorsAreCloseOnExecAndFullyReleased(t *testing.T) {
 	test.Cleanup(t, opened)
 	test.CloseOnExec(t, test.NewDescriptor(t, before))
 	require.NoError(t, opened.Close())
+}
+
+func TestSuccessfulAndFailedOpensReleaseDescriptors(t *testing.T) {
+	dir := test.OpenFile(t, t.TempDir())
+	before := test.Descriptors(t)
 
 	for range 25 {
 		opened, err := file.Open(dir, ".", file.OpenOptions{})
@@ -84,11 +92,12 @@ func TestConcurrentAnchorCloseCannotLeakOrRetargetOperations(t *testing.T) {
 		go func() {
 			<-start
 			opened, err := file.Open(dir, ".", file.OpenOptions{Flags: file.Path})
-			if err == nil {
-				err = opened.Close()
+			if err != nil {
+				results <- err
+				return
+			} else {
+				results <- opened.Close()
 			}
-
-			results <- err
 		}()
 
 		go func() {

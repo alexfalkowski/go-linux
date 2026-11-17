@@ -81,7 +81,7 @@ func TestOpenSelectsOneAccessMode(t *testing.T) {
 	}
 }
 
-func TestOpenPreservesAppendTruncateAndExclusiveSemantics(t *testing.T) {
+func TestOpenSelectsAppendOrTruncateWrites(t *testing.T) {
 	root := t.TempDir()
 	dir := test.OpenFile(t, root)
 	require.NoError(t, os.WriteFile(filepath.Join(root, "data"), []byte("first"), 0o600))
@@ -108,6 +108,13 @@ func TestOpenPreservesAppendTruncateAndExclusiveSemantics(t *testing.T) {
 			require.Equal(t, scenario.want, string(contents))
 		})
 	}
+}
+
+func TestExclusiveCreationPreservesExistingFileAndAnchor(t *testing.T) {
+	dir := test.OpenFile(t, t.TempDir())
+	created, err := file.Open(dir, "data", file.OpenOptions{Flags: file.Create | file.Exclusive, Perm: 0o600})
+	require.NoError(t, err)
+	test.Cleanup(t, created)
 
 	opened, err := file.Open(dir, "data", file.OpenOptions{Flags: file.Create | file.Exclusive, Perm: 0o600})
 	require.ErrorIs(t, err, test.ErrExists)
@@ -194,7 +201,7 @@ func TestOpenEnforcesResolutionAndPreservesPathSemantics(t *testing.T) {
 	}
 }
 
-func TestPathOnlyHandlesCanInspectSymlinksAndAnchorDirectories(t *testing.T) {
+func TestPathOnlyHandleInspectsSymlinkWithoutOpeningTarget(t *testing.T) {
 	root := t.TempDir()
 	dir := test.OpenFile(t, root)
 	require.NoError(t, os.Symlink("missing", filepath.Join(root, "link")))
@@ -209,6 +216,10 @@ func TestPathOnlyHandlesCanInspectSymlinksAndAnchorDirectories(t *testing.T) {
 
 	_, err = link.Read(make([]byte, 1))
 	require.ErrorIs(t, err, test.ErrBadDescriptor)
+}
+
+func TestPathOnlyDirectoryAnchorsCreation(t *testing.T) {
+	dir := test.OpenFile(t, t.TempDir())
 
 	anchor, err := file.Open(dir, ".", file.OpenOptions{Flags: file.Path | file.Directory})
 	require.NoError(t, err)
@@ -220,7 +231,7 @@ func TestPathOnlyHandlesCanInspectSymlinksAndAnchorDirectories(t *testing.T) {
 	test.WriteAt(t, created, 0, "anchored")
 }
 
-func TestOpenRejectsMountCrossingsAndMagicLinks(t *testing.T) {
+func TestOpenRejectsMountCrossing(t *testing.T) {
 	// Focused ABI scenarios use existing read-only mount points and procfs links.
 	root := test.OpenFile(t, "/")
 	proc := test.OpenFile(t, "/proc")
@@ -234,10 +245,14 @@ func TestOpenRejectsMountCrossingsAndMagicLinks(t *testing.T) {
 	opened, err := file.Open(root, "proc", file.OpenOptions{Flags: file.Path, Resolve: file.NoXDev})
 	require.ErrorIs(t, err, test.ErrCrossDevice)
 	require.Nil(t, opened)
+}
+
+func TestNoMagicLinksCanInspectButNotFollowProcLink(t *testing.T) {
+	proc := test.OpenFile(t, "/proc")
 
 	source := test.TempFile(t, 0)
 	magicLink := fmt.Sprintf("self/fd/%d", test.FileDescriptor(t, source))
-	opened, err = file.Open(proc, magicLink, file.OpenOptions{Flags: file.Path, Resolve: file.NoMagicLinks})
+	opened, err := file.Open(proc, magicLink, file.OpenOptions{Flags: file.Path, Resolve: file.NoMagicLinks})
 	require.ErrorIs(t, err, test.ErrSymlinkLoop)
 	require.Nil(t, opened)
 

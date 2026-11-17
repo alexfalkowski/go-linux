@@ -53,7 +53,8 @@ func MountNamespace(t *testing.T) bool {
 	output, err := command.CombinedOutput()
 	require.NoError(t, ctx.Err(), "isolated mount test exceeded its time bound")
 
-	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC) {
+	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
+	if unavailable {
 		reason := "profile=namespaces operation=clone(user,mount)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
 		require.False(t, options.Required, reason)
 
@@ -61,7 +62,8 @@ func MountNamespace(t *testing.T) bool {
 	}
 
 	var exit *exec.ExitError
-	if errors.As(err, &exit) && exit.ExitCode() == 77 && strings.Contains(string(output), "mount prerequisite unavailable: operation=") {
+	missingMountPrerequisite := errors.As(err, &exit) && exit.ExitCode() == 77 && strings.Contains(string(output), "mount prerequisite unavailable: operation=")
+	if missingMountPrerequisite {
 		require.False(t, options.Required, string(output))
 
 		t.Skip(string(output))
@@ -115,7 +117,8 @@ func NetworkNamespace(t *testing.T) bool {
 	}
 	output, err := command.CombinedOutput()
 	require.NoError(t, ctx.Err(), "isolated network test exceeded its time bound")
-	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC) {
+	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
+	if unavailable {
 		reason := "profile=namespaces operation=clone(user,network)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
 		require.False(t, options.Required, reason)
 		t.Skip(reason)
@@ -153,7 +156,8 @@ func NamespaceProcess(t *testing.T) bool {
 	}
 	output, err := command.CombinedOutput()
 	require.NoError(t, ctx.Err(), "namespace scenario exceeded its time bound")
-	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC) {
+	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
+	if unavailable {
 		reason := "profile=namespaces operation=clone(user)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
 		require.False(t, options.Required, reason)
 		t.Skip(reason)
@@ -165,7 +169,8 @@ func NamespaceProcess(t *testing.T) bool {
 
 func mountPrerequisite(t *testing.T, operation string, err error) {
 	t.Helper()
-	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) {
+	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS)
+	if unavailable {
 		t.Logf("mount prerequisite unavailable: operation=%s: %v; prerequisite=applicable CAP_SYS_ADMIN and permitted mount syscalls; profile=namespaces", operation, err)
 		os.Exit(77)
 	}

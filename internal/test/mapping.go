@@ -53,8 +53,9 @@ func WritableMapping(t *testing.T, file *memfd.File) (*mmap.Region, error) {
 	t.Helper()
 
 	region, err := file.Map(0, os.Getpagesize(), mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
-	if err == nil {
-		Cleanup(t, region)
+	if err != nil {
+		return region, err
 	}
-	return region, err
+	Cleanup(t, region)
+	return region, nil
 }

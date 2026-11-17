@@ -109,15 +109,21 @@ func TestMappingWritesAreSharedOnlyWhenRequested(t *testing.T) {
 	}
 }
 
-func TestSourceFileAndMappingHaveIndependentLifetimes(t *testing.T) {
+func TestClosingMappingLeavesSourceFileUsable(t *testing.T) {
 	file := test.TempFile(t, int64(os.Getpagesize()))
 	region := test.Mapping(t, file, 0, 7, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
+
 	require.NoError(t, region.Close())
 
 	_, err := file.WriteAt([]byte("message"), 0)
 	require.NoError(t, err, "closing the region must leave the file open")
+}
 
-	region = test.Mapping(t, file, 0, 7, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
+func TestClosingSourceFileLeavesMappingUsable(t *testing.T) {
+	file := test.TempFile(t, int64(os.Getpagesize()))
+	test.WriteAt(t, file, 0, "message")
+	region := test.Mapping(t, file, 0, 7, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
+
 	require.NoError(t, file.Close())
 	require.Equal(t, "message", string(region.Bytes()), "closing the file must leave the mapping valid")
 
@@ -343,29 +349,11 @@ func TestUnavailableRegionsRejectAccess(t *testing.T) {
 			region := scenario.region
 			require.Nil(t, region.Bytes())
 
-			for _, operation := range []struct {
-				name string
-				run  func() error
-			}{
-				{name: "close", run: region.Close},
-				{name: "change protection", run: func() error {
-					return region.Protect(mmap.Read)
-				}},
-
-				{name: "reject unknown protection", run: func() error {
-					return region.Protect(255)
-				}},
-
-				{name: "advise access pattern", run: func() error {
-					return region.Advise(mmap.Normal)
-				}},
-
-				{name: "reject unknown advice", run: func() error {
-					return region.Advise(255)
-				}},
-			} {
-				require.ErrorIs(t, operation.run(), scenario.err, operation.name)
-			}
+			require.ErrorIs(t, region.Close(), scenario.err)
+			require.ErrorIs(t, region.Protect(mmap.Read), scenario.err)
+			require.ErrorIs(t, region.Protect(255), scenario.err, "lifetime errors precede protection validation")
+			require.ErrorIs(t, region.Advise(mmap.Normal), scenario.err)
+			require.ErrorIs(t, region.Advise(255), scenario.err, "lifetime errors precede advice validation")
 		})
 	}
 }

@@ -139,6 +139,7 @@ func TestInvalidVerificationSettingsFailBeforeProbing(t *testing.T) {
 		{name: "required prerequisites", setting: "GO_LINUX_TEST_REQUIRED"},
 		{name: "architecture", setting: "GO_LINUX_TEST_ARCH"},
 		{name: "kernel", setting: "GO_LINUX_TEST_KERNEL"},
+		{name: "delegation", setting: "GO_LINUX_TEST_CGROUP"},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Setenv(scenario.setting, "invalid-setting")
@@ -164,11 +165,47 @@ func TestMissingProbeExecutableFailsInsteadOfSkipping(t *testing.T) {
 }
 
 func TestUnsetVerificationSettingsSelectOptionalRootlessCoverage(t *testing.T) {
-	for _, name := range []string{"GO_LINUX_TEST_PROFILE", "GO_LINUX_TEST_REQUIRED", "GO_LINUX_TEST_ARCH", "GO_LINUX_TEST_KERNEL"} {
+	for _, name := range []string{"GO_LINUX_TEST_PROFILE", "GO_LINUX_TEST_REQUIRED", "GO_LINUX_TEST_ARCH", "GO_LINUX_TEST_KERNEL", "GO_LINUX_TEST_CGROUP"} {
 		t.Setenv(name, "")
 	}
 
 	options, err := testenv.FromEnvironment()
 	require.NoError(t, err)
 	require.Equal(t, testenv.Options{Profile: "rootless", Kernel: "supported"}, options)
+}
+
+func TestCgroupProfileRequiresExplicitDelegation(t *testing.T) {
+	optional, err := testenv.Check(testenv.Options{Profile: "cgroup"})
+	require.NoError(t, err)
+	require.NotEmpty(t, optional.Skip)
+	require.Equal(t, "not-run", optional.NamespaceProbe, "cgroup discovery must not require namespace creation")
+
+	required, err := testenv.Check(testenv.Options{Profile: "cgroup", Required: true})
+	require.Error(t, err)
+	require.Empty(t, required.Skip, "required coverage must fail instead of skipping")
+}
+
+func TestCgroupProfileRejectsInvalidDelegation(t *testing.T) {
+	_, err := testenv.Check(testenv.Options{Profile: "cgroup", Delegation: "relative/path"})
+	require.Error(t, err)
+
+	_, err = testenv.Check(testenv.Options{Profile: "cgroup", Delegation: t.TempDir()})
+	require.ErrorIs(t, err, os.ErrInvalid)
+	_, err = testenv.Check(testenv.Options{Profile: "cgroup", Delegation: filepath.Join(t.TempDir(), "missing")})
+	require.ErrorIs(t, err, os.ErrNotExist)
+}
+
+func TestCgroupDiscoveryReadsWithoutMutation(t *testing.T) {
+	before, err := os.ReadFile("/sys/fs/cgroup/cgroup.subtree_control")
+	require.NoError(t, err)
+
+	report, err := testenv.Check(testenv.Options{Profile: "cgroup", Delegation: "/sys/fs/cgroup", Required: true})
+	require.NoError(t, err)
+	require.Contains(t, report.Controllers, "delegation/cgroup.controllers")
+	require.Contains(t, report.Controllers, "delegation/cgroup.subtree_control")
+	require.Empty(t, report.Skip)
+
+	after, err := os.ReadFile("/sys/fs/cgroup/cgroup.subtree_control")
+	require.NoError(t, err)
+	require.Equal(t, before, after, "discovery must not enable or disable controllers")
 }

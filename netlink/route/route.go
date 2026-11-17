@@ -18,7 +18,9 @@ import (
 // borrow message.Data. Malformed interpreted fields match netlink.ErrMalformed
 // and return no record. A parsed Route is an observation, not a replay request.
 func ParseRoute(message netlink.Message) (Route, error) {
-	if (message.Header.Type != unix.RTM_NEWROUTE && message.Header.Type != unix.RTM_DELROUTE) || len(message.Data) < unix.SizeofRtMsg {
+	wrongType := message.Header.Type != unix.RTM_NEWROUTE && message.Header.Type != unix.RTM_DELROUTE
+	shortHeader := len(message.Data) < unix.SizeofRtMsg
+	if wrongType || shortHeader {
 		return Route{}, netlink.ErrMalformed
 	}
 
@@ -93,8 +95,10 @@ func (r *Route) decodeAttribute(attribute netlink.Attribute, family Family) erro
 	case unix.RTA_OIF, unix.RTA_IIF:
 		var index uint32
 		index, err = attribute.Uint32()
-		if err == nil && !validIndex(int(index)) {
-			err = netlink.ErrMalformed
+		if err != nil {
+			return err
+		} else if !validIndex(int(index)) {
+			return netlink.ErrMalformed
 		}
 		if attribute.ID() == unix.RTA_OIF {
 			r.Index = int(index)
@@ -149,7 +153,8 @@ func (c *Conn) Routes(family Family) ([]Route, error) {
 	}
 
 	return parseMessages(messages, func(message netlink.Message) (Route, error) {
-		if message.Header.Type != unix.RTM_NEWROUTE || len(message.Data) == 0 || Family(message.Data[0]) != family {
+		matchesFamily := message.Header.Type == unix.RTM_NEWROUTE && len(message.Data) > 0 && Family(message.Data[0]) == family
+		if !matchesFamily {
 			return Route{}, netlink.ErrUnexpectedReply
 		}
 		return ParseRoute(message)
@@ -251,13 +256,17 @@ func (r *Route) decodePrefixes(family Family, destinationBits, sourceBits uint8)
 }
 
 func (c RouteConfig) validate() error {
-	if !c.Destination.IsValid() || c.Destination != c.Destination.Masked() || c.Index < 0 || (c.Index != 0 && !validIndex(c.Index)) {
+	invalidDestination := !c.Destination.IsValid() || c.Destination != c.Destination.Masked()
+	invalidIndex := c.Index < 0 || (c.Index != 0 && !validIndex(c.Index))
+	if invalidDestination || invalidIndex {
 		return os.ErrInvalid
 	}
 
 	family := ipFamily(c.Destination.Addr())
-	if !validIP(c.Destination.Addr(), family) || !validOptionalIP(c.Gateway, family) ||
-		!validOptionalIP(c.PreferredSource, family) {
+	invalidAddress := !validIP(c.Destination.Addr(), family)
+	invalidGateway := !validOptionalIP(c.Gateway, family)
+	invalidSource := !validOptionalIP(c.PreferredSource, family)
+	if invalidAddress || invalidGateway || invalidSource {
 		return os.ErrInvalid
 	}
 	return c.validateType()

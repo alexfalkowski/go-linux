@@ -8,17 +8,24 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/alexfalkowski/go-linux/cgroup"
 )
 
 // Options selects verification coverage and optional runner identity checks.
 type Options struct {
-	// Profile selects rootless (also the empty default) or namespaces coverage.
+	// Profile selects rootless (the default), namespaces, or cgroup coverage.
 	Profile string
+
+	// Delegation is an explicitly supplied cgroup v2 subtree for live tests.
+	// Empty means no delegation is selected; discovery never changes the subtree.
+	Delegation string
 
 	// Architecture optionally requires both Go and uname to match amd64 or arm64.
 	Architecture string
@@ -72,13 +79,14 @@ type Report struct {
 	UID int `json:"uid"`
 }
 
-// FromEnvironment reads only the four documented GO_LINUX_TEST settings. It
+// FromEnvironment reads only the documented GO_LINUX_TEST settings. It
 // validates them without echoing unrecognized inherited values into diagnostics.
 func FromEnvironment() (Options, error) {
 	options := Options{
 		Profile:      os.Getenv("GO_LINUX_TEST_PROFILE"),
 		Architecture: os.Getenv("GO_LINUX_TEST_ARCH"),
 		Kernel:       os.Getenv("GO_LINUX_TEST_KERNEL"),
+		Delegation:   os.Getenv("GO_LINUX_TEST_CGROUP"),
 	}
 	if value := os.Getenv("GO_LINUX_TEST_REQUIRED"); value != "" {
 		required, err := strconv.ParseBool(value)
@@ -92,9 +100,11 @@ func FromEnvironment() (Options, error) {
 }
 
 // Check observes the host and probes user/mount/network namespace creation in a
-// bounded subprocess. It never changes the calling process's namespaces or host
-// policy. An optional known prerequisite denial is recorded in Skip; unexpected
-// errors and runner identity mismatches always fail.
+// bounded subprocess, or inspects an explicitly selected cgroup delegation. It
+// never changes the calling process's namespaces, cgroup, or host policy. An
+// optional known prerequisite denial is recorded in Skip; unexpected errors and
+// runner identity mismatches always fail. Cgroup discovery establishes readable
+// identity/controller files only; live tests must verify mutation permissions.
 func Check(options Options) (Report, error) {
 	options, err := normalize(options)
 	if err != nil {
@@ -108,29 +118,32 @@ func Check(options Options) (Report, error) {
 	if err := checkRunner(report, options); err != nil {
 		return report, err
 	}
+	if options.Profile == "cgroup" {
+		return checkDelegation(report, options)
+	}
 
 	err = probeNamespaces()
-	if err == nil {
+	if err != nil {
+		report.NamespaceProbe = "error"
+		report.NamespaceError = err.Error()
+		// These errors describe the exact clone/mapping prerequisite attempted here,
+		// not arbitrary failures from a facility operation under test.
+		if !namespaceUnavailable(err) {
+			return report, fmt.Errorf("namespace prerequisite probe: %w", err)
+		}
+		report.NamespaceProbe = "unavailable"
+		if options.Profile == "rootless" {
+			return report, nil
+		}
+		reason := fmt.Sprintf("profile=namespaces operation=clone(user,mount,network)+uid/gid-mapping: %v; "+
+			"prerequisite=permitted user namespaces, mappings, and namespace quota", err)
+		if options.Required {
+			return report, fmt.Errorf("required %s: %w", reason, err)
+		}
+		report.Skip = reason
+	} else {
 		report.NamespaceProbe = "available"
-		return report, nil
 	}
-	report.NamespaceProbe = "error"
-	report.NamespaceError = err.Error()
-	// These errors describe the exact clone/mapping prerequisite attempted here,
-	// not arbitrary failures from a facility operation under test.
-	if !namespaceUnavailable(err) {
-		return report, fmt.Errorf("namespace prerequisite probe: %w", err)
-	}
-	report.NamespaceProbe = "unavailable"
-	if options.Profile == "rootless" {
-		return report, nil
-	}
-	reason := fmt.Sprintf("profile=namespaces operation=clone(user,mount,network)+uid/gid-mapping: %v; "+
-		"prerequisite=permitted user namespaces, mappings, and namespace quota", err)
-	if options.Required {
-		return report, fmt.Errorf("required %s: %w", reason, err)
-	}
-	report.Skip = reason
 
 	return report, nil
 }
@@ -143,9 +156,9 @@ func normalize(options Options) (Options, error) {
 		options.Kernel = "supported"
 	}
 	switch options.Profile {
-	case "rootless", "namespaces":
+	case "rootless", "namespaces", "cgroup":
 	default:
-		return Options{}, errors.New("profile must be rootless or namespaces")
+		return Options{}, errors.New("profile must be rootless, namespaces, or cgroup")
 	}
 	switch options.Architecture {
 	case "", "amd64", "arm64":
@@ -158,7 +171,43 @@ func normalize(options Options) (Options, error) {
 		return Options{}, errors.New("kernel must be supported, 7.0, or newer")
 	}
 
-	return options, nil
+	return options, checkDelegationPath(options.Delegation)
+}
+
+func checkDelegationPath(path string) error {
+	if path != "" && !filepath.IsAbs(path) {
+		return errors.New("delegation must be an absolute cgroup v2 path")
+	}
+	return nil
+}
+
+func checkDelegation(report Report, options Options) (Report, error) {
+	if options.Delegation == "" {
+		const reason = "profile=cgroup requires delegation=/absolute/delegated/path"
+		if options.Required {
+			return report, errors.New(reason)
+		}
+		report.Skip = reason
+		return report, nil
+	}
+	group, err := cgroup.Open(options.Delegation)
+	if err != nil {
+		return report, fmt.Errorf("open explicit cgroup delegation: %w", err)
+	}
+	defer group.Close()
+	for _, name := range []string{"cgroup.controllers", "cgroup.subtree_control"} {
+		var controllers []cgroup.Controller
+		if name == "cgroup.controllers" {
+			controllers, err = group.Controllers()
+		} else {
+			controllers, err = group.SubtreeControl()
+		}
+		if err != nil {
+			return report, err
+		}
+		report.Controllers["delegation/"+name] = fmt.Sprint(controllers)
+	}
+	return report, nil
 }
 
 func checkRunner(report Report, options Options) error {

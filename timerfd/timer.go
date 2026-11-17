@@ -160,7 +160,11 @@ func (t *Timer) SetAt(deadline Instant, interval time.Duration, flags SetFlags) 
 	if t.file == nil {
 		return State{}, os.ErrInvalid
 	}
-	if deadline.Clock != t.clock || interval < 0 || flags & ^CancelOnSet != 0 || (flags != 0 && t.clock != Realtime) {
+	clockMismatch := deadline.Clock != t.clock
+	negativeInterval := interval < 0
+	unknownFlags := flags & ^CancelOnSet != 0
+	invalidCancellation := flags != 0 && t.clock != Realtime
+	if clockMismatch || negativeInterval || unknownFlags || invalidCancellation {
 		return State{}, &os.PathError{Op: "timerfd_settime", Path: "timerfd", Err: os.ErrInvalid}
 	}
 
@@ -305,11 +309,17 @@ func clockID(clock Clock) (int32, error) {
 }
 
 func duration(seconds, nanoseconds int64) (time.Duration, error) {
-	if seconds < 0 || nanoseconds < 0 || nanoseconds >= 1e9 {
+	negativeSeconds := seconds < 0
+	invalidNanoseconds := nanoseconds < 0 || nanoseconds >= 1e9
+	if negativeSeconds || invalidNanoseconds {
 		return 0, os.ErrInvalid
 	}
 
-	if seconds > math.MaxInt64/int64(time.Second) || (seconds == math.MaxInt64/int64(time.Second) && nanoseconds > math.MaxInt64%int64(time.Second)) {
+	maxSeconds := math.MaxInt64 / int64(time.Second)
+	maxNanoseconds := math.MaxInt64 % int64(time.Second)
+	secondsOverflow := seconds > maxSeconds
+	nanosecondsOverflow := seconds == maxSeconds && nanoseconds > maxNanoseconds
+	if secondsOverflow || nanosecondsOverflow {
 		return 0, unix.EOVERFLOW
 	}
 

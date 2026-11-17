@@ -16,13 +16,18 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLiveReadOnlyLists(t *testing.T) {
+func TestLiveLinkListIncludesLoopback(t *testing.T) {
 	conn := test.Route(t)
 	loopback := test.RouteLink(t, conn, "lo")
 
 	require.Positive(t, loopback.Index)
 	require.NotZero(t, loopback.Flags&route.Loopback)
 	require.Positive(t, loopback.MTU)
+}
+
+func TestLiveAddressListsMatchRequestedFamily(t *testing.T) {
+	conn := test.Route(t)
+
 	for _, family := range []route.Family{route.IPv4, route.IPv6} {
 		addresses, err := conn.Addresses(family)
 		require.NoError(t, err)
@@ -31,7 +36,13 @@ func TestLiveReadOnlyLists(t *testing.T) {
 			require.Equal(t, family == route.IPv4, address.Prefix.Addr().Is4(), "requested address family")
 			require.Positive(t, address.Index)
 		}
+	}
+}
 
+func TestLiveRouteListsMatchRequestedFamily(t *testing.T) {
+	conn := test.Route(t)
+
+	for _, family := range []route.Family{route.IPv4, route.IPv6} {
 		routes, err := conn.Routes(family)
 		require.NoError(t, err)
 		for _, entry := range routes {
@@ -52,7 +63,7 @@ func TestKernelLinkIdentityAgreesWithStandardLibrary(t *testing.T) {
 	require.Equal(t, observed.Flags&net.FlagLoopback != 0, link.Flags&route.Loopback != 0, "native flags retain loopback identity")
 }
 
-func TestZeroAndClosedOwners(t *testing.T) {
+func TestZeroAndClosedRequestOwners(t *testing.T) {
 	var conn route.Conn
 	_, err := conn.Links()
 	require.ErrorIs(t, err, os.ErrInvalid)
@@ -74,9 +85,11 @@ func TestZeroAndClosedOwners(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrClosed)
 	require.ErrorIs(t, owned.Close(), os.ErrClosed)
 	require.ErrorIs(t, owned.SetDeadline(time.Time{}), os.ErrClosed)
+}
 
+func TestZeroRouteListenerRejectsOperations(t *testing.T) {
 	var listener route.Listener
-	_, err = listener.ReadEvents()
+	_, err := listener.ReadEvents()
 	require.ErrorIs(t, err, os.ErrInvalid)
 	require.ErrorIs(t, listener.SetReadDeadline(time.Time{}), os.ErrInvalid)
 	require.ErrorIs(t, listener.Close(), os.ErrInvalid)
@@ -172,7 +185,7 @@ func TestCreationFailuresDoNotLeak(t *testing.T) {
 	require.Equal(t, before, test.Descriptors(t))
 }
 
-func TestConcurrentListsAndDeadlines(t *testing.T) {
+func TestConcurrentListsShareConnectionSafely(t *testing.T) {
 	conn := test.Route(t)
 	var workers sync.WaitGroup
 	results := make(chan error, 8)
@@ -187,6 +200,10 @@ func TestConcurrentListsAndDeadlines(t *testing.T) {
 	for err := range results {
 		require.NoError(t, err)
 	}
+}
+
+func TestExpiredDeadlineCanBeClearedBeforeNextList(t *testing.T) {
+	conn := test.Route(t)
 
 	require.NoError(t, conn.SetDeadline(time.Now().Add(-time.Second)))
 	_, err := conn.Links()
@@ -196,14 +213,18 @@ func TestConcurrentListsAndDeadlines(t *testing.T) {
 	require.NoError(t, err, "expired send leaves the connection usable")
 }
 
-func TestListenerDeadlineAndConcurrentClose(t *testing.T) {
+func TestListenerExpiredDeadlineReturnsNoEvents(t *testing.T) {
 	listener := test.RouteListener(t, route.LinkGroup)
 	require.NoError(t, listener.SetReadDeadline(time.Now().Add(-time.Second)))
 	events, err := listener.ReadEvents()
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
 	require.Nil(t, events)
+}
 
-	require.NoError(t, listener.SetReadDeadline(time.Now().Add(5*time.Second)))
+func TestListenerCloseInterruptsPendingEventRead(t *testing.T) {
+	listener := test.RouteListener(t, route.LinkGroup)
+
+	require.NoError(t, listener.SetReadDeadline(time.Time{}))
 	pending := test.StartRead(t, listener.ReadEvents)
 	require.NoError(t, listener.Close())
 	result := test.Receive(t, pending)

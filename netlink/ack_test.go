@@ -49,7 +49,7 @@ func TestAcknowledgementsDecodeCappedAndUncappedErrors(t *testing.T) {
 	}
 }
 
-func TestSuccessWarningsAndDumpStatusRemainVisible(t *testing.T) {
+func TestSuccessfulAcknowledgementsPreserveWarnings(t *testing.T) {
 	request := test.NetlinkRecord(netlink.Header{Type: 30}, 500, nil)
 	warnings, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: netlink.AckTextAttribute, Data: []byte("warning\x00")}})
 	require.NoError(t, err)
@@ -60,7 +60,9 @@ func TestSuccessWarningsAndDumpStatusRemainVisible(t *testing.T) {
 	require.NoError(t, err)
 	require.Zero(t, ack.Code)
 	require.Equal(t, "warning", ack.Text)
+}
 
+func TestDumpTerminalStatusPreservesErrorsAndInterruption(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
 		status int32
@@ -85,7 +87,13 @@ func TestSuccessWarningsAndDumpStatusRemainVisible(t *testing.T) {
 			}
 		})
 	}
-	ack, err = netlink.ParseAcknowledgement(netlink.Message{Header: netlink.Header{Type: netlink.Done, Flags: netlink.AckTLVs}, Data: append(test.NetlinkStatus(0), warnings...)})
+}
+
+func TestDumpTerminalStatusPreservesWarnings(t *testing.T) {
+	warnings, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: netlink.AckTextAttribute, Data: []byte("warning\x00")}})
+	require.NoError(t, err)
+
+	ack, err := netlink.ParseAcknowledgement(netlink.Message{Header: netlink.Header{Type: netlink.Done, Flags: netlink.AckTLVs}, Data: append(test.NetlinkStatus(0), warnings...)})
 	require.NoError(t, err)
 	require.Equal(t, "warning", ack.Text)
 }

@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestLiveDiscoveryAndMultipartDumps(t *testing.T) {
+func TestLiveFamilyDiscoveryAgreesWithFamilyList(t *testing.T) {
 	conn := test.Netlink(t, socket.Generic, netlink.Options{})
 	family, err := conn.LookupFamily("nlctrl")
 	require.NoError(t, err)
@@ -34,7 +34,10 @@ func TestLiveDiscoveryAndMultipartDumps(t *testing.T) {
 		}
 	}
 	require.True(t, found, "a completed controller dump must include nlctrl")
+}
 
+func TestLiveMultipartDumpDrainsTerminalReply(t *testing.T) {
+	conn := test.Netlink(t, socket.Generic, netlink.Options{})
 	request := test.NetlinkFamilyDump(t)
 	response, err := conn.Dump(request)
 	require.NoError(t, err)
@@ -93,12 +96,19 @@ func TestCompletedKernelErrorsRetainErrnoAndConnection(t *testing.T) {
 	require.ErrorAs(t, err, &kernel)
 	require.Equal(t, "netlink: no such file or directory", err.Error())
 
-	attributes, err = netlink.MarshalAttributes([]netlink.Attribute{{Type: netlink.FamilyIDAttribute, Data: []byte{1}}})
+	_, err = conn.LookupFamily("nlctrl")
+	require.NoError(t, err, "completed errors must permit subsequent requests")
+}
+
+func TestKernelPolicyErrorsExposeExtendedAcknowledgements(t *testing.T) {
+	conn := test.Netlink(t, socket.Generic, netlink.Options{})
+	attributes, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: netlink.FamilyIDAttribute, Data: []byte{1}}})
 	require.NoError(t, err)
-	data, err = (netlink.GenericMessage{Command: netlink.GetFamilyCommand, Version: 2, Data: attributes}).MarshalBinary()
+	data, err := (netlink.GenericMessage{Command: netlink.GetFamilyCommand, Version: 2, Data: attributes}).MarshalBinary()
 	require.NoError(t, err)
-	response, err = conn.Execute(netlink.Message{Header: netlink.Header{Type: netlink.ControllerID}, Data: data})
+	response, err := conn.Execute(netlink.Message{Header: netlink.Header{Type: netlink.ControllerID}, Data: data})
 	require.ErrorIs(t, err, test.ErrRange)
+	var kernel *netlink.Error
 	require.ErrorAs(t, err, &kernel)
 	require.NotEmpty(t, kernel.Acknowledgement.Text, "EXT_ACK must expose kernel policy diagnostics")
 	require.NotEmpty(t, response.Acknowledgement.Attributes)
@@ -160,29 +170,41 @@ func TestExpiredSendDeadlineLeavesConnectionUsable(t *testing.T) {
 	require.NoError(t, err, "expiry before send must leave the request connection usable")
 }
 
-func TestInvalidArgumentsDoNotAcquireOrDamageResources(t *testing.T) {
+func TestInvalidConnectionOptionsReturnNoOwner(t *testing.T) {
 	for _, options := range []netlink.Options{{DatagramSize: -1}, {DatagramSize: 15}, {DatagramSize: 1 << 31}, {MaxResponseBytes: -1}, {MaxResponseBytes: 15}} {
 		conn, err := netlink.Open(socket.Generic, options)
 		test.NoResource(t, conn, err, os.ErrInvalid)
 	}
 	conn, err := netlink.Open(-1, netlink.Options{})
 	test.NoResource(t, conn, err, os.ErrInvalid)
-	conn = test.Netlink(t, socket.Generic, netlink.Options{})
+}
+
+func TestInvalidRequestHeadersLeaveConnectionUsable(t *testing.T) {
+	conn := test.Netlink(t, socket.Generic, netlink.Options{})
 	for _, header := range []netlink.Header{{Type: 15}, {Type: 16, Sequence: 1}, {Type: 16, PortID: 1}, {Type: 16, Flags: netlink.Multi}, {Type: 16, Flags: 0x8000}} {
 		_, err := conn.Execute(netlink.Message{Header: header})
 		require.ErrorIs(t, err, os.ErrInvalid)
 	}
-	_, err = conn.Dump(netlink.Message{Header: netlink.Header{Type: 16, Flags: netlink.Append}})
+	_, err := conn.Dump(netlink.Message{Header: netlink.Header{Type: 16, Flags: netlink.Append}})
 	require.ErrorIs(t, err, os.ErrInvalid)
+	_, err = conn.LookupFamily("nlctrl")
+	require.NoError(t, err)
+}
+
+func TestInvalidFamilyNamesLeaveConnectionUsable(t *testing.T) {
+	conn := test.Netlink(t, socket.Generic, netlink.Options{})
+
 	for _, name := range []string{"", "embedded\x00NUL", "1234567890123456"} {
 		_, err := conn.LookupFamily(name)
 		require.ErrorIs(t, err, os.ErrInvalid)
 	}
-	_, err = conn.LookupFamily("nlctrl")
+	_, err := conn.LookupFamily("nlctrl")
 	require.NoError(t, err, "validation failures must not damage a live request connection")
+}
 
+func TestFamilyDiscoveryRejectsRouteProtocol(t *testing.T) {
 	route := test.Netlink(t, socket.Route, netlink.Options{StrictCheck: true})
-	_, err = route.LookupFamily("nlctrl")
+	_, err := route.LookupFamily("nlctrl")
 	require.ErrorIs(t, err, os.ErrInvalid)
 	_, err = route.Families()
 	require.ErrorIs(t, err, os.ErrInvalid)

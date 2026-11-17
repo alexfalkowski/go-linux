@@ -59,6 +59,11 @@ func TestNamespaceIdentity(t *testing.T) {
 	equal, err = first.Equal(user)
 	require.NoError(t, err)
 	require.False(t, equal, "different namespace types have different identities")
+}
+
+func TestClosingNamespaceHandleLeavesIndependentReferenceUsable(t *testing.T) {
+	first := test.Namespace(t, namespace.Network)
+	second := test.Namespace(t, namespace.Network)
 
 	require.NoError(t, second.Close())
 	require.Equal(t, namespace.Network, test.Value(t, first.Type), "each handle owns its reference")
@@ -71,7 +76,7 @@ func TestUserNamespaceOwnerUID(t *testing.T) {
 	require.Equal(t, test.NamespaceOwnerUID(t, file), test.Value(t, user.OwnerUID))
 }
 
-func TestNetworkNamespaceRelationships(t *testing.T) {
+func TestNetworkNamespaceIdentifiesOwningUserNamespace(t *testing.T) {
 	network := test.Namespace(t, namespace.Network)
 
 	owner, err := network.UserNamespace()
@@ -82,6 +87,10 @@ func TestNetworkNamespaceRelationships(t *testing.T) {
 		test.Cleanup(t, owner)
 		require.Equal(t, namespace.User, test.Value(t, owner.Type))
 	}
+}
+
+func TestNetworkNamespaceRejectsUserAndHierarchicalQueries(t *testing.T) {
+	network := test.Namespace(t, namespace.Network)
 
 	parent, err := network.Parent()
 	test.NoResource(t, parent, err, test.ErrInvalidArgument)

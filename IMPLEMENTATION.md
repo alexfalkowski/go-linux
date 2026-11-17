@@ -1,6 +1,6 @@
 # Linux APIs for Go: remaining implementation
 
-Next: **P16 — `cgroup`: unified resource control**. Implement the remaining items below in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
+Next: **P17 — `capability`: Linux capability sets**. Implement the remaining items in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
 
 This file contains unfinished work only. Delete finished items and resolved gaps instead of marking them done. Keep a short resume note only while work is incomplete; replace it when circumstances change and remove it when finished. Do not append completed handoffs, historical command logs, resolved findings, or an archive of deleted entries.
 
@@ -33,6 +33,8 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 | Scope | Missing evidence | Required environment or next action |
 | --- | --- | --- |
+| R01 / `cgroup` CI and native baseline | Required delegated CI runs and coverage partitions are not configured. Exact Linux 7.0 amd64/arm64 runtime evidence is absent. | Resolve delegated CI/coverage integration during PR validation using the configured Go image toolchain, CPU/memory/PIDs delegation, and common-ancestor migration permission. Run `make verify-cgroup delegation=/absolute/delegated/subtree arch=<amd64|arm64> kernel=7.0` on both native Linux 7.0 architectures and retain standard reports. Current rootless CI covers fixtures/read-only operations only. |
+| R01 / `cgroup` defensive paths and enforcement | Event overflow, rare metadata/close errors, and resource enforcement under CPU/memory/PIDs pressure remain source-reviewed rather than established by the limit round-trip scenarios. | Reconcile using bounded public/kernel scenarios in an explicit disposable delegation; retain source-reviewed limits where execution is not feasible without production injection hooks. |
 | P15 / `namespace` native baseline | Runtime evidence on Linux 7.0 amd64 and arm64. The required isolated suite passes all 57 cases with Go 1.27.4 and race detection on native amd64 with Linux 7.3.4-3-t2-resolute; the rootless suite passes with thirteen unselected isolated fixtures. Exact-baseline and native-arm64 checks reject the available runner. | Observe required `build` and `build-namespace` jobs on native Linux 7.0 amd64 and arm64, retaining environment and standard reports. The configured namespace lane uses the same launcher and contributes both architecture profiles to coverage merging; configuration alone is not runtime evidence. |
 | R01 / `namespace` defensive paths | Direct execution remains absent for rare descriptor metadata/flag/cleanup failures, namespace allocation failures other than descriptor exhaustion, and unknown kernel namespace types. Startup-thread permanent parking remains source-reviewed; tests reserve it and execute worker-thread destruction. | Retain these limits where supported public/kernel scenarios cannot reproduce them without production injection hooks. Actual namespace creation/entry, refused transitions, acquisition/related-ioctl EMFILE cleanup, FIFO rejection, child inheritance, and recovered-panic cleanup are exercised. |
 | P14 / `netlink/route` native baseline | Runtime evidence on Linux 7.0 amd64 and arm64. Read-only ordinary-user coverage and required isolated mutation/notification coverage pass locally on native amd64 with Go 1.27.4 and Linux 7.3.4-3-t2-resolute. Current exact-baseline and native-arm64 probes reject the available runner. | Observe required `build` and `build-netlink` jobs on both native Linux 7.0 architectures after this revision reaches CI. Both select `kernel=7.0`; the Netlink launcher tests both packages in one run with standard reports. Configured jobs are not runtime evidence. |
@@ -47,10 +49,6 @@ The bounded first release comprises 21 facility-focused public packages in one m
 | R01 / `pidfd` positive core-dump status | Actual CLD_DUMPED and `CoreDump=true` on the Linux 7.0 arm64 target | A runner whose existing core policy produces CLD_DUMPED for the test-owned child. The current test compares with nonconsuming kernel status; CLD_KILLED verifies only the false flag. Do not change host core policy to force this case. |
 
 ## Remaining work
-
-### Resource control
-
-- **P16 — `cgroup`: unified resource control.** Implement v2 hierarchy/group handles, create/remove, membership, events, and a bounded initial controller set: CPU, memory, and PIDs. Keep delegation and controller enablement explicit. Do not assume the library owns the hierarchy root or that systemd-created groups can be changed arbitrarily. **Acceptance:** fixture tests verify file formats, and live tests in a delegated subtree verify lifecycle, moving a child, limits, events, and cleanup. Test unavailable controllers and invalid delegation. No v1 or systemd D-Bus backend.
 
 ### Security facilities
 

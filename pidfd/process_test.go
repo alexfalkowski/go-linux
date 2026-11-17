@@ -567,23 +567,12 @@ func TestUnavailableProcessHandlesRejectOperations(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			process := scenario.process
-			for _, operation := range []struct {
-				name string
-				run  func() error
-			}{
-				{name: "close", run: process.Close},
-				{name: "signal zero", run: func() error {
-					return process.Signal(0)
-				}},
+			require.ErrorIs(t, process.Close(), scenario.err)
+			require.ErrorIs(t, process.Signal(0), scenario.err)
+			require.ErrorIs(t, process.WaitReady(), scenario.err)
 
-				{name: "wait for readiness", run: process.WaitReady},
-				{name: "wait for status", run: func() error {
-					_, err := process.Wait()
-					return err
-				}},
-			} {
-				require.ErrorIs(t, operation.run(), scenario.err, operation.name)
-			}
+			_, err := process.Wait()
+			require.ErrorIs(t, err, scenario.err)
 		})
 	}
 

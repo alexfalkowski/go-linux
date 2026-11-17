@@ -251,15 +251,23 @@ func TestLiteralUnixPathnamesPreserveTheFullKernelLength(t *testing.T) {
 			message, err = peer.Receive(buffer, 0)
 			require.NoError(t, err)
 			require.Equal(t, "reply", string(buffer[:message.N]))
-
-			file := test.TempFile(t, 4)
-			before = test.DescriptorCount(t)
-			_, err = server.Send([]byte("missing"), socket.UnixAddress{Name: "@missing", Pathname: true}, file)
-			require.ErrorIs(t, err, test.ErrNotExist)
-			require.Equal(t, before, test.DescriptorCount(t), "failed literal pathname sends must close their borrowed duplicates")
-			test.WriteAt(t, file, 0, "open")
 		})
 	}
+}
+
+func TestFailedLiteralPathnameSendsReleaseBorrowedDuplicates(t *testing.T) {
+	t.Chdir(t.TempDir())
+	server, err := socket.ListenUnix(socket.UnixAddress{Name: "service"})
+	require.NoError(t, err)
+	test.Cleanup(t, server)
+	file := test.TempFile(t, 4)
+	before := test.DescriptorCount(t)
+
+	_, err = server.Send([]byte("missing"), socket.UnixAddress{Name: "@missing", Pathname: true}, file)
+	require.ErrorIs(t, err, test.ErrNotExist)
+	require.Equal(t, before, test.DescriptorCount(t))
+
+	test.WriteAt(t, file, 0, "open")
 }
 
 func TestReadDeadlinesInterruptPendingReceivesAndCanBeCleared(t *testing.T) {

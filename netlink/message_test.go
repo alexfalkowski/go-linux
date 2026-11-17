@@ -55,12 +55,18 @@ func TestMessageParserRejectsMalformedBatches(t *testing.T) {
 			require.Nil(t, messages, "a malformed batch must not expose partial records")
 		})
 	}
+}
+
+func TestMessageParserAcceptsUnpaddedFinalRecord(t *testing.T) {
+	valid := test.NetlinkRecord(netlink.Header{Type: 16}, 0, []byte{1})
 
 	messages, err := netlink.UnmarshalMessages(valid[:17])
 	require.NoError(t, err, "a final record may omit all its padding")
 	require.Equal(t, []byte{1}, messages[0].Data)
+}
 
-	messages, err = netlink.UnmarshalMessages(nil)
+func TestMessageParserAcceptsEmptyBatch(t *testing.T) {
+	messages, err := netlink.UnmarshalMessages(nil)
 	require.NoError(t, err)
 	require.Empty(t, messages)
 }
@@ -91,7 +97,7 @@ func TestAttributesPreserveUnknownIDsFlagsOrderAndDuplicates(t *testing.T) {
 	require.Equal(t, uint16(9), nested[0].ID())
 }
 
-func TestAttributeMalformedLengthsAndPayloadPolicies(t *testing.T) {
+func TestAttributeParserRejectsMalformedLengths(t *testing.T) {
 	valid, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: 1, Data: []byte{1}}})
 	require.NoError(t, err)
 	for _, tc := range []struct {
@@ -112,13 +118,21 @@ func TestAttributeMalformedLengthsAndPayloadPolicies(t *testing.T) {
 			require.Nil(t, attributes)
 		})
 	}
+}
+
+func TestAttributeParserAcceptsUnpaddedFinalAttribute(t *testing.T) {
+	valid, err := netlink.MarshalAttributes([]netlink.Attribute{{Type: 1, Data: []byte{1}}})
+	require.NoError(t, err)
+
 	attributes, err := netlink.UnmarshalAttributes(valid[:5])
 	require.NoError(t, err)
 	require.Equal(t, []byte{1}, attributes[0].Data)
+}
 
+func TestAttributePayloadSizeBoundary(t *testing.T) {
 	data, err := netlink.MarshalAttributes([]netlink.Attribute{{Data: make([]byte, 65531)}})
 	require.NoError(t, err)
-	attributes, err = netlink.UnmarshalAttributes(data)
+	attributes, err := netlink.UnmarshalAttributes(data)
 	require.NoError(t, err)
 	require.Len(t, attributes[0].Data, 65531)
 	data, err = netlink.MarshalAttributes([]netlink.Attribute{{Data: make([]byte, 65532)}})
@@ -126,7 +140,7 @@ func TestAttributeMalformedLengthsAndPayloadPolicies(t *testing.T) {
 	require.Nil(t, data)
 }
 
-func TestAttributeScalarAndStringPolicies(t *testing.T) {
+func TestAttributeScalarsHonorByteOrder(t *testing.T) {
 	for _, order := range []binary.ByteOrder{binary.NativeEndian, binary.BigEndian} {
 		var flags netlink.AttributeType
 		if order == binary.BigEndian {
@@ -148,7 +162,9 @@ func TestAttributeScalarAndStringPolicies(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, uint64(0x123456789abcdef0), u64)
 	}
+}
 
+func TestAttributeScalarsRejectIncorrectWidths(t *testing.T) {
 	for _, data := range [][]byte{nil, {1}, {1, 2, 3}, make([]byte, 9)} {
 		_, err := (netlink.Attribute{Data: data}).Uint16()
 		require.ErrorIs(t, err, netlink.ErrMalformed)
@@ -157,10 +173,16 @@ func TestAttributeScalarAndStringPolicies(t *testing.T) {
 		_, err = (netlink.Attribute{Data: data}).Uint64()
 		require.ErrorIs(t, err, netlink.ErrMalformed)
 	}
+}
+
+func TestAttributeStringsRejectMissingOrEmbeddedTerminators(t *testing.T) {
 	for _, data := range [][]byte{nil, []byte("missing"), {'a', 0, 'b', 0}} {
 		_, err := (netlink.Attribute{Data: data}).String()
 		require.ErrorIs(t, err, netlink.ErrMalformed)
 	}
+}
+
+func TestAttributeStringsStripTheirTerminator(t *testing.T) {
 	text, err := (netlink.Attribute{Data: []byte("name\x00")}).String()
 	require.NoError(t, err)
 	require.Equal(t, "name", text)

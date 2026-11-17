@@ -147,11 +147,11 @@ func (e *Event) respond(decision Decision) error {
 	binary.NativeEndian.PutUint32(response[4:], uint32(decision))
 
 	n, err := e.group.file.Write(response[:])
-	if err == nil && n != len(response) {
-		err = io.ErrShortWrite
+	if err != nil {
+		return err
+	} else if n != len(response) {
+		return io.ErrShortWrite
 	}
-	if err == nil {
-		e.answered = true
-	}
-	return err
+	e.answered = true
+	return nil
 }

@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/alexfalkowski/go-linux/cgroup"
 	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/eventfd"
 	"github.com/alexfalkowski/go-linux/fanotify"
@@ -41,6 +42,8 @@ func TestResourcesKeepDescriptorAccessPrivate(t *testing.T) {
 		{name: "filesystem configuration", owner: &mount.Config{}},
 		{name: "mount", owner: &mount.Handle{}},
 		{name: "namespace", owner: &namespace.Handle{}},
+		{name: "cgroup", owner: &cgroup.Group{}},
+		{name: "cgroup event watcher", owner: &cgroup.EventWatcher{}},
 		{name: "readiness set", owner: &epoll.Poller{}},
 		{name: "readiness registration", owner: &epoll.Registration{}},
 	} {

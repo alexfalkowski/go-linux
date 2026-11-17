@@ -109,7 +109,8 @@ func (c *Conn) netlinkBool(option int, enabled bool) error {
 }
 
 func (c *Conn) membership(option int, group uint32) error {
-	if c.family != unix.AF_NETLINK || group == 0 || group > 1<<31-1 {
+	invalidGroup := group == 0 || group > 1<<31-1
+	if c.family != unix.AF_NETLINK || invalidGroup {
 		return socketError("setsockopt", os.ErrInvalid)
 	}
 	return c.control("setsockopt", func(fd int) error {

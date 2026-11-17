@@ -41,14 +41,6 @@ func TestLinkMutationsAndNotifications(t *testing.T) {
 	})
 	require.Equal(t, changed.Name, event.Link.Name)
 
-	require.NoError(t, conn.ChangeLink(link.Index, route.LinkChange{Flags: route.Up, Change: route.Up}))
-	up := test.RouteLink(t, conn, "fixture1")
-	require.NotZero(t, up.Flags&route.Up)
-	require.Equal(t, changed.Flags & ^(route.Up|route.Running|route.LowerUp), up.Flags & ^(route.Up|route.Running|route.LowerUp), "unselected flags survive")
-	require.NoError(t, conn.ChangeLink(link.Index, route.LinkChange{Change: route.Up}))
-	down := test.RouteLink(t, conn, "fixture1")
-	require.Zero(t, down.Flags&route.Up)
-
 	require.NoError(t, conn.DeleteLink(link.Index))
 	require.ErrorIs(t, conn.DeleteLink(link.Index), test.ErrNoDevice)
 	links, err := conn.Links()
@@ -60,6 +52,23 @@ func TestLinkMutationsAndNotifications(t *testing.T) {
 		return event.Type == route.DelLink && event.Link.Index == link.Index
 	})
 	require.Equal(t, "fixture1", event.Link.Name)
+}
+
+func TestLinkFlagChangesPreserveUnselectedFlags(t *testing.T) {
+	if !test.NetworkNamespace(t) {
+		return
+	}
+	conn := test.Route(t)
+	require.NoError(t, conn.AddLink("fixture0", route.Dummy))
+	link := test.RouteLink(t, conn, "fixture0")
+
+	require.NoError(t, conn.ChangeLink(link.Index, route.LinkChange{Flags: route.Up, Change: route.Up}))
+	up := test.RouteLink(t, conn, "fixture0")
+	require.NotZero(t, up.Flags&route.Up)
+	require.Equal(t, link.Flags & ^(route.Up|route.Running|route.LowerUp), up.Flags & ^(route.Up|route.Running|route.LowerUp), "unselected flags survive")
+	require.NoError(t, conn.ChangeLink(link.Index, route.LinkChange{Change: route.Up}))
+	down := test.RouteLink(t, conn, "fixture0")
+	require.Zero(t, down.Flags&route.Up)
 }
 
 func TestAddressLifecycleAndNotifications(t *testing.T) {
@@ -284,12 +293,55 @@ func TestRouteMutationsAndNotifications(t *testing.T) {
 			})
 			require.Equal(t, link.Index, event.Route.Index)
 
+			require.NoError(t, conn.DeleteRoute(tc.config))
+			require.ErrorIs(t, conn.DeleteRoute(tc.config), test.ErrNoProcess)
+			routes, err = conn.Routes(tc.family)
+			require.NoError(t, err)
+			for _, entry := range routes {
+				require.NotEqual(t, tc.config.Destination, entry.Destination)
+			}
+			event = test.RouteEvent(t, listener, func(event route.Event) bool {
+				return event.Type == route.DelRoute && event.Route.Destination == tc.config.Destination
+			})
+			require.Equal(t, link.Index, event.Route.Index)
+		})
+	}
+}
+
+func TestRouteReplacementRemovesGatewayAndPreferredSource(t *testing.T) {
+	if !test.NetworkNamespace(t) {
+		return
+	}
+	conn := test.Route(t)
+	require.NoError(t, conn.AddLink("fixture0", route.Dummy))
+	link := test.RouteLink(t, conn, "fixture0")
+	require.NoError(t, conn.ChangeLink(link.Index, route.LinkChange{Flags: route.Up, Change: route.Up}))
+	require.NoError(t, conn.AddAddress(route.AddressConfig{Index: link.Index, Prefix: netip.MustParsePrefix("192.0.2.1/24")}))
+	require.NoError(t, conn.AddAddress(route.AddressConfig{Index: link.Index, Prefix: netip.MustParsePrefix("2001:db8:1::1/64"), Flags: route.NoDAD}))
+
+	for _, tc := range []struct {
+		name   string
+		family route.Family
+		config route.RouteConfig
+	}{
+		{name: "IPv4 gateway extended table and source", family: route.IPv4, config: route.RouteConfig{
+			Destination: netip.MustParsePrefix("198.51.100.0/24"), Gateway: netip.MustParseAddr("192.0.2.254"),
+			PreferredSource: netip.MustParseAddr("192.0.2.1"), Index: link.Index, Table: 1001, Priority: 42, Protocol: route.StaticProtocol,
+		}},
+		{name: "IPv6 default gateway", family: route.IPv6, config: route.RouteConfig{
+			Destination: netip.MustParsePrefix("::/0"), Gateway: netip.MustParseAddr("2001:db8:1::fe"),
+			PreferredSource: netip.MustParseAddr("2001:db8:1::1"), Index: link.Index, Priority: 42,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.NoError(t, conn.AddRoute(tc.config))
+
 			changed := tc.config
 			changed.Gateway = netip.Addr{}
 			changed.PreferredSource = netip.Addr{}
 			changed.Scope = route.LinkScope
 			require.NoError(t, conn.ChangeRoute(changed))
-			routes, err = conn.Routes(tc.family)
+			routes, err := conn.Routes(tc.family)
 			require.NoError(t, err)
 			matches := slices.DeleteFunc(routes, func(entry route.Route) bool {
 				return entry.Destination != changed.Destination || entry.Priority != changed.Priority
@@ -299,16 +351,6 @@ func TestRouteMutationsAndNotifications(t *testing.T) {
 			require.False(t, matches[0].PreferredSource.IsValid(), "replacement removes preferred source")
 
 			require.NoError(t, conn.DeleteRoute(changed))
-			require.ErrorIs(t, conn.DeleteRoute(changed), test.ErrNoProcess)
-			routes, err = conn.Routes(tc.family)
-			require.NoError(t, err)
-			for _, entry := range routes {
-				require.NotEqual(t, changed.Destination, entry.Destination)
-			}
-			event = test.RouteEvent(t, listener, func(event route.Event) bool {
-				return event.Type == route.DelRoute && event.Route.Destination == changed.Destination
-			})
-			require.Equal(t, link.Index, event.Route.Index)
 		})
 	}
 }

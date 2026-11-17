@@ -358,44 +358,21 @@ func waitingOperation(t *testing.T, counter *eventfd.Counter, operation string) 
 func checkUnavailableCounter(t *testing.T, counter *eventfd.Counter, expected error) {
 	t.Helper()
 
-	for _, scenario := range []struct {
-		name      string
-		operation func([]byte) (int, error)
-	}{
-		{name: "byte read", operation: counter.Read},
-		{name: "byte write", operation: counter.Write},
-	} {
-		n, err := scenario.operation(make([]byte, 8))
-		require.Zero(t, n, scenario.name)
-		require.ErrorIs(t, err, expected, scenario.name)
-	}
+	n, err := counter.Read(make([]byte, 8))
+	require.Zero(t, n)
+	require.ErrorIs(t, err, expected)
+
+	n, err = counter.Write(make([]byte, 8))
+	require.Zero(t, n)
+	require.ErrorIs(t, err, expected)
 
 	value, err := counter.ReadValue()
-	require.Zero(t, value, "typed read")
-	require.ErrorIs(t, err, expected, "typed read")
+	require.Zero(t, value)
+	require.ErrorIs(t, err, expected)
 
-	for _, scenario := range []struct {
-		name      string
-		operation func() error
-	}{
-		{name: "addition", operation: func() error {
-			return counter.Add(1)
-		}},
-
-		{name: "shared deadline", operation: func() error {
-			return counter.SetDeadline(time.Time{})
-		}},
-
-		{name: "read deadline", operation: func() error {
-			return counter.SetReadDeadline(time.Time{})
-		}},
-
-		{name: "write deadline", operation: func() error {
-			return counter.SetWriteDeadline(time.Time{})
-		}},
-
-		{name: "close", operation: counter.Close},
-	} {
-		require.ErrorIs(t, scenario.operation(), expected, scenario.name)
-	}
+	require.ErrorIs(t, counter.Add(1), expected)
+	require.ErrorIs(t, counter.SetDeadline(time.Time{}), expected)
+	require.ErrorIs(t, counter.SetReadDeadline(time.Time{}), expected)
+	require.ErrorIs(t, counter.SetWriteDeadline(time.Time{}), expected)
+	require.ErrorIs(t, counter.Close(), expected)
 }

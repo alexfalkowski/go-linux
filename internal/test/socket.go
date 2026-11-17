@@ -126,6 +126,16 @@ func MessagePair(t *testing.T, mode socket.Kind) (*socket.Conn, *socket.Conn) {
 	return a, b
 }
 
+// NetlinkSocket creates a bound transport endpoint with cleanup and bounded I/O.
+func NetlinkSocket(t *testing.T, protocol socket.Protocol) *socket.Conn {
+	t.Helper()
+	conn, err := socket.OpenNetlink(protocol, socket.NetlinkAddress{})
+	require.NoError(t, err)
+	Cleanup(t, conn)
+	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))
+	return conn
+}
+
 // SocketPair creates owned local stream files for focused Linux readiness
 // checks. Both ends are atomically nonblocking and close-on-exec.
 func SocketPair(t *testing.T) (*os.File, *os.File) {
