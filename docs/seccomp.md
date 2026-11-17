@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/seccomp` constructs and loads classic-BPF syscall filters on native amd64 and arm64 Linux 7.0+. It uses [seccomp(2)](https://man7.org/linux/man-pages/man2/seccomp.2.html) and [PR_SET_NO_NEW_PRIVS](https://man7.org/linux/man-pages/man2/PR_SET_NO_NEW_PRIVS.2const.html). Loading requires kernel filter support, permission under existing security policy, and either no-new-privileges or effective CAP_SYS_ADMIN in the caller's user namespace. These mechanisms do not constitute a complete sandbox.
 
+## Good for
+
+Good for restricting the native syscalls a workload may invoke. [runc applies seccomp policies during container setup](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md); callers must choose filters that accommodate both the workload and the Go runtime.
+
 ## Construct a native program
 
 Construction validates and copies instructions without a syscall or policy change. Supply the architecture for which the program's syscall numbers were chosen. `NativeArchitecture` returns `AMD64` or `ARM64`; other architectures return EOPNOTSUPP. `New` rejects an architecture that differs from the running Go program's ABI, but cannot infer whether arbitrary instruction constants describe the caller's intended syscalls. Use native constants with the native architecture.

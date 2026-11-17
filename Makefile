@@ -1,6 +1,3 @@
-# Command-line args are auto-exported; freeze them before any shell invocation.
-override args := $(value args)
-
 profile ?= rootless
 required ?= false
 kernel ?= supported
@@ -18,46 +15,6 @@ include bin/build/make/git.mak
 include bin/build/make/claude.mak
 include bin/build/make/codex.mak
 
-PACKAGES = $(shell go list $(filter-out ./examples/%,$(sort $(dir $(SOURCE)))))
-
-example-top example-watch example-supervise example-redis example-redis-cli example-container example-container-docker: export GO_LINUX_EXAMPLE_ARGS := $(value args)
-
-.PHONY: examples-build example-top example-watch example-supervise example-redis example-redis-cli example-container example-container-docker
-
-# Compile all showcase applications; no executables are left in the checkout.
-examples-build:
-	@go build -mod=vendor ./examples/...
-
-# Run the process monitor (args is a JSON argv array, e.g. '["-once"]').
-example-top:
-	@go run -mod=vendor ./examples/run top
-
-# Watch the current directory and rerun a command (args is a JSON argv array).
-example-watch:
-	@go run -mod=vendor ./examples/run watch
-
-# Supervise a child with bounded restarts (args is a JSON argv array).
-example-supervise:
-	@go run -mod=vendor ./examples/run supervise
-
-# Run the Redis-inspired cache on 127.0.0.1:6380 (args is a JSON argv array).
-example-redis:
-	@go run -mod=vendor ./examples/run redis
-
-# Send one cache command (args is a JSON argv array, e.g. '["GET","hello"]').
-example-redis-cli:
-	@go run -mod=vendor ./examples/run redis-cli
-
-# Run the container demo with a temporary rootfs and static guest (args is a JSON argv array).
-example-container:
-	@go run -mod=vendor ./examples/run container
-
-# Run the container showcase in privileged Docker (image required; limits=true adds a private delegation).
-example-container-docker: export image := $(value image)
-example-container-docker: export GO_LINUX_EXAMPLE_LIMITS := $(value limits)
-example-container-docker:
-	@bash scripts/example-container "$$image" "$$GO_LINUX_EXAMPLE_LIMITS"
-
 # Preserve the shared harness while retaining every test event, including skips.
 specs: export GOTESTSUM_JSONFILE := test/reports/specs.json
 
@@ -68,7 +25,7 @@ test-environment:
 # Record prerequisites and run required rootless quality checks, tests, and coverage (package optional).
 verify-rootless: dep
 	@bash -eo pipefail -c '$(MAKE) test-environment profile=rootless required=true | tee test/reports/environment.json'
-	@$(MAKE) lint scripts-lint sec vet examples-build
+	@$(MAKE) lint scripts-lint sec vet
 	@$(MAKE) specs profile=rootless required=true
 	@$(MAKE) coverage
 
@@ -162,7 +119,7 @@ vet:
 
 # Check repository-owned Bash scripts with ShellCheck.
 scripts-lint:
-	@shellcheck -x scripts/coverage scripts/coverage-workspace scripts/rootless scripts/netlink scripts/namespace scripts/cgroup scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh scripts/example-container
+	@shellcheck -x scripts/coverage scripts/coverage-workspace scripts/rootless scripts/netlink scripts/namespace scripts/cgroup scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
 
 # Validate CircleCI configuration with the official CLI (requires CircleCI API access).
 ci-validate:

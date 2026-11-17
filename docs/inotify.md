@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/inotify` provides Linux file and directory notifications with Go polling and read deadlines. It requires Linux 7.0+, permitted [inotify_init1(2)](https://man7.org/linux/man-pages/man2/inotify_init.2.html), watch and read syscalls, and Go polling support. It needs no capability for ordinary readable files; filesystem behavior and access checks still apply. See [inotify(7)](https://man7.org/linux/man-pages/man7/inotify.7.html) for Linux event semantics and limitations.
 
+## Good for
+
+Good for rebuild triggers, search indexes, and caches that react to local file changes. [Watchman uses inotify on Linux](https://meta.github.io/watchman/docs/install); its documented watch and queue limits also illustrate why consumers need overflow recovery.
+
 ## Watch and iterate
 
 ```go

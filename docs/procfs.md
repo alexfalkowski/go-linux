@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/procfs` provides a bounded, read-only process and system API on Linux 7.0+. Callers use this package; `github.com/prometheus/procfs` is an implementation dependency. No upstream types or embedded method sets are exported.
 
+## Good for
+
+Good for process monitors and system statistics collectors. [htop reads Linux process information from procfs](https://github.com/htop-dev/htop/blob/main/linux/LinuxProcessTable.c), including per-process statistics used to build a process table.
+
 ## Inspect a process
 
 ```go

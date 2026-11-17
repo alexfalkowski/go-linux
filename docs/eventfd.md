@@ -4,6 +4,10 @@
 
 The [verification guide](verification.md) describes runner requirements and verified environments; [verification limits](verification-limits.md) records missing execution evidence.
 
+## Good for
+
+Good for waking an explicit readiness loop when a worker or another process has work available. [QEMU uses eventfd for device notifications](https://www.qemu.org/docs/master/devel/multi-process.html), illustrating signaling that integrates with kernel I/O.
+
 ## Accumulate and consume notifications
 
 Import `github.com/alexfalkowski/go-linux/eventfd`. Create an owned counter with `eventfd.New(0, eventfd.Default)`, close it when done, and use `Add` and `ReadValue` for typed I/O. The [executable example](../eventfd/example_test.go) demonstrates this flow:

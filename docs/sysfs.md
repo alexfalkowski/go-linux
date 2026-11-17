@@ -2,6 +2,10 @@
 
 Package `sysfs` provides read-only block-device and network-interface observations from an explicit sysfs root. It uses private Prometheus sysfs discovery behind a project-owned API, following the [procfs wrapper](procfs.md). The module targets Linux 7.0+ and the Go version in `go.mod`.
 
+## Good for
+
+Good for inventory and monitoring tools that inspect block-device or network-interface attributes. [lsblk reads device information from sysfs](https://github.com/util-linux/util-linux/blob/master/lsblk-cmd/lsblk.8.adoc); this package provides read-only observations from an explicit root.
+
 ## Discover and inspect
 
 ```go

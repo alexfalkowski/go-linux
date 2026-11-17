@@ -48,7 +48,7 @@ Linux errno identity is preserved through `errors.Is`/`errors.As`; error text is
 
 The Linux floor and supported native architectures are part of the v1 support contract. The Go minimum follows maintained Go releases and may advance in a documented minor release; consumers should check `go.mod` before upgrading. Verification evidence applies to its recorded revision and environment, not every kernel configuration or future toolchain.
 
-The runnable applications under `examples/`, their command flags/output, and their snapshot format are educational and may change between minor releases. They are outside the stable library API. Internal packages and implementation dependencies are also outside that API; callers must not depend on upstream procfs types leaking through project packages.
+Internal packages and implementation dependencies are outside the stable library API; callers must not depend on upstream procfs types leaking through project packages.
 
 ## Deliberate boundaries
 
@@ -68,4 +68,4 @@ Repository-owned code is covered by the [MIT license](../LICENSE). After `make d
 | `github.com/stretchr/testify` | v1.12.1 | MIT: `vendor/github.com/stretchr/testify/LICENSE`; bundled BSD/ISC terms: `internal/difflib/LICENSE` and `internal/spew/LICENSE` within that directory |
 | `go.yaml.in/yaml/v3` | v3.0.5 | File-specific MIT/Apache-2.0: `vendor/go.yaml.in/yaml/v3/LICENSE` and `NOTICE` |
 
-`go.mod`, `go.sum`, and `vendor/modules.txt` own the resolved versions; preserve the applicable dependency licenses/notices when redistributing their source or binaries. The project MIT license does not replace dependency terms. `testify` and YAML serve the test harness; procfs/sysfs use the private Prometheus dependency, with `x/sys` supplying native bindings. No example adds another module or copies another product's implementation.
+`go.mod`, `go.sum`, and `vendor/modules.txt` own the resolved versions; preserve the applicable dependency licenses/notices when redistributing their source or binaries. The project MIT license does not replace dependency terms. `testify` and YAML serve the test harness; procfs/sysfs use the private Prometheus dependency, with `x/sys` supplying native bindings.

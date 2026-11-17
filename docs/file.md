@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/file` adds explicit Linux path-resolution, metadata, and rename controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. This package follows the module's Linux 7.0+ and Go floor in `go.mod`; filesystem support and security policy remain observable requirements.
 
+## Good for
+
+Good for controlled path lookup, extended metadata inspection, and atomic file replacement or exchange. [GNU mv's exchange mode](https://www.gnu.org/software/coreutils/manual/coreutils.html#mv-invocation) demonstrates swapping two existing files or directories atomically on supporting filesystems.
+
 ## Restricted opening
 
 Open an anchor with `os.Open`, then borrow it for one restricted lookup:

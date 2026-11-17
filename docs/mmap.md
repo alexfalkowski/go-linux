@@ -2,6 +2,10 @@
 
 Import `github.com/alexfalkowski/go-linux/mmap` for anonymous or file-backed mapped memory. Linux 7.0+ is the baseline; see [verification status](verification.md), [executable examples](../mmap/example_test.go), and [design decisions](design/mmap.md).
 
+## Good for
+
+Good for accessing file contents as memory or sharing updates through mapped regions. [SQLite optionally uses memory-mapped I/O for database reads](https://sqlite.org/mmap.html), showing where mapped access can avoid a separate read buffer.
+
 ## Create and use a region
 
 ```go

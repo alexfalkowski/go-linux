@@ -2,6 +2,10 @@
 
 `netlink` supplies Linux message/attribute framing, kernel request matching, acknowledgements, multipart dumps, and multicast reception. It uses [socket](socket.md) internally; callers perform protocol operations without descriptors or poll registration. See the [package reference](https://pkg.go.dev/github.com/alexfalkowski/go-linux/netlink) and [Linux Netlink introduction](https://docs.kernel.org/userspace-api/netlink/intro.html).
 
+## Good for
+
+Good for building kernel protocol clients with requests, dumps, and multicast notifications. [iw uses Generic Netlink for wireless configuration](https://wireless.docs.kernel.org/en/latest/en/users/documentation/iw.html); family-specific commands and attributes, such as nl80211, still belong to the application.
+
 ## Discover a Generic Netlink family
 
 ```go

@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/landlock` builds and applies Linux access rulesets. The package targets Linux 7.0+ with Landlock enabled and permitted by existing security policy. It exposes [Landlock's filesystem, port, and IPC mechanisms](https://docs.kernel.org/7.0/userspace-api/landlock.html), without providing a complete sandbox or container runtime.
 
+## Good for
+
+Good for restricting a workload's filesystem access and TCP ports without requiring a privileged helper. [Landrun is a sandboxing tool built on Landlock](https://landlock.io/integrations/), illustrating how applications compose rules into a policy.
+
 ## Discover and build a policy
 
 `ABI()` queries the running kernel without acquiring a resource or changing policy. Linux 7.0 implements ABI 8. ENOSYS means the syscall is absent; EOPNOTSUPP means Landlock is disabled. Existing seccomp/LSM policy can deny the query separately. Do not convert every error into an unsupported-feature result.
