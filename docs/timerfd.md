@@ -4,6 +4,10 @@
 
 See [verification guidance](verification.md) for runner requirements and verified environments, and [verification limits](verification-limits.md) for missing execution evidence.
 
+## Good for
+
+Good for timers that must participate in an explicit readiness loop or use a specific Linux clock, such as boottime. [systemd's event loop uses timerfd](https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-event/sd-event.c) to schedule timer events.
+
 ## Arm and consume a timer
 
 Import `github.com/alexfalkowski/go-linux/timerfd`. Create an owned timer, close it when done, set a read deadline to bound waiting, and arm it. The [executable examples](../timerfd/example_test.go) demonstrate relative arming and absolute clock selection:

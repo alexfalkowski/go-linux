@@ -2,6 +2,10 @@
 
 `netlink/route` provides typed interface, IPv4/IPv6 address, and routing-table operations over [netlink](netlink.md). It owns request and notification sockets internally. Use standard `net` for ordinary network I/O; use this package for Linux interface configuration, routing identifiers, and multicast changes. See the [package reference](https://pkg.go.dev/github.com/alexfalkowski/go-linux/netlink/route) and [rtnetlink(7)](https://man7.org/linux/man-pages/man7/rtnetlink.7.html).
 
+## Good for
+
+Good for network inventory, interface configuration, and routing agents that react to kernel changes. [iproute2's ip route implementation](https://github.com/iproute2/iproute2/blob/main/ip/iproute.c) uses the same routing Netlink mechanism for route queries and mutations.
+
 ## Read current state
 
 ```go

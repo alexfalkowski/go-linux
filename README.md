@@ -55,43 +55,33 @@ func main() {
 
 See [memfd usage](docs/memfd.md) for seals and [executable examples](memfd/example_test.go) for shared mappings. The [support guide](docs/support.md) covers feature prerequisites, compatibility, omissions, and dependency licenses.
 
-## 🧪 Showcase applications
-
-Try small applications inspired by htop, Watchman, systemd, Redis, and Docker:
-
-```sh
-make example-top args='["-once"]'
-make example-watch
-make example-supervise
-make example-redis
-make example-container
-```
-
-Run one long-lived application per terminal. [Example walkthroughs](examples/README.md) cover arguments, the bundled cache client, snapshots, and the container demo's additional prerequisites and Docker target. The applications add no dependencies and are excluded from tests and coverage; `make examples-build` compiles them.
-
 ## 📦 Packages
 
-- [memfd](docs/memfd.md): memory-backed files, ordinary Go file I/O, and irreversible seals.
-- [eventfd](docs/eventfd.md): event counters, semaphore reads, and pollable Go I/O with deadlines.
-- [timerfd](docs/timerfd.md): kernel timers, explicit clock domains, and pollable expiration counts.
-- [mmap](docs/mmap.md): owned anonymous/file mappings, page protection, and memory advice.
-- [pidfd](docs/pidfd.md): process handles, signaling, exit observation, and eligible child reaping.
-- [mount](docs/mount.md): filesystem configuration, detached mount handles, cloning, attributes, and explicit attachment.
-- [epoll](docs/epoll.md): explicit readiness sets, stable registrations, trigger modes, and interruptible waits.
-- [file](docs/file.md): explicit path resolution, extended metadata, and atomic rename modes on standard files.
-- [xattr](docs/xattr.md): whole extended attributes, atomic set modes, and explicit file/path/symlink selection.
-- [inotify](docs/inotify.md): file and directory watches, record decoding, rename cookies, and explicit queue-overflow events.
-- [fanotify](docs/fanotify.md): event-owned file inspection and explicit filesystem permission decisions.
-- [socket](docs/socket.md): Unix and Netlink message sockets, deadlines, typed file passing, and credentials.
-- [netlink](docs/netlink.md): kernel requests, extended acknowledgements, bounded dumps, family discovery, and multicast reception.
-- [netlink/route](docs/netlink-route.md): typed link, IPv4/IPv6 address, and route configuration with multicast changes.
-- [namespace](docs/namespace.md): owned namespace handles, identity and hierarchy inspection, and explicit thread/child transitions.
-- [cgroup](docs/cgroup.md): explicit v2 group lifecycle, membership, resource limits, and populated/frozen notifications.
-- [capability](docs/capability.md): thread capability sets, irreversible bounding drops, and explicit ambient transitions.
-- [seccomp](docs/seccomp.md): bounded syscall filters, mandatory native ABI guards, and explicit thread synchronization.
-- [landlock](docs/landlock.md): owned access rulesets, typed filesystem/port rules, IPC scopes, and explicit thread synchronization.
-- [procfs](docs/procfs.md): read-only process/system statistics, descriptor observations, maps, and mount information with an explicit root.
-- [sysfs](docs/sysfs.md): read-only block-device and network-interface attributes, typed identity and units, and explicit byte reads with an explicit root.
+Choose a package by what you want to build. The tool links illustrate practical uses of the underlying Linux facilities independently of this module. Each package guide explains the supported operations and prerequisites.
+
+| Package | Good for | Real-world reference |
+| --- | --- | --- |
+| [memfd](docs/memfd.md) | Preparing memory-backed payloads with optional irreversible seals | [PipeWire media buffers](https://docs.pipewire.org/page_library.html) |
+| [eventfd](docs/eventfd.md) | Signaling workers or processes through a readiness loop | [QEMU device notifications](https://www.qemu.org/docs/master/devel/multi-process.html) |
+| [timerfd](docs/timerfd.md) | Scheduling readiness events against an explicit Linux clock | [systemd event timers](https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-event/sd-event.c) |
+| [mmap](docs/mmap.md) | Reading files through memory mappings or sharing mapped regions | [SQLite mapped reads](https://sqlite.org/mmap.html) |
+| [pidfd](docs/pidfd.md) | Observing and signaling a stable process identity | [systemd child monitoring](https://www.freedesktop.org/software/systemd/man/latest/sd_event_add_child.html) |
+| [mount](docs/mount.md) | Preparing and attaching filesystems inside an isolated namespace | [runc filesystem setup](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md) |
+| [epoll](docs/epoll.md) | Waiting for multiple kernel I/O sources in an explicit event loop | [Redis readiness backend](https://github.com/redis/redis/blob/unstable/src/ae_epoll.c) |
+| [file](docs/file.md) | Controlling path resolution, extended metadata, and atomic renames | [GNU mv atomic exchanges](https://www.gnu.org/software/coreutils/manual/coreutils.html#mv-invocation) |
+| [xattr](docs/xattr.md) | Preserving file metadata in backups and restores | [GNU tar extended attributes](https://www.gnu.org/software/tar/manual/html_node/Extended-File-Attributes.html) |
+| [inotify](docs/inotify.md) | Watching directories for rebuilds, indexing, or cache invalidation | [Watchman file watching](https://meta.github.io/watchman/docs/install) |
+| [fanotify](docs/fanotify.md) | Inspecting accessed files and answering permission requests | [ClamAV on-access scanning](https://docs.clamav.net/manual/OnAccess.html) |
+| [socket](docs/socket.md) | Exchanging Unix messages, open files, and credentials | [systemd service notifications](https://www.freedesktop.org/software/systemd/man/latest/sd_notify.html) |
+| [netlink](docs/netlink.md) | Building kernel requests and discovering Generic Netlink families | [iw wireless configuration](https://wireless.docs.kernel.org/en/latest/en/users/documentation/iw.html) |
+| [netlink/route](docs/netlink-route.md) | Inspecting and configuring interfaces, addresses, and routes | [iproute2 routing commands](https://github.com/iproute2/iproute2/blob/main/ip/iproute.c) |
+| [namespace](docs/namespace.md) | Inspecting or entering isolated Linux resource views | [runc namespaces](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md) |
+| [cgroup](docs/cgroup.md) | Applying CPU, memory, and task limits in a delegated v2 hierarchy | [systemd resource control](https://www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html) |
+| [capability](docs/capability.md) | Inspecting and reducing Linux thread privileges | [runc capability policy](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md) |
+| [seccomp](docs/seccomp.md) | Restricting the syscalls a workload may invoke | [runc syscall filters](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md) |
+| [landlock](docs/landlock.md) | Restricting filesystem access and TCP ports without a privileged helper | [Landrun sandboxing](https://landlock.io/integrations/) |
+| [procfs](docs/procfs.md) | Building process monitors and system statistics collectors | [htop process collection](https://github.com/htop-dev/htop/blob/main/linux/LinuxProcessTable.c) |
+| [sysfs](docs/sysfs.md) | Inspecting block devices and network-interface attributes | [lsblk device discovery](https://github.com/util-linux/util-linux/blob/master/lsblk-cmd/lsblk.8.adoc) |
 
 ## 🚀 Setup
 

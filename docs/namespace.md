@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/namespace` provides owned Linux namespace handles, inspection, identity comparison, and explicit [setns](https://man7.org/linux/man-pages/man2/setns.2.html)/[unshare](https://man7.org/linux/man-pages/man2/unshare.2.html) operations. It requires Linux 7.0+, the relevant namespace kernel configuration, and permitted procfs/ioctl/syscall access. Capabilities in the applicable user namespaces, namespace quotas, and container security policy remain kernel prerequisites. These mechanisms do not form a complete container runtime or sandbox.
 
+## Good for
+
+Good for inspecting isolation boundaries or explicitly entering an existing namespace. [runc uses namespaces to isolate container resource views](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md); the application still owns thread affinity and process startup.
+
 ## Open and inspect
 
 ```go

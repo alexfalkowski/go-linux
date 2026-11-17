@@ -2,6 +2,10 @@
 
 `socket` provides Unix message sockets and Netlink transport on Linux 7.0+. Use the standard `net` package for TCP, UDP, Unix streams, listeners, and dialing. This package keeps message truncation and received-file ownership visible and requires no public descriptor access. Import `github.com/alexfalkowski/go-linux/socket`.
 
+## Good for
+
+Good for local protocols that preserve message boundaries and pass open files between processes. [systemd's notification protocol](https://www.freedesktop.org/software/systemd/man/latest/sd_notify.html) uses Unix datagrams and supports transferring files to the service manager.
+
 ## Exchange messages
 
 ```go

@@ -49,7 +49,6 @@ linters:
       - tmp
       - third_party$
       - builtin$
-      - examples$
 formatters:
   enable:
     - gci
@@ -62,4 +61,3 @@ formatters:
       - tmp
       - third_party$
       - builtin$
-      - examples$

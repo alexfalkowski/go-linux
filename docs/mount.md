@@ -2,9 +2,23 @@
 
 `github.com/alexfalkowski/go-linux/mount` provides filesystem configuration contexts and owned mount handles through the modern Linux mount API. It requires Linux 7.0+ and the Go version in `go.mod`. The [verification guide](verification.md) describes the required isolation environment, commands, and [verified runners](verification.md#verified-environments).
 
+## Good for
+
+Good for preparing filesystems and mount restrictions before making them visible in an isolated mount namespace. [runc sets up mounts as part of container isolation](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md); this package supplies mount operations while the application owns isolation and cleanup.
+
 ## Configure, create, and acquire
 
-Call `mount.Open("tmpfs")` to acquire a `*mount.Config`. Supply individual parameters with `SetFlag("rw")` or `SetString("size", "1m")`, call `Create`, and then call `Mount(attributes)` to acquire a detached `*mount.Handle`. Close both owners independently. `SetString(key, "")` passes an empty string; it is distinct from a flag with no value. Strings are not parsed as comma-separated option lists. Names, keys, values, filesystem support, and configuration phase transitions retain kernel validation. On Linux 7.0, fsconfig keys and string values are limited to 255 bytes excluding the terminating NUL; embedded NUL bytes fail with EINVAL.
+Call `mount.Open("tmpfs")` to acquire a `*mount.Config`, then supply parameters with `SetFlag("rw")` or `SetString("size", "1m")`. Configuration, handle ownership, and attachment have separate lifetimes:
+
+```text
+Open -> Config --Create, Mount--> detached Handle --Attach--> attached mount
+           |                           |                          |
+         Close                       Close                     Unmount
+```
+
+Close Config and Handle independently. **Closing an attached handle does not unmount it.**
+
+`SetString(key, "")` passes an empty string; it is distinct from a flag with no value. Strings are not parsed as comma-separated option lists. Names, keys, values, filesystem support, and configuration phase transitions retain kernel validation. On Linux 7.0, fsconfig keys and string values are limited to 255 bytes excluding the terminating NUL; embedded NUL bytes fail with EINVAL.
 
 `Create` can reuse a filesystem instance; it does not promise a unique superblock. `Mount` never calls `Create` implicitly. A failed acquisition returns nil and leaves no newly acquired resource to close. A failed `Mount` leaves the existing Config caller-owned; a kernel failure can still change its phase. A failed setter or `Create` likewise leaves the existing Config open, but the kernel may make a failed context unusable for later configuration. There is no rollback or legacy mount backend.
 
@@ -16,7 +30,7 @@ See the [configuration example](../mount/example_test.go). It is compiled by the
 
 `handle.Attach(dir, path)` uses `move_mount` to attach or move the mount. A nil directory selects the current working directory; an absolute path uses ordinary absolute lookup. A nonnil directory is borrowed for the duration of the call, protected against concurrent Close. An empty path targets that directory itself and requires a nonnil directory. Closing the directory after attachment does not invalidate the mount. Target symlinks and automounts are not followed by move_mount; component traversal remains the caller's responsibility. These operations do not offer confined path resolution.
 
-The caller retains the handle after either attachment success or failure. **Closing an attached handle does not unmount it.** An unattached tree is released when its last reference disappears. Attached mounts remain until explicitly unmounted or their namespace is destroyed. Use `mount.Unmount(path, 0)` for a normal unmount, which fails with `EBUSY` while references keep the mount busy. `mount.Unmount(path, mount.Detach)` disconnects the mount immediately and defers release until references disappear. Open files and handles remain caller-owned. Unknown flags match `os.ErrInvalid`; other errors preserve Linux errno. Unmount follows target symlinks and kernel propagation rules, so path and namespace policy remain with the caller. The [attachment example](../mount/example_test.go) shows explicit typed cleanup.
+The caller retains the handle after either attachment success or failure. An unattached tree is released when its last reference disappears. Attached mounts remain until explicitly unmounted or their namespace is destroyed. Use `mount.Unmount(path, 0)` for a normal unmount, which fails with `EBUSY` while references keep the mount busy. `mount.Unmount(path, mount.Detach)` disconnects the mount immediately and defers release until references disappear. Open files and handles remain caller-owned. Unknown flags match `os.ErrInvalid`; other errors preserve Linux errno. Unmount follows target symlinks and kernel propagation rules, so path and namespace policy remain with the caller. The [attachment example](../mount/example_test.go) shows explicit typed cleanup.
 
 `handle.Stat()` returns standard file metadata for the mount root, including while detached. `handle.Attributes()` queries the current four supported restrictions; other kernel flags are omitted. These are snapshots and can change through other references.
 

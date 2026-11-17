@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/fanotify` provides descriptor-based Linux filesystem notifications and permission decisions. Use it when an event must identify an already opened object or an application must decide whether an open/read/exec-open may proceed. For ordinary unprivileged directory watches and names, use [inotify](inotify.md).
 
+## Good for
+
+Good for on-access scanners that inspect an opened file and may decide whether access proceeds. [ClamAV's on-access scanner uses fanotify](https://docs.clamav.net/manual/OnAccess.html) for this workflow; supported permission modes require the privileges described below.
+
 ## Requirements and supported modes
 
 The package targets Linux 7.0+ with `CONFIG_FANOTIFY`. Both supported classes require `CAP_SYS_ADMIN` in the initial user namespace and permission from the syscall/security policy. Acquiring capabilities in a new user namespace, or using rootless Docker's `--privileged`, does not supply that privilege. Permission events additionally require `CONFIG_FANOTIFY_ACCESS_PERMISSIONS`. Errors retain Linux errno; `EPERM` alone does not establish which prerequisite failed.
@@ -65,7 +69,21 @@ Paths are resolved anew on each call, relative to the current working directory 
 
 ## Permission decisions and shutdown
 
-Create a `Content` group and mark `OpenPermission`, `AccessPermission`, or `OpenExecPermission`. In the event loop, inspect the event file if needed and call `event.Respond(fanotify.Allow)` or `event.Respond(fanotify.Deny)`. The operation that generated the event waits for a decision. One successful response is allowed per permission event; it leaves the file open. A denied operation receives `EPERM`, while another listener or security policy can still reject an allowed operation. Failed responses retain ownership and errno, and callers must still close the event.
+Create a `Content` group and mark `OpenPermission`, `AccessPermission`, or `OpenExecPermission`. Permission events pause the originating operation while the listener decides:
+
+```text
+Originating operation                 Listener
+        |
+   waits for decision --> permission event
+        |                       |
+        |                 inspect event file
+        |                       |
+   receives decision <--- Respond(Allow / Deny)
+                                |
+                           close event file
+```
+
+Call `event.Respond(fanotify.Allow)` or `event.Respond(fanotify.Deny)` once successfully per permission event, then close it. A denied operation receives `EPERM`; another listener or security policy can still reject an allowed operation. Respond leaves the file open, including on failure, and failed responses preserve errno. With `Events`, iteration closes the event for you; with `ReadEvents`, close it yourself.
 
 Install `AccessPermission` marks before opening the files whose reads must request permission. Linux determines read-permission event eligibility at open time; reads through files opened before the mark may not generate permission events.
 

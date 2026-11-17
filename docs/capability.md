@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/capability` inspects and changes the calling Linux thread's capability sets. It requires Linux 7.0+ and permitted [capget/capset](https://man7.org/linux/man-pages/man2/capget.2.html) and capability [prctl](https://man7.org/linux/man-pages/man2/prctl.2.html) operations. Capabilities grant authority in applicable user namespaces; a successful query does not establish permission for a particular facility operation. These mechanisms do not form a complete sandbox.
 
+## Good for
+
+Good for inspecting a worker's authority and reducing privileges around a specific workload. [runc configures Linux capabilities for containers](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md); this package exposes the thread capability operations used to implement such policies.
+
 ## Inspect thread credentials
 
 ```go

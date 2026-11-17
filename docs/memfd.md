@@ -2,6 +2,10 @@
 
 Package `memfd` creates Linux memory-backed files that work with ordinary Go file operations. Use it when you need an anonymous file descriptor for sharing data, with optional seals that permanently restrict modification. It requires Linux 7.0+ and the Go version in [go.mod](../go.mod). Runtime verification evidence is recorded in the [verification guide](verification.md).
 
+## Good for
+
+Good for creating anonymous memory-backed payloads whose contents or size can be sealed. [PipeWire uses memfd to share media buffers](https://docs.pipewire.org/page_library.html), illustrating the underlying mechanism; cross-process file passing is outside this package's current API.
+
 ## Install and use
 
 ```sh

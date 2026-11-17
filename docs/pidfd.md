@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/pidfd` provides owned process descriptors, signals, exit observation, and eligible child reaping on Linux 7.0+. Use `os.Process` and `os/exec` for ordinary subprocess management. This package adds independent handle ownership and waits interrupted by closing the handle.
 
+## Good for
+
+Good for supervisors that need a stable process handle for exit observation and signaling. [systemd monitors children through pidfds](https://www.freedesktop.org/software/systemd/man/latest/sd_event_add_child.html), keeping process identity separate from a reusable numeric PID.
+
 ## Observe a command
 
 Start an `exec.Cmd`, call `pidfd.OpenProcess(command.Process)`, and defer closing the returned `*pidfd.Process`. `process.WaitReady()` waits for the last thread to exit without consuming child status. Call `command.Wait()` to reap the child and complete os/exec pipe cleanup. Closing a pidfd neither kills nor reaps the process.

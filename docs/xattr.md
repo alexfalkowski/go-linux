@@ -2,6 +2,10 @@
 
 `github.com/alexfalkowski/go-linux/xattr` reads, sets, lists, and removes Linux extended attributes while borrowing standard `*os.File` handles. It uses the at-style attribute calls present in the Linux 7.0 baseline. The filesystem, attribute namespace, permissions, and security policy still determine which operations succeed.
 
+## Good for
+
+Good for backup, restore, and indexing tools that preserve metadata beyond ordinary file contents and modes. [GNU tar stores and restores extended attributes](https://www.gnu.org/software/tar/manual/html_node/Extended-File-Attributes.html) with its xattr support enabled.
+
 ## Store and read an attribute
 
 ```go

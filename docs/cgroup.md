@@ -2,6 +2,10 @@
 
 `cgroup` opens an explicitly chosen v2 hierarchy root or delegated subtree. It provides owned group handles, child creation/removal, process membership, controller enablement, CPU bandwidth/weight, memory boundaries, task limits, and populated/frozen event snapshots. It targets Linux 7.0+; mounting, delegating permissions, v1, systemd D-Bus, threaded subtree setup, freezer/kill operations, and controllers beyond CPU, memory, and PIDs are outside this surface.
 
+## Good for
+
+Good for workload managers that apply CPU, memory, and task limits within an explicitly delegated cgroup v2 subtree. [systemd resource control](https://www.freedesktop.org/software/systemd/man/latest/systemd.resource-control.html) uses cgroups to organize and constrain services.
+
 ## Open and inspect
 
 ```go
