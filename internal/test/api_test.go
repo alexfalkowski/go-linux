@@ -12,6 +12,7 @@ import (
 	"github.com/alexfalkowski/go-linux/fanotify"
 	"github.com/alexfalkowski/go-linux/inotify"
 	"github.com/alexfalkowski/go-linux/internal/test"
+	"github.com/alexfalkowski/go-linux/landlock"
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mount"
 	"github.com/alexfalkowski/go-linux/namespace"
@@ -44,6 +45,7 @@ func TestResourcesKeepDescriptorAccessPrivate(t *testing.T) {
 		{name: "namespace", owner: &namespace.Handle{}},
 		{name: "cgroup", owner: &cgroup.Group{}},
 		{name: "cgroup event watcher", owner: &cgroup.EventWatcher{}},
+		{name: "Landlock ruleset", owner: &landlock.Ruleset{}},
 		{name: "readiness set", owner: &epoll.Poller{}},
 		{name: "readiness registration", owner: &epoll.Registration{}},
 	} {
