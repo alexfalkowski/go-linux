@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run namespace transitions only in private children inside privileged Docker.
+# Run namespace, capability, and security transitions in private child processes.
 
 set -eo pipefail
 

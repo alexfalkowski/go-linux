@@ -25,6 +25,16 @@ const AbortSignal = syscall.SIGABRT
 // KillSignal selects the child's forced-termination fixture.
 const KillSignal = syscall.SIGKILL
 
+// ExitSignal observes a completed process's native terminating signal, or -1
+// when it exited normally. Callers retain assertions about expected termination.
+func ExitSignal(t *testing.T, state *os.ProcessState) syscall.Signal {
+	t.Helper()
+	require.NotNil(t, state)
+	status, ok := state.Sys().(syscall.WaitStatus)
+	require.True(t, ok)
+	return status.Signal()
+}
+
 // SignalZero independently observes a standard process's existence/permissions.
 func SignalZero(process *os.Process) error {
 	return process.Signal(syscall.Signal(0))

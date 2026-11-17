@@ -251,6 +251,33 @@ func TestKernelCreationFailureReturnsNoGroup(t *testing.T) {
 	test.DescriptorSlot(t)
 }
 
+func TestPollRegistrationFailureReturnsNoGroupAndClosesDescriptor(t *testing.T) {
+	if !test.FanotifyNamespace(t) {
+		return
+	}
+
+	for _, scenario := range []struct {
+		name  string
+		class fanotify.Class
+	}{
+		{name: "notification", class: fanotify.Notification},
+		{name: "content", class: fanotify.Content},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			group, err := fanotify.New(scenario.class)
+			require.NoError(t, err)
+			require.NoError(t, group.Close())
+
+			test.RefusePollRegistration(t)
+			before := test.DescriptorCount(t)
+
+			group, err = fanotify.New(scenario.class)
+			test.NoResource(t, group, err, os.ErrNoDeadline)
+			require.Equal(t, before, test.DescriptorCount(t), "failed poll registration must close the acquired fanotify group")
+		})
+	}
+}
+
 func TestInvalidMarksAreRejected(t *testing.T) {
 	if !test.FanotifyNamespace(t) {
 		return

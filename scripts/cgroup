@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Run delegated cgroup verification only inside a disposable container subtree.
+
+set -eo pipefail
+
+if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
+  printf 'usage: make verify-cgroup-container image=<tag> arch=<amd64|arm64> [kernel=7.0]\n' >&2
+  exit 2
+fi
+
+cgroup_image=$1
+cgroup_arch=$2
+
+printf 'executor=machine container=%s arch=%s privileged=true cgroupns=private\n' "$cgroup_image" "$cgroup_arch"
+
+# A fresh cgroup2 mount is rooted at the private cgroup namespace, never at a
+# bind-mounted host hierarchy. The runner leaf keeps domain parents empty.
+docker run --quiet --rm --privileged --user root --cgroupns=private \
+  --mount "type=bind,src=$PWD,dst=/home/circleci/go-linux" \
+  --workdir /home/circleci/go-linux \
+  -- "$cgroup_image" \
+  bash -eo pipefail -c '
+    if ! grep -qx "0::/" /proc/self/cgroup; then
+      printf "cgroup verification requires a private v2 namespace rooted at the container\n" >&2
+      exit 2
+    fi
+
+    mount --make-rprivate /
+    mount -t cgroup2 none /sys/fs/cgroup
+    mkdir /sys/fs/cgroup/runner
+    printf "%s\n" "$$" > /sys/fs/cgroup/runner/cgroup.procs
+    printf "+cpu +memory +pids\n" > /sys/fs/cgroup/cgroup.subtree_control
+    mkdir /sys/fs/cgroup/delegation
+    printf "+cpu +memory +pids\n" > /sys/fs/cgroup/delegation/cgroup.subtree_control
+
+    git config --global --add safe.directory /home/circleci/go-linux
+    make dep
+    exec make verify-cgroup delegation=/sys/fs/cgroup/delegation arch="$1" kernel="$2"
+  ' cgroup "$cgroup_arch" "${GO_LINUX_TEST_KERNEL:-supported}"
