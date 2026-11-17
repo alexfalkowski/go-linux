@@ -1,6 +1,6 @@
 # fanotify design decisions
 
-The [usage guide](../fanotify.md) owns calling contracts and requirements. [Verification](../verification.md#fanotify-verification) owns runner setup; unfinished evidence belongs in [IMPLEMENTATION.md](../../IMPLEMENTATION.md).
+The [usage guide](../fanotify.md) owns calling contracts and requirements. [Verification](../verification.md#fanotify-verification) owns runner setup; missing execution evidence is recorded in [verification limits](../verification-limits.md).
 
 ## Bound the first reporting mode
 

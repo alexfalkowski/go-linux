@@ -3,4 +3,4 @@
 @bin/AGENTS.md
 <!-- END bin claude-init -->
 
-Follow `IMPLEMENTATION.md` for remaining work, execution order, acceptance criteria, and open verification gaps. Use `AGENTS.md` for repository commands and `docs/verification.md` for test profiles and runner requirements.
+Use `AGENTS.md` for repository commands, `docs/verification.md` for test profiles and runner requirements, and `docs/verification-limits.md` for known execution limits.

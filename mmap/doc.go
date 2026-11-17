@@ -13,5 +13,5 @@
 // nor provides a memory-safety or persistence guarantee.
 //
 // The package targets Linux 7.0+; required runtime verification uses arm64.
-// See the repository's implementation plan for current verification gaps.
+// See docs/verification-limits.md in the repository for execution limits.
 package mmap
