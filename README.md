@@ -34,6 +34,7 @@ The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests
 - [seccomp](docs/seccomp.md): bounded syscall filters, mandatory native ABI guards, and explicit thread synchronization.
 - [landlock](docs/landlock.md): owned access rulesets, typed filesystem/port rules, IPC scopes, and explicit thread synchronization.
 - [procfs](docs/procfs.md): read-only process/system statistics, descriptor observations, maps, and mount information with an explicit root.
+- [sysfs](docs/sysfs.md): read-only block-device and network-interface attributes, typed identity and units, and explicit byte reads with an explicit root.
 
 ## 🚀 Setup
 
