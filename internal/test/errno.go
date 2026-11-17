@@ -70,6 +70,9 @@ const ErrNoBufferSpace = syscall.ENOBUFS
 // ErrNotDirectory preserves Linux ENOTDIR for exact error assertions.
 const ErrNotDirectory = syscall.ENOTDIR
 
+// ErrIsDirectory preserves Linux EISDIR for exact error assertions.
+const ErrIsDirectory = syscall.EISDIR
+
 // ErrNotSupported preserves Linux EOPNOTSUPP for exact error assertions.
 const ErrNotSupported = syscall.EOPNOTSUPP
 
