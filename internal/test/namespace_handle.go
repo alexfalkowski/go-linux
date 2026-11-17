@@ -8,11 +8,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
-	"strconv"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/alexfalkowski/go-linux/namespace"
 	"github.com/stretchr/testify/require"
@@ -73,34 +70,6 @@ func NamespaceOwnerUID(t *testing.T, file *os.File) uint32 {
 	})
 	require.NoError(t, err)
 	return uid
-}
-
-// LockedThread runs an operation on a dedicated locked goroutine and waits for
-// its defers, including failure cleanup. It deliberately never unlocks; Go
-// destroys the OS thread on goroutine exit. The result allows independent
-// observations of thread teardown without exposing production implementation.
-func LockedThread(t *testing.T, operation func()) int {
-	t.Helper()
-	started := make(chan int, 1)
-	done := make(chan struct{})
-	go func() {
-		runtime.LockOSThread()
-		defer close(done)
-		started <- unix.Gettid()
-		operation()
-	}()
-	id := Receive(t, started)
-	Receive(t, done)
-	return id
-}
-
-// WaitForThreadExit bounds observation of a test-owned worker's teardown.
-func WaitForThreadExit(t *testing.T, id int) {
-	t.Helper()
-	require.Eventually(t, func() bool {
-		_, err := os.Stat("/proc/self/task/" + strconv.Itoa(id))
-		return os.IsNotExist(err)
-	}, 5*time.Second, time.Millisecond, "namespace worker must exit")
 }
 
 // NamespaceChild starts the namespace package's waiting-child fixture with

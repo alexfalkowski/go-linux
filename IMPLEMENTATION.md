@@ -1,6 +1,6 @@
 # Linux APIs for Go: remaining implementation
 
-Next: **P17 — `capability`: Linux capability sets**. Implement the remaining items in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
+Next: **P18 — `seccomp`: syscall filters**. Implement the remaining items in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
 
 This file contains unfinished work only. Delete finished items and resolved gaps instead of marking them done. Keep a short resume note only while work is incomplete; replace it when circumstances change and remove it when finished. Do not append completed handoffs, historical command logs, resolved findings, or an archive of deleted entries.
 
@@ -33,6 +33,7 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 | Scope | Missing evidence | Required environment or next action |
 | --- | --- | --- |
+| P17 / `capability` native baseline (implemented; verification pending) | Runtime evidence on Linux 7.0 amd64 and arm64. All 31 capability cases pass with race detection and no skips in the required namespace lane on native amd64 with Go 1.27.4 and Linux 7.3.4-3-t2-resolute. The rootless suite passes with seventeen unselected privileged scenarios. Exact-baseline and native-arm64 checks reject the available runner. | Observe required `build` and `build-namespace` jobs on native Linux 7.0 amd64 and arm64, retaining environment and standard reports. The existing namespace launcher now runs both packages; configuration and newer-kernel results do not establish baseline runtime evidence. |
 | R01 / `cgroup` CI and native baseline | Required delegated CI runs and coverage partitions are not configured. Exact Linux 7.0 amd64/arm64 runtime evidence is absent. | Resolve delegated CI/coverage integration during PR validation using the configured Go image toolchain, CPU/memory/PIDs delegation, and common-ancestor migration permission. Run `make verify-cgroup delegation=/absolute/delegated/subtree arch=<amd64|arm64> kernel=7.0` on both native Linux 7.0 architectures and retain standard reports. Current rootless CI covers fixtures/read-only operations only. |
 | R01 / `cgroup` defensive paths and enforcement | Event overflow, rare metadata/close errors, and resource enforcement under CPU/memory/PIDs pressure remain source-reviewed rather than established by the limit round-trip scenarios. | Reconcile using bounded public/kernel scenarios in an explicit disposable delegation; retain source-reviewed limits where execution is not feasible without production injection hooks. |
 | P15 / `namespace` native baseline | Runtime evidence on Linux 7.0 amd64 and arm64. The required isolated suite passes all 57 cases with Go 1.27.4 and race detection on native amd64 with Linux 7.3.4-3-t2-resolute; the rootless suite passes with thirteen unselected isolated fixtures. Exact-baseline and native-arm64 checks reject the available runner. | Observe required `build` and `build-namespace` jobs on native Linux 7.0 amd64 and arm64, retaining environment and standard reports. The configured namespace lane uses the same launcher and contributes both architecture profiles to coverage merging; configuration alone is not runtime evidence. |
@@ -51,8 +52,6 @@ The bounded first release comprises 21 facility-focused public packages in one m
 ## Remaining work
 
 ### Security facilities
-
-- **P17 — `capability`: Linux capability sets.** Implement inspection and explicit supported set/clear operations, including the chosen permitted/effective/inheritable, bounding, and ambient operations. Separate thread state from exec transitions and any process-wide claims. **Acceptance:** subprocess tests verify allowed transitions, expected failures, and exec behavior. Document Go runtime/thread constraints; a locked goroutine alone does not apply a capability change to every thread.
 
 - **P18 — `seccomp`: syscall filters.** Implement filter loading, the supported actions, and explicit synchronization policy. Start with a bounded representation of kernel filter programs; a policy language/compiler and user-notification broker are later extensions. Keep architecture validation and Go runtime syscall needs visible. **Acceptance:** subprocess tests verify allowed/denied operations, architecture checks, error propagation, and thread synchronization where promised. Never apply irreversible test restrictions to the main test runner.
 
