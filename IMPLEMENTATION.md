@@ -1,6 +1,6 @@
 # Linux APIs for Go: remaining implementation
 
-Next: **P21 — `sysfs`: bounded device and kernel attributes**. Implement the remaining items in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
+Next: **R01 — Verify the complete supported surface**. Implement the remaining items in order; open verification gaps may proceed independently when their missing evidence does not affect the next item's correctness.
 
 This file contains unfinished work only. Delete finished items and resolved gaps instead of marking them done. Keep a short resume note only while work is incomplete; replace it when circumstances change and remove it when finished. Do not append completed handoffs, historical command logs, resolved findings, or an archive of deleted entries.
 
@@ -33,6 +33,8 @@ The bounded first release comprises 21 facility-focused public packages in one m
 
 | Scope | Missing evidence | Required environment or next action |
 | --- | --- | --- |
+| P21 / `sysfs` native baseline (implemented; verification pending) | Runtime evidence on Linux 7.0 amd64 and arm64. All 115 cases pass with race detection and no skips directly and through the configured Go image's required rootless launcher on native amd64 with Go 1.27.4 and Linux 7.3.4-3-t2-resolute. Exact-baseline and native-arm64 probes reject the available runner. | Observe required `build` jobs on both native Linux 7.0 architectures, retaining environment and standard reports. The rootless matrix discovers this package automatically; newer-kernel results do not establish baseline runtime evidence. |
+| R01 / `sysfs` defensive paths | Rare working-directory resolution, root revalidation, and post-open metadata failures remain source-reviewed. | Retain these limits where supported public/kernel scenarios cannot reproduce them without production injection hooks. Fixtures establish class symlinks, partitions, malformed/oversized input, missing attributes, units, replacement, and cleanup; live reads establish available device identity, network values, and an unavailable attribute's kernel read errno. |
 | P20 / `procfs` native baseline (implemented; verification pending) | Runtime evidence on Linux 7.0 amd64 and arm64. All 124 cases pass with race detection and no skips directly and through the configured Go image's required rootless launcher on native amd64 with Go 1.27.4 and Linux 7.3.4-3-t2-resolute. Exact-baseline and native-arm64 checks reject the available runner. | Observe required `build` jobs on both native Linux 7.0 architectures, retaining environment and standard reports. The rootless matrix discovers this package automatically. Newer-kernel results do not establish baseline runtime evidence. |
 | P19 / `landlock` native baseline (implemented; verification pending) | Runtime evidence on Linux 7.0 amd64 and arm64. All 58 cases pass with race detection and no skips directly and through the configured Go image's required rootless launcher on native amd64 with Go 1.27.4, Linux 7.3.4-3-t2-resolute, and Landlock ABI 11. Exact-baseline and native-arm64 probes reject the available runner. | Observe required `build` jobs on both native Linux 7.0 architectures, retaining environment and standard reports. The rootless matrix discovers this package automatically. Baseline ABI 8 must reject requested optional ABI 9/10 rights; their enforcement tests intentionally skip there. Newer-kernel results do not establish baseline runtime evidence. |
 | R01 / `landlock` privilege and defensive paths | Direct execution remains absent for a no-new-privileges transition from zero, capability-authorized restriction without that bit, TSYNC propagation to siblings starting with a zero bit, rare allocation/cleanup failures, and per-right device-ioctl/special-file enforcement beyond the exercised filesystem scenarios. The available rootless runner inherits NoNewPrivs=1. | Reconcile with bounded public/kernel scenarios on appropriate disposable runners; retain source-reviewed limits where execution is unavailable without production injection hooks. ABI discovery, exact policy preservation, file read/write/directory/truncate/Refer behavior, TCP/optional UDP and pathname-Unix rules, IPC scopes, ownership, thread scope, divergent-domain replacement, layer exhaustion, and exec inheritance are exercised. Audit-log delivery and a complete sandbox are outside the package's promises. |
@@ -55,10 +57,6 @@ The bounded first release comprises 21 facility-focused public packages in one m
 | R01 / `pidfd` positive core-dump status | Actual CLD_DUMPED and `CoreDump=true` on the Linux 7.0 arm64 target | A runner whose existing core policy produces CLD_DUMPED for the test-owned child. The current test compares with nonconsuming kernel status; CLD_KILLED verifies only the false flag. Do not change host core policy to force this case. |
 
 ## Remaining work
-
-### System information
-
-- **P21 — `sysfs`: bounded device and kernel attributes.** Accept an explicit root. Start with read-only block-device and network-interface attributes and discoverable identifiers. Keep values typed where semantics are stable; retain unknown attributes without pretending all files share one format. Broad mutation and driver-specific control remain deferred. **Acceptance:** fixtures cover symlinks, missing attributes, units, and device disappearance. Live read-only tests verify available attributes without assuming a particular host device inventory.
 
 ### Integration and release preparation
 
