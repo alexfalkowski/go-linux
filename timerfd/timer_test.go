@@ -534,7 +534,7 @@ func TestClosedTimersRejectOperations(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrInvalid)
 }
 
-func TestInvalidClocksAndClosedTimersLeaveNoDescriptorsBehind(t *testing.T) {
+func TestInvalidClocksLeaveNoDescriptorsBehind(t *testing.T) {
 	// Initialize the runtime poller before comparing descriptor counts.
 	timer := test.Timer(t, timerfd.Monotonic)
 
@@ -560,6 +560,15 @@ func TestInvalidClocksAndClosedTimersLeaveNoDescriptorsBehind(t *testing.T) {
 		}
 	}
 
+	after := test.DescriptorCount(t)
+	require.LessOrEqual(t, after, before, "rejected clocks must not retain descriptors")
+}
+
+func TestClosingTimersReleasesTheirDescriptors(t *testing.T) {
+	timer := test.Timer(t, timerfd.Monotonic)
+	require.NoError(t, timer.Close())
+	before := test.DescriptorCount(t)
+
 	for range 32 {
 		timer := test.Timer(t, timerfd.Monotonic)
 
@@ -570,7 +579,7 @@ func TestInvalidClocksAndClosedTimersLeaveNoDescriptorsBehind(t *testing.T) {
 	}
 
 	after := test.DescriptorCount(t)
-	require.LessOrEqual(t, after, before, "rejected clocks and closed timers must not retain descriptors")
+	require.LessOrEqual(t, after, before, "closed timers must not retain descriptors")
 }
 
 func TestPollRegistrationFailureReturnsNoTimerAndClosesDescriptor(t *testing.T) {
@@ -602,34 +611,29 @@ func checkUnavailableTimer(t *testing.T, timer *timerfd.Timer, expected error) {
 	t.Helper()
 
 	n, err := timer.Read(make([]byte, 8))
-	require.Zero(t, n, "byte read")
-	require.ErrorIs(t, err, expected, "byte read")
+	require.Zero(t, n)
+	require.ErrorIs(t, err, expected)
 
 	count, err := timer.ReadExpirations()
-	require.Zero(t, count, "expiration read")
-	require.ErrorIs(t, err, expected, "expiration read")
+	require.Zero(t, count)
+	require.ErrorIs(t, err, expected)
 
-	for _, scenario := range []struct {
-		name      string
-		operation func() (timerfd.State, error)
-	}{
-		{name: "state inspection", operation: timer.State},
-		{name: "relative arming", operation: func() (timerfd.State, error) {
-			return timer.SetAfter(time.Second, 0)
-		}},
+	state, err := timer.State()
+	require.Zero(t, state)
+	require.ErrorIs(t, err, expected)
 
-		{name: "absolute arming", operation: func() (timerfd.State, error) {
-			return timer.SetAt(timerfd.Instant{}, 0, 0)
-		}},
+	state, err = timer.SetAfter(time.Second, 0)
+	require.Zero(t, state)
+	require.ErrorIs(t, err, expected)
 
-		{name: "disarming", operation: timer.Disarm},
-	} {
-		state, err := scenario.operation()
-		require.Equal(t, timerfd.State{}, state, scenario.name)
-		require.ErrorIs(t, err, expected, scenario.name)
-	}
+	state, err = timer.SetAt(timerfd.Instant{}, 0, 0)
+	require.Zero(t, state)
+	require.ErrorIs(t, err, expected)
 
-	require.ErrorIs(t, timer.SetReadDeadline(time.Time{}), expected, "read deadline")
+	state, err = timer.Disarm()
+	require.Zero(t, state)
+	require.ErrorIs(t, err, expected)
 
-	require.ErrorIs(t, timer.Close(), expected, "close")
+	require.ErrorIs(t, timer.SetReadDeadline(time.Time{}), expected)
+	require.ErrorIs(t, timer.Close(), expected)
 }

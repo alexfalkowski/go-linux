@@ -363,10 +363,10 @@ func TestTimeoutsReturnAnEmptyResultWithoutChangingTheBuffer(t *testing.T) {
 	}
 }
 
-func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
+func TestRejectedRegistrationsPreserveBorrowedFilesAndDescriptors(t *testing.T) {
 	poller := test.Poller(t)
 	file := test.TempFile(t, 0)
-	reader, writer := test.Pipe(t)
+	reader, _ := test.Pipe(t)
 	closed, _ := test.Pipe(t)
 	require.NoError(t, closed.Close())
 
@@ -393,11 +393,15 @@ func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 
 	_, err := file.Stat()
 	require.NoError(t, err, "failed registration must not close a borrowed file")
+}
 
+func TestInvalidModificationPreservesExistingRegistration(t *testing.T) {
+	poller := test.Poller(t)
+	reader, writer := test.Pipe(t)
 	registration := test.Registration(t, poller, reader, epoll.Readable)
 	require.ErrorIs(t, registration.Modify(1<<26), os.ErrInvalid)
 
-	_, err = writer.WriteString("ready")
+	_, err := writer.WriteString("ready")
 	require.NoError(t, err)
 
 	events := make([]epoll.Event, 1)
@@ -405,8 +409,14 @@ func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n],
 		"invalid interests must retain the existing kernel registration")
+}
 
-	_, err = poller.Wait(nil, 0)
+func TestInvalidArgumentsPrecedeClosedPollerErrors(t *testing.T) {
+	poller := test.Poller(t)
+	reader, _ := test.Pipe(t)
+	registration := test.Registration(t, poller, reader, epoll.Readable)
+
+	_, err := poller.Wait(nil, 0)
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	require.NoError(t, poller.Close())
@@ -420,9 +430,8 @@ func TestInvalidArgumentsAndUnsupportedSourcesPreserveOwnership(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrInvalid, "buffer validation precedes closed state")
 }
 
-func TestZeroOwnersRejectOperations(t *testing.T) {
+func TestZeroPollerRejectsOperations(t *testing.T) {
 	var poller epoll.Poller
-	var registration epoll.Registration
 	reader, _ := test.Pipe(t)
 
 	added, err := poller.Add(reader, epoll.Readable)
@@ -432,6 +441,10 @@ func TestZeroOwnersRejectOperations(t *testing.T) {
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	require.ErrorIs(t, poller.Close(), os.ErrInvalid)
+}
+
+func TestZeroRegistrationRejectsOperations(t *testing.T) {
+	var registration epoll.Registration
 
 	require.ErrorIs(t, registration.Modify(epoll.Readable), os.ErrInvalid)
 
@@ -459,15 +472,17 @@ func TestConcurrentRegistrationChangesAndWaitsPreserveLifetime(t *testing.T) {
 		workers.Go(func() {
 			for range 25 {
 				registration, err := poller.Add(reader, epoll.Readable|epoll.OneShot)
-				if err == nil {
-					err = registration.Modify(epoll.Readable | epoll.EdgeTriggered)
-				}
-
-				if err == nil {
-					err = registration.Close()
-				}
-
 				if err != nil {
+					results <- err
+					return
+				}
+
+				if err := registration.Modify(epoll.Readable | epoll.EdgeTriggered); err != nil {
+					results <- err
+					return
+				}
+
+				if err := registration.Close(); err != nil {
 					results <- err
 					return
 				}

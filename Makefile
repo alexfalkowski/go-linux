@@ -1,11 +1,13 @@
 profile ?= rootless
 required ?= false
 kernel ?= supported
+delegation ?=
 
 export GO_LINUX_TEST_PROFILE := $(profile)
 export GO_LINUX_TEST_REQUIRED := $(required)
 export GO_LINUX_TEST_ARCH := $(arch)
 export GO_LINUX_TEST_KERNEL := $(kernel)
+export GO_LINUX_TEST_CGROUP := $(delegation)
 
 include bin/build/make/help.mak
 include bin/build/make/go.mak
@@ -65,6 +67,11 @@ verify-namespace:
 verify-namespace-container: export image := $(value image)
 verify-namespace-container:
 	@bash scripts/namespace "$$image" "$$GO_LINUX_TEST_ARCH"
+
+# Record prerequisites and run required cgroup tests in an explicitly delegated subtree.
+verify-cgroup:
+	@bash -eo pipefail -c '$(MAKE) test-environment profile=cgroup required=true | tee test/reports/environment.json'
+	@$(MAKE) specs package=cgroup profile=cgroup required=true
 
 # Record namespace prerequisites and run required isolated mount tests (arch optional).
 verify-mount:

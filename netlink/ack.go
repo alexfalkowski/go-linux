@@ -80,7 +80,8 @@ func (e *Error) Unwrap() error {
 
 func parseAcknowledgement(message Message) (Acknowledgement, error) {
 	data := message.Data
-	if len(data) < 4 || (message.Header.Type != ErrorMessage && message.Header.Type != Done) {
+	wrongType := message.Header.Type != ErrorMessage && message.Header.Type != Done
+	if len(data) < 4 || wrongType {
 		return Acknowledgement{}, ErrMalformed
 	}
 

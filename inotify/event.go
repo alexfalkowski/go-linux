@@ -138,7 +138,9 @@ func ParseEvents(p []byte) ([]Event, error) {
 		name := p[unix.SizeofInotifyEvent : unix.SizeofInotifyEvent+int(length)]
 		if len(name) != 0 {
 			end := bytes.IndexByte(name, 0)
-			if end < 0 || bytes.Count(name[end:], []byte{0}) != len(name)-end {
+			terminated := end >= 0
+			validPadding := terminated && bytes.Count(name[end:], []byte{0}) == len(name)-end
+			if !validPadding {
 				return nil, &os.PathError{Op: "decode", Path: "inotify", Err: os.ErrInvalid}
 			}
 			name = name[:end]

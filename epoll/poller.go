@@ -130,19 +130,19 @@ func (p *Poller) Add(file *os.File, interests Events) (*Registration, error) {
 // goroutines or signal masks are installed; a blocked call can occupy an OS
 // thread. This uses baseline epoll waiting, with no newer-wait fallback.
 func (p *Poller) Wait(events []Event, timeout time.Duration) (int, error) {
-	if len(events) == 0 || len(events) > math.MaxInt32/int(unsafe.Sizeof(unix.EpollEvent{})) {
+	maxEvents := math.MaxInt32 / int(unsafe.Sizeof(unix.EpollEvent{}))
+	if len(events) == 0 || len(events) > maxEvents {
 		return 0, os.ErrInvalid
 	}
 
 	p.mu.Lock()
-	err := p.stateError()
-	if err == nil {
+	if err := p.stateError(); err != nil {
+		p.mu.Unlock()
+		return 0, err
+	} else {
 		p.waits.Add(1)
 	}
 	p.mu.Unlock()
-	if err != nil {
-		return 0, err
-	}
 	defer p.waits.Done()
 
 	return p.waitReady(events, timeout)
@@ -196,7 +196,8 @@ func (p *Poller) waitReady(events []Event, timeout time.Duration) (int, error) {
 		if count > 0 {
 			return count, nil
 		}
-		if timeout == 0 || (timeout > 0 && time.Since(started) >= timeout) {
+		deadlineReached := timeout > 0 && time.Since(started) >= timeout
+		if timeout == 0 || deadlineReached {
 			return 0, nil
 		}
 	}
@@ -259,10 +260,11 @@ func (p *Poller) control(operation int, registration *Registration, interests Ev
 			return
 		}
 		var syscallErr error
-		controlErr = source.Control(func(sourceFD uintptr) {
+		if err := source.Control(func(sourceFD uintptr) {
 			syscallErr = unix.EpollCtl(int(fd), operation, int(sourceFD), &event)
-		})
-		if controlErr == nil {
+		}); err != nil {
+			controlErr = err
+		} else {
 			controlErr = syscallErr
 		}
 	})

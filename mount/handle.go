@@ -75,7 +75,9 @@ func Unmount(path string, flags UnmountFlags) error {
 // follow open_tree defaults; this is not a confined path-resolution API.
 // Closing dir after success leaves the handle valid. Errors wrap os.PathError.
 func Clone(dir *os.File, path string, flags CloneFlags) (*Handle, error) {
-	if flags & ^Recursive != 0 || (path == "" && dir == nil) {
+	unknownFlags := flags & ^Recursive != 0
+	missingDirectory := path == "" && dir == nil
+	if unknownFlags || missingDirectory {
 		return nil, &os.PathError{Op: "open_tree", Path: path, Err: os.ErrInvalid}
 	}
 
@@ -146,7 +148,9 @@ func (h *Handle) Attributes() (Attributes, error) {
 // follow partial application; no rollback is promised. Other attributes,
 // propagation, and ID mappings are left untouched.
 func (h *Handle) SetAttributes(change AttributeChange) error {
-	if (change.Set|change.Clear) & ^supportedAttributes != 0 || change.Set&change.Clear != 0 {
+	unknownAttributes := (change.Set|change.Clear) & ^supportedAttributes != 0
+	conflictingAttributes := change.Set&change.Clear != 0
+	if unknownAttributes || conflictingAttributes {
 		return &os.PathError{Op: "mount_setattr", Path: "mount", Err: os.ErrInvalid}
 	}
 	flags := uint(unix.AT_EMPTY_PATH)

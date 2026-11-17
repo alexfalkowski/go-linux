@@ -59,7 +59,10 @@ func (w *Watcher) AddWatch(path string, mask Mask) (WatchID, error) {
 		return 0, os.ErrInvalid
 	}
 	const allowed = AllEvents | OnlyDir | DontFollow | ExclUnlink | MaskCreate | MaskAdd | OneShot
-	if mask&^allowed != 0 || mask&AllEvents == 0 || mask&(MaskAdd|MaskCreate) == MaskAdd|MaskCreate {
+	unknownBits := mask&^allowed != 0
+	missingEvents := mask&AllEvents == 0
+	conflictingOptions := mask&(MaskAdd|MaskCreate) == MaskAdd|MaskCreate
+	if unknownBits || missingEvents || conflictingOptions {
 		return 0, &os.PathError{Op: "inotify_add_watch", Path: path, Err: os.ErrInvalid}
 	}
 

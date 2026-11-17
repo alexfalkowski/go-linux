@@ -64,8 +64,10 @@ func (g *Group) decodeEvent(p []byte) (*Event, error) {
 	}
 
 	metadata := int(binary.NativeEndian.Uint16(p[6:8]))
-	if metadata < unix.FAN_EVENT_METADATA_LEN || metadata > len(p) ||
-		(fd < 0 && (fd != unix.FAN_NOFD || event.Mask&QueueOverflow == 0 || event.permission)) {
+	invalidMetadata := metadata < unix.FAN_EVENT_METADATA_LEN || metadata > len(p)
+	missingDescriptor := fd < 0
+	validOverflow := fd == unix.FAN_NOFD && event.Mask&QueueOverflow != 0 && !event.permission
+	if invalidMetadata || (missingDescriptor && !validOverflow) {
 		return event, os.ErrInvalid
 	}
 

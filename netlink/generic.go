@@ -62,7 +62,12 @@ func ParseFamily(message Message) (Family, error) {
 	}
 
 	generic, err := unmarshalGenericMessage(message.Data)
-	if err != nil || generic.Reserved != 0 || (generic.Command != unix.CTRL_CMD_NEWFAMILY && generic.Command != unix.CTRL_CMD_DELFAMILY) {
+	if err != nil {
+		return Family{}, ErrMalformed
+	}
+	reservedData := generic.Reserved != 0
+	wrongCommand := generic.Command != unix.CTRL_CMD_NEWFAMILY && generic.Command != unix.CTRL_CMD_DELFAMILY
+	if reservedData || wrongCommand {
 		return Family{}, ErrMalformed
 	}
 
@@ -152,7 +157,9 @@ type Group struct {
 // Unknown names may trigger Linux module autoloading; use known names when only
 // observation is intended. Results are bounded by Conn's Options and deadlines.
 func (c *Conn) LookupFamily(name string) (Family, error) {
-	if c.protocol != socket.Generic || name == "" || len(name) >= unix.GENL_NAMSIZ || strings.ContainsRune(name, 0) {
+	wrongProtocol := c.protocol != socket.Generic
+	invalidName := name == "" || len(name) >= unix.GENL_NAMSIZ || strings.ContainsRune(name, 0)
+	if wrongProtocol || invalidName {
 		return Family{}, os.ErrInvalid
 	}
 
@@ -226,7 +233,9 @@ func (f *Family) decodeAttributes() error {
 		}
 	}
 
-	if f.ID < unix.NLMSG_MIN_TYPE || f.Name == "" || len(f.Name) >= unix.GENL_NAMSIZ {
+	reservedID := f.ID < unix.NLMSG_MIN_TYPE
+	invalidName := f.Name == "" || len(f.Name) >= unix.GENL_NAMSIZ
+	if reservedID || invalidName {
 		return ErrMalformed
 	}
 	return nil
@@ -263,7 +272,9 @@ func parseGroups(data []byte) ([]Group, error) {
 		if err != nil {
 			return nil, err
 		}
-		if group.ID == 0 || group.Name == "" || len(group.Name) >= unix.GENL_NAMSIZ {
+		missingID := group.ID == 0
+		invalidName := group.Name == "" || len(group.Name) >= unix.GENL_NAMSIZ
+		if missingID || invalidName {
 			return nil, ErrMalformed
 		}
 		groups = append(groups, group)

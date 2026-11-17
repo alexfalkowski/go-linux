@@ -34,7 +34,9 @@ const Permanent AddressFlags = unix.IFA_F_PERMANENT
 // borrow message.Data. Missing addresses, invalid prefixes, duplicate interpreted
 // attributes, or wrong widths match netlink.ErrMalformed and return no record.
 func ParseAddress(message netlink.Message) (Address, error) {
-	if (message.Header.Type != unix.RTM_NEWADDR && message.Header.Type != unix.RTM_DELADDR) || len(message.Data) < unix.SizeofIfAddrmsg {
+	wrongType := message.Header.Type != unix.RTM_NEWADDR && message.Header.Type != unix.RTM_DELADDR
+	shortHeader := len(message.Data) < unix.SizeofIfAddrmsg
+	if wrongType || shortHeader {
 		return Address{}, netlink.ErrMalformed
 	}
 
@@ -123,7 +125,8 @@ func (c *Conn) Addresses(family Family) ([]Address, error) {
 	}
 
 	return parseMessages(messages, func(message netlink.Message) (Address, error) {
-		if message.Header.Type != unix.RTM_NEWADDR || len(message.Data) == 0 || Family(message.Data[0]) != family {
+		matchesFamily := message.Header.Type == unix.RTM_NEWADDR && len(message.Data) > 0 && Family(message.Data[0]) == family
+		if !matchesFamily {
 			return Address{}, netlink.ErrUnexpectedReply
 		}
 		return ParseAddress(message)
@@ -232,7 +235,10 @@ func (a *Address) decodeAttribute(attribute netlink.Attribute, family Family) er
 }
 
 func (c AddressConfig) validate() error {
-	if !c.Prefix.IsValid() || !validIndex(c.Index) || c.Flags & ^(NoDAD|NoPrefixRoute) != 0 {
+	invalidPrefix := !c.Prefix.IsValid()
+	invalidIndex := !validIndex(c.Index)
+	unknownFlags := c.Flags & ^(NoDAD|NoPrefixRoute) != 0
+	if invalidPrefix || invalidIndex || unknownFlags {
 		return os.ErrInvalid
 	}
 
@@ -245,10 +251,12 @@ func (c AddressConfig) validate() error {
 }
 
 func (c AddressConfig) validateIPv4Attributes(family Family) error {
-	if c.Broadcast.IsValid() && (family != IPv4 || !validIP(c.Broadcast, IPv4)) {
+	invalidBroadcast := c.Broadcast.IsValid() && (family != IPv4 || !validIP(c.Broadcast, IPv4))
+	if invalidBroadcast {
 		return os.ErrInvalid
 	}
-	if c.Label != "" && (family != IPv4 || len(c.Label) >= unix.IFNAMSIZ || strings.ContainsRune(c.Label, 0)) {
+	invalidLabel := c.Label != "" && (family != IPv4 || len(c.Label) >= unix.IFNAMSIZ || strings.ContainsRune(c.Label, 0))
+	if invalidLabel {
 		return os.ErrInvalid
 	}
 	return nil

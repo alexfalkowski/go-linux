@@ -47,7 +47,8 @@ func FanotifyNamespace(t *testing.T) bool {
 	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWNS}
 	output, err := command.CombinedOutput()
 	require.NoError(t, ctx.Err(), "isolated fanotify test exceeded its time bound")
-	if errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC) {
+	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
+	if unavailable {
 		require.False(t, options.Required, "mount namespace prerequisite: %v", err)
 		t.Skipf("fanotify isolation requires permitted clone(mount): %v", err)
 	}

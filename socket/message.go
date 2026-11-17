@@ -77,7 +77,8 @@ func (c *Conn) Send(p []byte, to Address, files ...*os.File) (int, error) {
 		return 0, socketError("sendmsg", err)
 	}
 
-	if len(files) > 0 && (c.family != unix.AF_UNIX || len(p) == 0) {
+	invalidFileMessage := len(files) > 0 && (c.family != unix.AF_UNIX || len(p) == 0)
+	if invalidFileMessage {
 		return 0, socketError("sendmsg", os.ErrInvalid)
 	}
 

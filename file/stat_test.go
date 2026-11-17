@@ -14,7 +14,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestStatReportsMetadataWithoutChangingTheFileOffset(t *testing.T) {
+func TestStatReportsBasicMetadata(t *testing.T) {
 	source := test.TempFile(t, 8193)
 	test.WriteAt(t, source, 0, "contents")
 
@@ -23,9 +23,6 @@ func TestStatReportsMetadataWithoutChangingTheFileOffset(t *testing.T) {
 	require.NoError(t, os.Chtimes(source.Name(), access, modified))
 
 	require.NoError(t, source.Chmod(0o640|os.ModeSetuid|os.ModeSetgid|os.ModeSticky))
-
-	_, err := source.Seek(3, io.SeekStart)
-	require.NoError(t, err)
 
 	metadata, err := file.Stat(source, file.MaskBasic|file.MaskBirthTime|file.MaskMountID)
 	require.NoError(t, err)
@@ -43,10 +40,23 @@ func TestStatReportsMetadataWithoutChangingTheFileOffset(t *testing.T) {
 	info, err := source.Stat()
 	require.NoError(t, err)
 	require.Equal(t, info.Mode(), metadata.Mode, "Go mode translation must include special bits")
+}
+
+func TestStatLeavesBorrowedFileAndOffsetUnchanged(t *testing.T) {
+	source := test.TempFile(t, 8)
+	_, err := source.Seek(3, io.SeekStart)
+	require.NoError(t, err)
+
+	_, err = file.Stat(source, file.MaskBasic)
+	require.NoError(t, err)
 
 	position, err := source.Seek(0, io.SeekCurrent)
 	require.NoError(t, err)
 	require.Equal(t, int64(3), position)
+}
+
+func TestStatHonorsRequestedMetadataMasks(t *testing.T) {
+	source := test.TempFile(t, 8193)
 
 	for _, mask := range []file.StatMask{0, file.MaskSize, file.MaskBirthTime, file.MaskUniqueMountID, file.MaskMountID | file.MaskUniqueMountID} {
 		observed, err := file.Stat(source, mask)
@@ -59,7 +69,7 @@ func TestStatReportsMetadataWithoutChangingTheFileOffset(t *testing.T) {
 		}
 
 		if observed.Mask&file.MaskSize != 0 {
-			require.Equal(t, metadata.Size, observed.Size)
+			require.Equal(t, uint64(8193), observed.Size)
 		}
 
 		if observed.Mask&file.MaskBirthTime != 0 {
@@ -196,7 +206,9 @@ func TestStatMatchesIndependentKernelMetadata(t *testing.T) {
 	if file.StatMask(want.Mask)&file.MaskBirthTime != 0 {
 		require.Equal(t, time.Unix(want.Btime.Sec, int64(want.Btime.Nsec)).UTC(), got.BirthTime)
 	}
+}
 
+func TestStatReportsMountRootAndUnavailableBirthTime(t *testing.T) {
 	proc := test.OpenFile(t, "/proc")
 	metadata, err := file.Stat(proc, file.MaskBirthTime|file.MaskMountID)
 	require.NoError(t, err)
@@ -204,7 +216,9 @@ func TestStatMatchesIndependentKernelMetadata(t *testing.T) {
 	require.Zero(t, metadata.BirthTime)
 	require.NotZero(t, metadata.AttributesMask&file.MountRoot)
 	require.NotZero(t, metadata.Attributes&file.MountRoot)
+}
 
+func TestStatPreservesDeviceNumbers(t *testing.T) {
 	device := test.OpenFile(t, "/dev/null")
 	wantDevice := test.FileStatx(t, device, uint32(file.MaskType))
 	gotDevice, err := file.Stat(device, file.MaskType)

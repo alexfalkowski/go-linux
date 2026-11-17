@@ -76,10 +76,14 @@ func TestTruncationChangesSizeAndZeroFillsGrowth(t *testing.T) {
 	require.Equal(t, int64(2), stat.Size(), "shrinking must change the file size")
 }
 
-func TestFilesRejectNegativeSizesAndDeadlines(t *testing.T) {
+func TestFilesRejectNegativeSizes(t *testing.T) {
 	file := test.Memfd(t, memfd.Options{})
 
 	require.ErrorIs(t, file.Truncate(-1), test.ErrInvalidArgument)
+}
+
+func TestFilesDoNotSupportDeadlines(t *testing.T) {
+	file := test.Memfd(t, memfd.Options{})
 
 	require.ErrorIs(t, file.SetDeadline(time.Time{}), os.ErrNoDeadline)
 }
@@ -332,41 +336,19 @@ func TestUnavailableFilesRejectOperations(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			file := scenario.file
-			t.Run("read seals", func(t *testing.T) {
-				_, err := file.Seals()
-				require.ErrorIs(t, err, scenario.err)
-			})
+			_, err := file.Seals()
+			require.ErrorIs(t, err, scenario.err)
 
-			t.Run("read contents", func(t *testing.T) {
-				_, err := file.Read(make([]byte, 1))
-				require.ErrorIs(t, err, scenario.err)
-			})
+			_, err = file.Read(make([]byte, 1))
+			require.ErrorIs(t, err, scenario.err)
 
-			t.Run("map contents", func(t *testing.T) {
-				region, err := file.Map(0, os.Getpagesize(), mmap.Options{Protection: mmap.Read})
-				test.NoResource(t, region, err, scenario.err)
-			})
+			region, err := file.Map(0, os.Getpagesize(), mmap.Options{Protection: mmap.Read})
+			test.NoResource(t, region, err, scenario.err)
 
-			for _, operation := range []struct {
-				name string
-				run  func() error
-				err  error
-			}{
-				{name: "close", run: file.Close, err: scenario.err},
-				{name: "add seals", run: func() error {
-					return file.AddSeals(memfd.SealGrow)
-				}, err: scenario.err},
-
-				{name: "invalid masks precede file state", run: func() error {
-					return file.AddSeals(1 << 31)
-				}, err: os.ErrInvalid},
-
-				{name: "resize", run: func() error {
-					return file.Truncate(1)
-				}, err: scenario.err},
-			} {
-				require.ErrorIs(t, operation.run(), operation.err, operation.name)
-			}
+			require.ErrorIs(t, file.Close(), scenario.err)
+			require.ErrorIs(t, file.AddSeals(memfd.SealGrow), scenario.err)
+			require.ErrorIs(t, file.AddSeals(1<<31), os.ErrInvalid, "invalid masks precede file state")
+			require.ErrorIs(t, file.Truncate(1), scenario.err)
 		})
 	}
 }

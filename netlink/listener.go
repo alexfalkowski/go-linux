@@ -70,7 +70,8 @@ func (l *Listener) ReadMessages() ([]Message, error) {
 // JoinGroup adds NETLINK_ADD_MEMBERSHIP through socket.Conn.JoinGroup.
 // IDs must be in 1..2^31-1; invalid IDs match os.ErrInvalid.
 func (l *Listener) JoinGroup(group uint32) error {
-	if group == 0 || group > 1<<31-1 || l.conn == nil {
+	invalidGroup := group == 0 || group > 1<<31-1
+	if invalidGroup || l.conn == nil {
 		return os.ErrInvalid
 	}
 	return l.conn.JoinGroup(group)
@@ -79,7 +80,8 @@ func (l *Listener) JoinGroup(group uint32) error {
 // LeaveGroup drops NETLINK_DROP_MEMBERSHIP through socket.Conn.LeaveGroup,
 // using JoinGroup's validation. Already queued notifications may remain.
 func (l *Listener) LeaveGroup(group uint32) error {
-	if group == 0 || group > 1<<31-1 || l.conn == nil {
+	invalidGroup := group == 0 || group > 1<<31-1
+	if invalidGroup || l.conn == nil {
 		return os.ErrInvalid
 	}
 	return l.conn.LeaveGroup(group)

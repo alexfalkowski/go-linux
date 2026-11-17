@@ -23,9 +23,8 @@ func TestPermissionResponsesAndAbandonedEvents(t *testing.T) {
 		decision fanotify.Decision
 	}{{name: "allow", decision: fanotify.Allow}, {name: "deny", decision: fanotify.Deny}, {name: "abandoned"}} {
 		t.Run(scenario.name, func(t *testing.T) {
-			group := test.Value(t, func() (*fanotify.Group, error) {
-				return fanotify.New(fanotify.Content)
-			})
+			group, err := fanotify.New(fanotify.Content)
+			require.NoError(t, err)
 			test.Cleanup(t, group)
 			require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 
@@ -74,9 +73,8 @@ func TestAccessPermissionAndGroupClosure(t *testing.T) {
 		return
 	}
 
-	group := test.Value(t, func() (*fanotify.Group, error) {
-		return fanotify.New(fanotify.Content)
-	})
+	group, err := fanotify.New(fanotify.Content)
+	require.NoError(t, err)
 	test.Cleanup(t, group)
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 
@@ -116,15 +114,14 @@ func TestExecOpenPermissionAndNotification(t *testing.T) {
 	}
 
 	path := test.ExecutableCopy(t)
-	group := test.Value(t, func() (*fanotify.Group, error) {
-		return fanotify.New(fanotify.Content)
-	})
+	group, err := fanotify.New(fanotify.Content)
+	require.NoError(t, err)
 	test.Cleanup(t, group)
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 
 	require.NoError(t, group.AddMark(path, fanotify.OpenExecPermission|fanotify.OpenExec, 0))
 
-	ctx, command := test.Command(t, "TestZeroOwnersRejectOperations")
+	ctx, command := test.Command(t, "TestZeroGroupRejectsOperations")
 	command.Path, command.Args[0] = path, path
 	completed := test.StartRead(t, command.CombinedOutput)
 	events, err := group.ReadEvents(make([]byte, 4096))
@@ -236,9 +233,8 @@ func TestIterationDeniesPermissionOnEarlyExit(t *testing.T) {
 		return
 	}
 
-	group := test.Value(t, func() (*fanotify.Group, error) {
-		return fanotify.New(fanotify.Content)
-	})
+	group, err := fanotify.New(fanotify.Content)
+	require.NoError(t, err)
 	test.Cleanup(t, group)
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 

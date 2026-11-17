@@ -31,7 +31,7 @@ func TestInvalidClassesReturnNoResource(t *testing.T) {
 	require.Equal(t, before, test.Descriptors(t))
 }
 
-func TestZeroOwnersRejectOperations(t *testing.T) {
+func TestZeroGroupRejectsOperations(t *testing.T) {
 	group := new(fanotify.Group)
 	require.ErrorIs(t, group.Close(), os.ErrInvalid)
 
@@ -46,6 +46,10 @@ func TestZeroOwnersRejectOperations(t *testing.T) {
 	events, err := group.ReadEvents(make([]byte, 24))
 	require.Nil(t, events)
 	require.ErrorIs(t, err, os.ErrInvalid)
+}
+
+func TestZeroGroupIterationYieldsOneTerminalError(t *testing.T) {
+	var group fanotify.Group
 
 	var terminal int
 	for event, err := range group.Events() {
@@ -56,28 +60,29 @@ func TestZeroOwnersRejectOperations(t *testing.T) {
 	}
 
 	require.Equal(t, 1, terminal, "iteration must yield exactly one terminal error")
+}
 
+func TestZeroEventRejectsOperations(t *testing.T) {
 	event := new(fanotify.Event)
 	require.ErrorIs(t, event.Close(), os.ErrInvalid)
 
 	require.ErrorIs(t, event.Respond(fanotify.Allow), os.ErrInvalid)
 
-	_, err = event.Stat()
+	_, err := event.Stat()
 	require.ErrorIs(t, err, os.ErrInvalid)
 
 	_, err = event.ReadAt(make([]byte, 1), 0)
 	require.ErrorIs(t, err, os.ErrInvalid)
 }
 
-func TestNotificationFilesAndMarks(t *testing.T) {
+func TestRemovingMarksPreservesQueuedNotifications(t *testing.T) {
 	if !test.FanotifyNamespace(t) {
 		return
 	}
 
 	before := test.Descriptors(t)
-	group := test.Value(t, func() (*fanotify.Group, error) {
-		return fanotify.New(fanotify.Notification)
-	})
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
 	test.Cleanup(t, group)
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 
@@ -91,12 +96,6 @@ func TestNotificationFilesAndMarks(t *testing.T) {
 
 	require.NoError(t, group.RemoveMark(path, fanotify.Open|fanotify.CloseWrite, 0))
 
-	for _, size := range []int{0, 1, 23} {
-		events, err := group.ReadEvents(make([]byte, size))
-		require.Nil(t, events)
-		require.ErrorIs(t, err, test.ErrInvalidArgument)
-	}
-
 	var observed fanotify.Mask
 	for observed != fanotify.Open|fanotify.CloseWrite {
 		events, err := group.ReadEvents(make([]byte, 24))
@@ -105,33 +104,73 @@ func TestNotificationFilesAndMarks(t *testing.T) {
 
 		event := events[0]
 		test.Cleanup(t, event)
-		require.Equal(t, os.Getpid(), event.PID)
-
 		observed |= event.Mask
-		require.Empty(t, event.Info)
-		require.Equal(t, []byte("updated!"), test.ReadAt(t, event, 0, 8))
-
-		require.ErrorIs(t, event.Respond(fanotify.Allow), os.ErrInvalid)
-
 		require.NoError(t, event.Close())
-		require.ErrorIs(t, event.Close(), os.ErrClosed)
-
-		_, err = event.Stat()
-		require.ErrorIs(t, err, os.ErrClosed)
 	}
 
 	require.ErrorIs(t, group.RemoveMark(path, fanotify.Open, 0), test.ErrNotExist)
 
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(-time.Second)))
 
-	_, err := group.ReadEvents(make([]byte, 4096))
+	_, err = group.ReadEvents(make([]byte, 4096))
 	require.ErrorIs(t, err, os.ErrDeadlineExceeded)
-
-	require.NoError(t, group.SetReadDeadline(time.Time{}))
 
 	require.NoError(t, group.Close())
 	require.ErrorIs(t, group.Close(), os.ErrClosed)
 	require.Equal(t, before, test.Descriptors(t), "group and delivered event files must be released")
+}
+
+func TestShortNotificationBuffersPreserveQueuedEvent(t *testing.T) {
+	if !test.FanotifyNamespace(t) {
+		return
+	}
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
+	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
+	path := test.TempFile(t, 0).Name()
+	require.NoError(t, group.AddMark(path, fanotify.CloseWrite, 0))
+	require.NoError(t, os.WriteFile(path, []byte("contents"), 0o600))
+
+	for _, size := range []int{0, 1, 23} {
+		events, err := group.ReadEvents(make([]byte, size))
+		require.Nil(t, events)
+		require.ErrorIs(t, err, test.ErrInvalidArgument)
+	}
+
+	events, err := group.ReadEvents(make([]byte, 24))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	test.Cleanup(t, events[0])
+	require.Equal(t, fanotify.CloseWrite, events[0].Mask)
+}
+
+func TestNotificationEventProvidesFileAccessWithoutPermissionResponse(t *testing.T) {
+	if !test.FanotifyNamespace(t) {
+		return
+	}
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
+	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
+	path := test.TempFile(t, 0).Name()
+	require.NoError(t, group.AddMark(path, fanotify.CloseWrite, 0))
+	require.NoError(t, os.WriteFile(path, []byte("updated!"), 0o600))
+
+	events, err := group.ReadEvents(make([]byte, 24))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	event := events[0]
+	test.Cleanup(t, event)
+	require.Equal(t, os.Getpid(), event.PID)
+	require.Empty(t, event.Info)
+	require.Equal(t, []byte("updated!"), test.ReadAt(t, event, 0, 8))
+	require.ErrorIs(t, event.Respond(fanotify.Allow), os.ErrInvalid)
+
+	require.NoError(t, event.Close())
+	require.ErrorIs(t, event.Close(), os.ErrClosed)
+	_, err = event.Stat()
+	require.ErrorIs(t, err, os.ErrClosed)
 }
 
 func TestGroupAndEventFilesAreCloseOnExec(t *testing.T) {
@@ -140,9 +179,8 @@ func TestGroupAndEventFilesAreCloseOnExec(t *testing.T) {
 	}
 
 	before := test.Descriptors(t)
-	group := test.Value(t, func() (*fanotify.Group, error) {
-		return fanotify.New(fanotify.Notification)
-	})
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
 	test.Cleanup(t, group)
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 
@@ -164,6 +202,23 @@ func TestGroupAndEventFilesAreCloseOnExec(t *testing.T) {
 	fd = test.NewDescriptor(t, before)
 	test.CloseOnExec(t, fd)
 	require.True(t, test.DescriptorReadOnly(t, fd), "event files must be read-only")
+}
+
+func TestEventFileSurvivesUnlinkAndGroupClosure(t *testing.T) {
+	if !test.FanotifyNamespace(t) {
+		return
+	}
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
+	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
+	path := test.TempFile(t, 4).Name()
+	require.NoError(t, group.AddMark(path, fanotify.CloseWrite, 0))
+	require.NoError(t, os.WriteFile(path, []byte("data"), 0o600))
+	events, err := group.ReadEvents(make([]byte, 4096))
+	require.NoError(t, err)
+	require.Len(t, events, 1)
+	test.Cleanup(t, events[0])
 
 	info, err := events[0].Stat()
 	require.NoError(t, err)
@@ -196,15 +251,15 @@ func TestKernelCreationFailureReturnsNoGroup(t *testing.T) {
 	test.DescriptorSlot(t)
 }
 
-func TestInvalidMarksAndClosedGroups(t *testing.T) {
+func TestInvalidMarksAreRejected(t *testing.T) {
 	if !test.FanotifyNamespace(t) {
 		return
 	}
 
-	group := test.Value(t, func() (*fanotify.Group, error) {
-		return fanotify.New(fanotify.Notification)
-	})
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
 	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 	for _, mask := range []fanotify.Mask{0, fanotify.OnDir, fanotify.QueueOverflow, fanotify.OpenPermission, 1 << 63} {
 		require.ErrorIs(t, group.AddMark("", mask, 0), os.ErrInvalid, "mask %#x", mask)
 	}
@@ -220,6 +275,17 @@ func TestInvalidMarksAndClosedGroups(t *testing.T) {
 	require.ErrorIs(t, group.AddMark(path, fanotify.Open, fanotify.OnlyDir), test.ErrNotDirectory)
 
 	require.ErrorIs(t, group.Flush(fanotify.OnlyDir), os.ErrInvalid)
+}
+
+func TestClosedGroupRejectsOperations(t *testing.T) {
+	if !test.FanotifyNamespace(t) {
+		return
+	}
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
+	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
+	path := test.TempFile(t, 0).Name()
 
 	require.NoError(t, group.Close())
 
@@ -233,26 +299,35 @@ func TestInvalidMarksAndClosedGroups(t *testing.T) {
 
 	require.ErrorIs(t, group.AddMark(path, 0, 0), os.ErrInvalid)
 
-	_, err := group.ReadEvents(make([]byte, 24))
+	_, err = group.ReadEvents(make([]byte, 24))
 	require.ErrorIs(t, err, os.ErrClosed)
 }
 
-func TestReadDeadlinesAndConcurrentClose(t *testing.T) {
+func TestReadDeadlineInterruptsPendingRead(t *testing.T) {
 	if !test.FanotifyNamespace(t) {
 		return
 	}
 
-	group := test.Value(t, func() (*fanotify.Group, error) {
-		return fanotify.New(fanotify.Notification)
-	})
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
 	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 
 	read := test.StartRead(t, func() ([]*fanotify.Event, error) {
 		return group.ReadEvents(make([]byte, 4096))
 	})
 	require.NoError(t, group.SetReadDeadline(time.Now().Add(-time.Second)))
 	require.ErrorIs(t, test.Receive(t, read).Err, os.ErrDeadlineExceeded)
+}
 
+func TestCloseInterruptsReadersWhileMarksAreFlushed(t *testing.T) {
+	if !test.FanotifyNamespace(t) {
+		return
+	}
+	group, err := fanotify.New(fanotify.Notification)
+	require.NoError(t, err)
+	test.Cleanup(t, group)
+	require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 	require.NoError(t, group.SetReadDeadline(time.Time{}))
 
 	var readers []<-chan test.ReadResult[[]*fanotify.Event]
@@ -302,9 +377,8 @@ func TestMountAndFilesystemScopes(t *testing.T) {
 			nested := filepath.Join(root, "nested")
 			require.NoError(t, os.Mkdir(nested, 0o700))
 
-			group := test.Value(t, func() (*fanotify.Group, error) {
-				return fanotify.New(fanotify.Notification)
-			})
+			group, err := fanotify.New(fanotify.Notification)
+			require.NoError(t, err)
 			test.Cleanup(t, group)
 			require.NoError(t, group.SetReadDeadline(time.Now().Add(5*time.Second)))
 

@@ -13,8 +13,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestMulticastReceptionInPrivateNetworkNamespace checks the kernel route ABI
-// with test-owned native fixtures until the typed route package exists.
+// TestMulticastReceptionInPrivateNetworkNamespace checks the generic listener
+// against independent route ABI observations.
 func TestMulticastReceptionInPrivateNetworkNamespace(t *testing.T) {
 	if !test.NetworkNamespace(t) {
 		return
@@ -36,7 +36,7 @@ func TestMulticastReceptionInPrivateNetworkNamespace(t *testing.T) {
 	require.True(t, found, "the private interface change must produce an authenticated kernel notification")
 }
 
-func TestListenerMembershipDeadlinesAndClose(t *testing.T) {
+func TestListenerGroupMembershipCanBeChanged(t *testing.T) {
 	group := test.NetlinkGroup(t, "nlctrl", "notify")
 	listener, err := netlink.Listen(socket.Generic, netlink.Options{}, group.ID)
 	require.NoError(t, err)
@@ -44,13 +44,24 @@ func TestListenerMembershipDeadlinesAndClose(t *testing.T) {
 	require.NoError(t, listener.LeaveGroup(group.ID))
 	require.NoError(t, listener.JoinGroup(group.ID))
 	require.NoError(t, listener.LeaveGroup(group.ID))
+}
+
+func TestListenerDeadlineInterruptsPendingRead(t *testing.T) {
+	listener, err := netlink.Listen(socket.Route, netlink.Options{})
+	require.NoError(t, err)
+	test.Cleanup(t, listener)
 
 	pending := test.StartRead(t, listener.ReadMessages)
 	require.NoError(t, listener.SetReadDeadline(time.Now().Add(-time.Second)))
 	require.ErrorIs(t, test.Receive(t, pending).Err, os.ErrDeadlineExceeded)
-	require.NoError(t, listener.SetReadDeadline(time.Time{}))
+}
 
-	pending = test.StartRead(t, listener.ReadMessages)
+func TestListenerCloseInterruptsPendingRead(t *testing.T) {
+	listener, err := netlink.Listen(socket.Route, netlink.Options{})
+	require.NoError(t, err)
+	test.Cleanup(t, listener)
+
+	pending := test.StartRead(t, listener.ReadMessages)
 	require.NoError(t, listener.Close())
 	require.ErrorIs(t, test.Receive(t, pending).Err, os.ErrClosed)
 	require.ErrorIs(t, listener.Close(), os.ErrClosed)
@@ -90,18 +101,26 @@ func TestListenerCreationFailureReleasesJoinedMemberships(t *testing.T) {
 	listener, err := netlink.Listen(socket.Generic, netlink.Options{}, group.ID, 1<<31-1)
 	test.NoResource(t, listener, err, test.ErrInvalidArgument)
 	require.Equal(t, before, test.DescriptorCount(t), "failure after the first membership must close the socket")
+}
 
+func TestInvalidListenerGroupsReturnNoOwner(t *testing.T) {
 	for _, group := range []uint32{0, 1 << 31} {
 		listener, err := netlink.Listen(socket.Route, netlink.Options{}, group)
 		test.NoResource(t, listener, err, os.ErrInvalid)
 	}
+}
+
+func TestZeroListenerRejectsOperations(t *testing.T) {
 	var zero netlink.Listener
-	_, err = zero.ReadMessages()
+	_, err := zero.ReadMessages()
 	require.ErrorIs(t, err, os.ErrInvalid)
 	require.ErrorIs(t, zero.Close(), os.ErrInvalid)
 	require.ErrorIs(t, zero.SetReadDeadline(time.Time{}), os.ErrInvalid)
 	require.ErrorIs(t, zero.JoinGroup(1), os.ErrInvalid)
 	require.ErrorIs(t, zero.LeaveGroup(1), os.ErrInvalid)
-	listener, err = netlink.Listen(socket.Route, netlink.Options{DatagramSize: -1})
+}
+
+func TestInvalidListenerOptionsReturnNoOwner(t *testing.T) {
+	listener, err := netlink.Listen(socket.Route, netlink.Options{DatagramSize: -1})
 	test.NoResource(t, listener, err, os.ErrInvalid)
 }

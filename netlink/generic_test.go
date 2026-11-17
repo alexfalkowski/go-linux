@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGenericHeaderRoundTripAndShortInput(t *testing.T) {
+func TestGenericHeaderRoundTripOwnsDecodedPayload(t *testing.T) {
 	want := netlink.GenericMessage{Command: 42, Version: 7, Reserved: 0x1234, Data: []byte{1, 2, 3}}
 	data, err := want.MarshalBinary()
 	require.NoError(t, err)
@@ -22,6 +22,13 @@ func TestGenericHeaderRoundTripAndShortInput(t *testing.T) {
 	require.Equal(t, want, got)
 	data[4] = 99
 	require.Equal(t, byte(1), got.Data[0], "BinaryUnmarshaler must own retained bytes")
+}
+
+func TestShortGenericHeadersLeaveReceiverUnchanged(t *testing.T) {
+	want := netlink.GenericMessage{Command: 42, Version: 7, Reserved: 0x1234, Data: []byte{1, 2, 3}}
+	got := want
+	data := make([]byte, 4)
+
 	for size := range 4 {
 		err := got.UnmarshalBinary(data[:size])
 		require.ErrorIs(t, err, netlink.ErrMalformed)

@@ -236,14 +236,23 @@ func TestErrorsPreserveInputsAndReturnNoPartialResults(t *testing.T) {
 		require.Nil(t, names)
 	}
 
+	_, err := dir.Stat()
+	require.NoError(t, err, "errors leave borrowed handles open")
+}
+
+func TestInvalidSetModesPrecedeHandleValidation(t *testing.T) {
 	for _, mode := range []xattr.SetMode{xattr.Create | xattr.Replace, 1 << 31} {
 		require.ErrorIs(t, xattr.Set(nil, "user.mode", nil, mode), os.ErrInvalid)
 	}
+}
+
+func TestOversizedValuesLeaveBorrowedHandleOpen(t *testing.T) {
+	dir := test.OpenFile(t, t.TempDir())
 
 	require.ErrorIs(t, xattr.Set(dir, "user.large", make([]byte, 65537), xattr.Upsert), test.ErrArgumentListTooLong)
 
 	_, err := dir.Stat()
-	require.NoError(t, err, "errors leave borrowed handles open")
+	require.NoError(t, err)
 }
 
 func TestUnavailableHandlesRejectEveryOperation(t *testing.T) {
@@ -384,7 +393,7 @@ func TestListsRemainCompleteDuringConcurrentAttributeChanges(t *testing.T) {
 	require.Positive(t, successes, "concurrent listings must exercise successful results")
 }
 
-func TestUnsupportedNamespacesAndNonDirectoryAnchorsStayObservable(t *testing.T) {
+func TestUnsupportedAttributeNamespacePreservesKernelError(t *testing.T) {
 	opened := test.TempFile(t, 0)
 	require.ErrorIs(t, xattr.Set(opened, "unsupported.attribute", nil, xattr.Upsert), test.ErrNotSupported)
 
@@ -393,8 +402,12 @@ func TestUnsupportedNamespacesAndNonDirectoryAnchorsStayObservable(t *testing.T)
 	require.Nil(t, value)
 
 	require.ErrorIs(t, xattr.Remove(opened, "unsupported.attribute"), test.ErrNotSupported)
+}
 
-	_, err = xattr.GetAt(opened, "child", "user.a", xattr.PathOptions{})
+func TestNonDirectoryAnchorRejectsChildLookup(t *testing.T) {
+	opened := test.TempFile(t, 0)
+
+	_, err := xattr.GetAt(opened, "child", "user.a", xattr.PathOptions{})
 	require.ErrorIs(t, err, test.ErrNotDirectory)
 
 	names, err := xattr.ListAt(opened, "child", xattr.PathOptions{})

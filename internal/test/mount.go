@@ -57,19 +57,21 @@ func PathIsTmpfs(t *testing.T, path string) bool {
 // MountOpenError independently observes fsopen's errno, closing any acquisition.
 func MountOpenError(name string) error {
 	fd, err := unix.Fsopen(name, unix.FSOPEN_CLOEXEC)
-	if err == nil {
-		unix.Close(fd)
+	if err != nil {
+		return err
 	}
-	return err
+	unix.Close(fd)
+	return nil
 }
 
 // MountCloneError independently observes open_tree's errno, closing any acquisition.
 func MountCloneError(path string) error {
 	fd, err := unix.OpenTree(unix.AT_FDCWD, path, unix.OPEN_TREE_CLONE|unix.OPEN_TREE_CLOEXEC)
-	if err == nil {
-		unix.Close(fd)
+	if err != nil {
+		return err
 	}
-	return err
+	unix.Close(fd)
+	return nil
 }
 
 // MountUnmountError independently observes umount2's errno for a missing path.
