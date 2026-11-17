@@ -1,6 +1,6 @@
 # epoll
 
-`github.com/alexfalkowski/go-linux/epoll` provides explicit Linux readiness sets for standard `*os.File` sources. It requires Linux 7.0+, the Go version in `go.mod`, and permitted epoll, eventfd, and descriptor duplication operations. Ordinary use needs no extra capabilities. Continue using normal Go I/O and its runtime poller for ordinary file and network operations.
+`github.com/alexfalkowski/go-linux/epoll` provides explicit Linux readiness sets for standard `*os.File` sources and typed facility registrations. It requires Linux 7.0+, the Go version in `go.mod`, and permitted epoll, eventfd, and descriptor duplication operations. Ordinary use needs no extra capabilities. Continue using normal Go I/O and its runtime poller for ordinary file and network operations.
 
 The [executable example](../epoll/example_test.go) demonstrates pipe readiness and one-shot rearming. See the [verification guide](verification.md) for runner requirements and verified environments.
 
@@ -56,4 +56,6 @@ Close interrupts every pending Wait with `os.ErrClosed`, joins outstanding waits
 
 Zero owners match `os.ErrInvalid`; operations on closed owners match `os.ErrClosed`. Nil file, unknown-mask, and empty-buffer validation precede closed-state checks. Do not copy owners after first use or use nil receivers. On a registration deletion error, retain the registration and retry or close its poller; a close error after successful deletion leaves it closed. Do not retry Poller.Close to repeat descriptor cleanup.
 
-The API accepts standard files. Opaque eventfd, timerfd, and pidfd owners currently have no epoll registration operation; there is no public raw-access workaround. Context cancellation, signal masks, exclusive/power-management flags, nested pollers, raw adoption, and newer wait facilities are outside this initial scope. See the [package documentation](../epoll/doc.go), [design note](design/epoll.md), and [verification guide](verification.md).
+For opaque [eventfd counters](eventfd.md#explicit-readiness) and [timerfd timers](timerfd.md#explicit-readiness), call the source's `Register(poller, interests)` method. These registrations have the same identity, trigger modes, and independent lifetime as Add results; consume readiness through the source's typed I/O. Their executable examples demonstrate bounded reads after Wait. Closing a source leaves its registration alive; close the registration or poller as well to release the kernel resource. Neither source deadlines nor Wait timeouts control the other operation.
+
+Pidfd owners currently have no epoll registration operation. Context cancellation, signal masks, exclusive/power-management flags, nested pollers, raw adoption, and newer wait facilities are outside this initial scope. See the [package documentation](../epoll/doc.go), [design note](design/epoll.md), and [verification guide](verification.md).

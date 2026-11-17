@@ -9,6 +9,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/alexfalkowski/go-linux/epoll"
 	"golang.org/x/sys/unix"
 )
 
@@ -242,6 +243,25 @@ func (t *Timer) ReadExpirations() (uint64, error) {
 		return 0, &os.PathError{Op: "read", Path: "timerfd", Err: io.ErrNoProgress}
 	}
 	return binary.NativeEndian.Uint64(record[:]), nil
+}
+
+// Register borrows this timer to create a registration with [epoll.Poller.Add]'s
+// semantics. Readable reports unread expirations or a pending clock cancellation;
+// use Read or ReadExpirations to consume the result. The caller owns the
+// registration and must close it or its poller separately. Closing the timer
+// leaves the registration and kernel timer alive; closing the registration or
+// poller leaves this timer open. Arming, flags, and read deadlines are unchanged.
+//
+// A nil poller, zero timer, or unknown interests match os.ErrInvalid. Other
+// validation and errors follow Poller.Add. Failure returns nil and leaves the
+// timer open. Concurrent reads or rearming can consume or clear readiness before
+// subsequent I/O; bound that I/O with its own read deadline, independently of
+// Poller.Wait's timeout.
+func (t *Timer) Register(poller *epoll.Poller, interests epoll.Events) (*epoll.Registration, error) {
+	if poller == nil {
+		return nil, os.ErrInvalid
+	}
+	return poller.Add(t.file, interests)
 }
 
 // Close releases the owned descriptor and interrupts poll-blocked reads with

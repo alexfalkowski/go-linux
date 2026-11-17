@@ -1,6 +1,7 @@
 //go:build linux
 
-// Package epoll provides explicit Linux readiness sets for standard files.
+// Package epoll provides explicit Linux readiness sets for standard files and
+// typed facility registrations.
 // It requires Linux 7.0 or later and permitted epoll, eventfd, and descriptor
 // duplication operations; ordinary use needs no extra capabilities.
 //
@@ -15,4 +16,5 @@
 // wait that can occupy an OS thread; it does not replace Go's network poller.
 // File I/O and its deadlines remain the caller's responsibility. No raw
 // descriptors, callbacks, or underlying files are exposed.
+// Event counters and timers join a poller through their own Register methods.
 package epoll

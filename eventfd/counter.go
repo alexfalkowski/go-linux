@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/alexfalkowski/go-linux/epoll"
 	"golang.org/x/sys/unix"
 )
 
@@ -127,6 +128,24 @@ func (c *Counter) Add(value uint64) error {
 	binary.NativeEndian.PutUint64(record[:], value)
 	_, err := c.Write(record[:])
 	return err
+}
+
+// Register borrows this counter to create a registration with [epoll.Poller.Add]'s
+// semantics. Readable reports a nonzero count; Writable reports capacity to add
+// at least one. Readiness does not reserve a count or space for an arbitrary Add.
+// The caller owns the registration and must close it or its poller separately.
+// Closing the counter leaves the registration alive; closing the registration
+// or poller leaves the counter open. Flags and I/O deadlines are unchanged.
+//
+// A nil poller, zero counter, or unknown interests match os.ErrInvalid. Other
+// validation and errors follow Poller.Add. Failure returns nil and leaves the
+// counter open. Concurrent reads can consume readiness before subsequent I/O;
+// bound that I/O with its own deadlines, independently of Poller.Wait's timeout.
+func (c *Counter) Register(poller *epoll.Poller, interests epoll.Events) (*epoll.Registration, error) {
+	if poller == nil {
+		return nil, os.ErrInvalid
+	}
+	return poller.Add(c.file, interests)
 }
 
 // Close releases the owned descriptor and interrupts poll-blocked I/O with an
