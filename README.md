@@ -8,9 +8,66 @@
 
 Linux APIs with idiomatic Go interfaces.
 
-`github.com/alexfalkowski/go-linux` provides focused Linux facilities that compose with standard Go interfaces. Packages are added sequentially through the implementation plan.
+`github.com/alexfalkowski/go-linux` provides 21 focused Linux facilities that compose with standard Go interfaces. Use it for kernel features that ordinary file, network, and process APIs do not express. Continue using the standard library for ordinary Go I/O and process creation.
 
-The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests native arm64 and amd64 runtime verification, including isolated mount tests. Runtime evidence is in the [verification guide](docs/verification.md); unfinished work and open gaps are tracked in the [implementation plan](IMPLEMENTATION.md).
+The library targets Linux 7.0+ and the Go version in `go.mod`. CircleCI requests native arm64 and amd64 runtime verification, including isolated mount tests. The [verification guide](docs/verification.md) records runtime evidence and links to known execution limits.
+
+## 💻 First use
+
+Add the module to a Linux Go application:
+
+```sh
+go get github.com/alexfalkowski/go-linux
+```
+
+Import the facility you need. For example, create a memory-backed file using ordinary Go I/O:
+
+```go
+//go:build linux
+
+package main
+
+import (
+    "fmt"
+    "os"
+
+    "github.com/alexfalkowski/go-linux/memfd"
+)
+
+func main() {
+    file, err := memfd.New("hello", memfd.Options{})
+    if err != nil {
+        panic(err)
+    }
+    defer file.Close()
+
+    if _, err := file.WriteString("hello, Linux\n"); err != nil {
+        panic(err)
+    }
+
+    info, err := file.Stat()
+    if err != nil {
+        panic(err)
+    }
+    fmt.Fprintln(os.Stdout, info.Size()) // 13
+}
+```
+
+See [memfd usage](docs/memfd.md) for seals and [executable examples](memfd/example_test.go) for shared mappings. The [support guide](docs/support.md) covers feature prerequisites, compatibility, omissions, and dependency licenses.
+
+## 🧪 Showcase applications
+
+Try small applications inspired by htop, Watchman, systemd, Redis, and Docker:
+
+```sh
+make example-top args='["-once"]'
+make example-watch
+make example-supervise
+make example-redis
+make example-container
+```
+
+Run one long-lived application per terminal. [Example walkthroughs](examples/README.md) cover arguments, the bundled cache client, snapshots, and the container demo's additional prerequisites and Docker target. The applications add no dependencies and are excluded from tests and coverage; `make examples-build` compiles them.
 
 ## 📦 Packages
 
@@ -54,4 +111,4 @@ The shared tooling uses `betteralign` and `golangci-lint` for linting,
 image supplies these tools; install them locally to run the corresponding
 targets.
 
-See [AGENTS.md](AGENTS.md) for contributor commands, the [implementation plan](IMPLEMENTATION.md) for work order, and [verification guidance](docs/verification.md) for profiles, reports, and runner requirements.
+For contributions, follow [AGENTS.md](AGENTS.md) and the [API conventions](docs/design/api.md). [Verification guidance](docs/verification.md) owns checks, profiles, reports, and runner requirements. Keep package behavior in GoDoc and its linked usage guide, with rationale in the corresponding design note.

@@ -2,7 +2,7 @@
 
 `github.com/alexfalkowski/go-linux/timerfd` creates Linux timers whose descriptors deliver expiration counts. It requires Linux 7.0+, the Go version in `go.mod`, and permitted timerfd, clock-query, and polling operations. Ordinary use needs no extra capabilities. Use `time.Timer` or `time.Ticker` when no kernel descriptor or Linux clock selection is needed.
 
-See [verification guidance](verification.md) for runner requirements and verified environments, and [IMPLEMENTATION.md](../IMPLEMENTATION.md#open-verification-gaps) for remaining verification gaps.
+See [verification guidance](verification.md) for runner requirements and verified environments, and [verification limits](verification-limits.md) for missing execution evidence.
 
 ## Arm and consume a timer
 
