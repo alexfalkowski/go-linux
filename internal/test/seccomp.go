@@ -5,6 +5,7 @@ package test
 import (
 	"os"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 	"unsafe"
@@ -18,7 +19,9 @@ import (
 // resource registration rather than process-wide poller startup.
 func RefusePollRegistration(t *testing.T) {
 	t.Helper()
-	require.Equal(t, "poll-registration-denied", os.Args[len(os.Args)-1], "poll restriction requires a dedicated child")
+	argument := os.Args[len(os.Args)-1]
+	isolated := argument == "poll-registration-denied" || strings.HasPrefix(argument, "fanotify-isolated=")
+	require.True(t, isolated, "poll restriction requires a bounded poll-registration or fanotify namespace child")
 	reader, writer, err := os.Pipe()
 	require.NoError(t, err)
 	require.NoError(t, reader.SetReadDeadline(time.Time{}))

@@ -7,10 +7,50 @@ import (
 	"testing"
 	"time"
 
+	"github.com/alexfalkowski/go-linux/epoll"
 	"github.com/alexfalkowski/go-linux/internal/test"
 	"github.com/alexfalkowski/go-linux/timerfd"
 	"github.com/stretchr/testify/require"
 )
+
+func TestClockCancellationMakesRegisteredTimerReadable(t *testing.T) {
+	for _, scenario := range []struct {
+		name  string
+		shift time.Duration
+	}{
+		{name: "forward", shift: time.Second},
+		{name: "backward", shift: -time.Second},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			timer := test.Timer(t, timerfd.Realtime)
+			poller := test.Poller(t)
+			registration, err := timer.Register(poller, epoll.Readable)
+			require.NoError(t, err)
+			test.Cleanup(t, registration)
+			deadline, err := timerfd.Now(timerfd.Realtime)
+			require.NoError(t, err)
+			deadline.Seconds += 60
+			_, err = timer.SetAt(deadline, 0, timerfd.CancelOnSet)
+			require.NoError(t, err)
+			events := make([]epoll.Event, 1)
+			n, err := poller.Wait(events, 0)
+			require.NoError(t, err)
+			require.Zero(t, n, "the future timer must not be readable before cancellation")
+
+			test.ShiftRealtime(t, scenario.shift)
+
+			n, err = poller.Wait(events, time.Second)
+			require.NoError(t, err)
+			require.Equal(t, []epoll.Event{{Registration: registration, Events: epoll.Readable}}, events[:n])
+			count, err := timer.ReadExpirations()
+			require.ErrorIs(t, err, test.ErrCanceled, "readiness must preserve the cancellation record")
+			require.Zero(t, count, "clock cancellation must not manufacture expirations")
+			n, err = poller.Wait(events, 0)
+			require.NoError(t, err)
+			require.Zero(t, n, "reading cancellation must clear readiness")
+		})
+	}
+}
 
 func TestRealtimeClockChangesCancelPendingReads(t *testing.T) {
 	for _, scenario := range []struct {

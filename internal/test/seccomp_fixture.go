@@ -11,6 +11,8 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/alexfalkowski/go-linux/capability"
+	"github.com/alexfalkowski/go-linux/internal/testenv"
 	"github.com/alexfalkowski/go-linux/seccomp"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sys/unix"
@@ -56,6 +58,68 @@ func NoNewPrivileges(t *testing.T) bool {
 	value, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)
 	require.NoError(t, err)
 	return value != 0
+}
+
+// SecurityPrivileges selects the namespace lane's credential-transition cases.
+// Required runs need an unset no-new-privileges bit and effective CAP_SYS_ADMIN
+// in the caller's user namespace. This check changes no credentials or policy.
+func SecurityPrivileges(t *testing.T) {
+	t.Helper()
+	options, err := testenv.FromEnvironment()
+	require.NoError(t, err)
+	if options.Profile != "namespaces" {
+		t.Skip("security privilege transitions require profile=namespaces and initial NoNewPrivs=0 with CAP_SYS_ADMIN")
+	}
+	sets, err := capability.Current()
+	require.NoError(t, err)
+	missingPrivilege := NoNewPrivileges(t) || sets.Effective&capability.SysAdmin == 0
+	if missingPrivilege {
+		reason := "security privilege transitions require initial NoNewPrivs=0 and effective CAP_SYS_ADMIN in the caller's user namespace"
+		require.False(t, options.Required, reason)
+		t.Skip(reason)
+	}
+}
+
+// NoNewPrivilegesThread observes the bit on an existing locked sibling before
+// and after thread synchronization. The worker only reads its own state; the
+// calling scenario owns assertions and any policy change in its bounded child.
+func NoNewPrivilegesThread(t *testing.T) func() bool {
+	t.Helper()
+	ready := make(chan int, 1)
+	probe := make(chan struct{})
+	release := make(chan struct{})
+	result := make(chan ReadResult[bool], 1)
+	done := make(chan struct{})
+	go func() {
+		id := LockThread()
+		defer close(done)
+		ready <- id
+		for {
+			select {
+			case <-probe:
+				value, err := unix.PrctlRetInt(unix.PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0)
+				if err != nil {
+					result <- ReadResult[bool]{Err: err}
+					continue
+				}
+				result <- ReadResult[bool]{Value: value != 0}
+			case <-release:
+				return
+			}
+		}
+	}()
+	id := Receive(t, ready)
+	t.Cleanup(func() {
+		close(release)
+		Receive(t, done)
+		WaitForThreadExit(t, id)
+	})
+	return func() bool {
+		probe <- struct{}{}
+		observation := Receive(t, result)
+		require.NoError(t, observation.Err)
+		return observation.Value
+	}
 }
 
 // SeccompFilterCount independently observes the calling thread's filter tree.

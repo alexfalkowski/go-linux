@@ -44,7 +44,7 @@ coverage-workspace-stage: export partition := $(value partition)
 coverage-workspace-stage:
 	@bash scripts/coverage-workspace stage "$$partition"
 
-# Merge all twelve CI workspace profiles into profile.cov before running coverage.
+# Merge all fourteen CI workspace profiles into profile.cov before running coverage.
 coverage-workspace-merge:
 	@bash scripts/coverage-workspace merge
 
@@ -58,12 +58,12 @@ verify-netlink-container: export image := $(value image)
 verify-netlink-container:
 	@bash scripts/netlink "$$image" "$$GO_LINUX_TEST_ARCH"
 
-# Record prerequisites and run required isolated namespace and capability scenarios.
+# Record prerequisites and run required namespace, capability, and security privilege scenarios.
 verify-namespace:
 	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
-	@$(MAKE) specs package= PACKAGES="$(MODULE)/namespace $(MODULE)/capability" profile=namespaces required=true
+	@$(MAKE) specs package= PACKAGES="$(MODULE)/namespace $(MODULE)/capability $(MODULE)/seccomp $(MODULE)/landlock" profile=namespaces required=true
 
-# Run required namespace and capability verification in privileged Docker (image and native arch required).
+# Run namespace, capability, and security privilege verification in privileged Docker (image and native arch required).
 verify-namespace-container: export image := $(value image)
 verify-namespace-container:
 	@bash scripts/namespace "$$image" "$$GO_LINUX_TEST_ARCH"
@@ -72,6 +72,11 @@ verify-namespace-container:
 verify-cgroup:
 	@bash -eo pipefail -c '$(MAKE) test-environment profile=cgroup required=true | tee test/reports/environment.json'
 	@$(MAKE) specs package=cgroup profile=cgroup required=true
+
+# Run required cgroup verification in a private Docker subtree (image and native arch required).
+verify-cgroup-container: export image := $(value image)
+verify-cgroup-container:
+	@bash scripts/cgroup "$$image" "$$GO_LINUX_TEST_ARCH"
 
 # Record namespace prerequisites and run required isolated mount tests (arch optional).
 verify-mount:
@@ -114,7 +119,7 @@ vet:
 
 # Check repository-owned Bash scripts with ShellCheck.
 scripts-lint:
-	@shellcheck -x scripts/coverage scripts/coverage-workspace scripts/rootless scripts/netlink scripts/namespace scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
+	@shellcheck -x scripts/coverage scripts/coverage-workspace scripts/rootless scripts/netlink scripts/namespace scripts/cgroup scripts/mount scripts/timerfd scripts/fanotify scripts/container.sh
 
 # Validate CircleCI configuration with the official CLI (requires CircleCI API access).
 ci-validate:

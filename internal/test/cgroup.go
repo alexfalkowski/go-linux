@@ -4,7 +4,9 @@ package test
 
 import (
 	"errors"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/alexfalkowski/go-linux/cgroup"
 	"github.com/alexfalkowski/go-linux/internal/testenv"
+	"github.com/alexfalkowski/go-linux/mmap"
 	"github.com/stretchr/testify/require"
 )
 
@@ -120,4 +123,59 @@ func CgroupWatcher(t *testing.T, group *cgroup.Group) *cgroup.EventWatcher {
 	Cleanup(t, watcher)
 	require.NoError(t, watcher.SetReadDeadline(time.Now().Add(5*time.Second)))
 	return watcher
+}
+
+// StartCgroupWorkload waits for a bounded command's readiness byte before
+// returning its input. The caller migrates the process, then writes a newline
+// to release its workload. Closing input releases any final memory hold.
+func StartCgroupWorkload(t *testing.T, command *exec.Cmd) io.WriteCloser {
+	t.Helper()
+	input, err := command.StdinPipe()
+	require.NoError(t, err)
+	Cleanup(t, input)
+	output := CaptureCommand(t, command)
+	var ready [1]byte
+	_, err = io.ReadFull(output, ready[:])
+	require.NoError(t, err, "workload must announce readiness before migration")
+	require.Equal(t, byte(1), ready[0], "workload must use the readiness protocol")
+	return input
+}
+
+// CgroupWorkloadChild serves bounded CPU and memory workers in the current test
+// binary. Initialization precedes readiness so new memory charges follow the
+// parent's explicit migration. Memory pressure is capped at a 64-MiB mapping.
+func CgroupWorkloadChild(t *testing.T) {
+	t.Helper()
+	mode := os.Args[len(os.Args)-1]
+	if mode != "cgroup-cpu" && mode != "cgroup-memory" {
+		return
+	}
+	time.AfterFunc(15*time.Second, func() {
+		os.Exit(125)
+	})
+
+	var region *mmap.Region
+	if mode == "cgroup-memory" {
+		region = Anonymous(t, 64<<20, mmap.Options{Protection: mmap.Read | mmap.Write})
+	}
+
+	_, err := os.Stdout.Write([]byte{1})
+	require.NoError(t, err)
+	var start [1]byte
+	_, err = io.ReadFull(os.Stdin, start[:])
+	require.NoError(t, err)
+
+	if mode == "cgroup-cpu" {
+		until := time.Now().Add(2 * time.Second)
+		for time.Now().Before(until) {
+		}
+		return
+	}
+
+	data := region.Bytes()
+	for offset := 0; offset < len(data); offset += os.Getpagesize() {
+		data[offset] = 1
+	}
+	_, err = io.Copy(io.Discard, os.Stdin)
+	require.NoError(t, err)
 }

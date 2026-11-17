@@ -10,6 +10,7 @@ readonly facilities=(
   rootless
   netlink
   namespace
+  cgroup
   mount
   fanotify
   timerfd

@@ -8,6 +8,8 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -95,6 +97,86 @@ func LandlockFiles(t *testing.T) (string, string) {
 	require.NoError(t, os.WriteFile(allowed, []byte("allowed"), 0o600))
 	require.NoError(t, os.WriteFile(denied, []byte("denied"), 0o600))
 	return allowed, denied
+}
+
+// LandlockTerminal creates a private pseudo-terminal through the current
+// devpts multiplexer. Open after Restrict to exercise its ioctl access grant.
+func LandlockTerminal(t *testing.T) *os.File {
+	t.Helper()
+	file, err := os.OpenFile("/dev/ptmx", os.O_RDWR|unix.O_NOCTTY|unix.O_NONBLOCK, 0)
+	require.NoError(t, err)
+	Cleanup(t, file)
+	return file
+}
+
+// TerminalNumber observes a pseudo-terminal's index using a driver-specific,
+// read-only ioctl. It preserves Landlock's denial errno for the caller.
+func TerminalNumber(t *testing.T, file *os.File) (int, error) {
+	t.Helper()
+	var number int
+	var operationErr error
+	FileControl(t, file, func(fd uintptr) {
+		number, operationErr = unix.IoctlGetInt(int(fd), unix.TIOCGPTN)
+	})
+	return number, operationErr
+}
+
+// MakeFIFO creates a test-owned named pipe without opening or waiting on it.
+func MakeFIFO(path string) error {
+	return unix.Mkfifo(path, 0o600)
+}
+
+// LandlockDeviceNamespace confines device fixtures to a private mount namespace
+// in a bounded child. It retains initial-user-namespace CAP_MKNOD, which a new
+// mapped user namespace cannot supply. Only the namespace profile selects it.
+func LandlockDeviceNamespace(t *testing.T) bool {
+	t.Helper()
+	const prefix = "landlock-device-isolated="
+	if argument := os.Args[len(os.Args)-1]; strings.HasPrefix(argument, prefix) {
+		current, err := os.Readlink("/proc/self/ns/mnt")
+		require.NoError(t, err)
+		require.NotEqual(t, strings.TrimPrefix(argument, prefix), current, "device fixtures require a private mount namespace")
+		require.NoError(t, unix.Mount("", "/", "", unix.MS_REC|unix.MS_PRIVATE, ""))
+		return true
+	}
+	options, err := testenv.FromEnvironment()
+	require.NoError(t, err)
+	if options.Profile != "namespaces" {
+		t.Skip("device creation requires profile=namespaces and initial-user-namespace CAP_MKNOD")
+	}
+	before, err := os.Readlink("/proc/self/ns/mnt")
+	require.NoError(t, err)
+	ctx, command := Command(t, t.Name(), "-test.v", "--", prefix+before)
+	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWNS}
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err(), "Landlock device scenario exceeded its time bound")
+	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
+	if unavailable {
+		require.False(t, options.Required, "device isolation requires permitted clone(mount) and applicable CAP_SYS_ADMIN: %v", err)
+		t.Skipf("device mount namespace unavailable: %v", err)
+	}
+	require.NoError(t, err, "isolated Landlock device scenario: %s", output)
+	after, err := os.Readlink("/proc/self/ns/mnt")
+	require.NoError(t, err)
+	require.Equal(t, before, after, "parent mount namespace must remain unchanged")
+	t.Log(string(output))
+	return false
+}
+
+// MakeDevice creates a character or block inode on a private fixture mount.
+// It never opens the device. mode uses os.ModeDevice and os.ModeCharDevice.
+func MakeDevice(path string, mode os.FileMode) error {
+	var native uint32
+	switch mode {
+	case os.ModeDevice | os.ModeCharDevice:
+		native = unix.S_IFCHR
+	case os.ModeDevice:
+		native = unix.S_IFBLK
+	default:
+		return os.ErrInvalid
+	}
+	// Use major 1, minor 3, never the special 0:0 whiteout. No device is opened.
+	return unix.Mknod(path, native|0o600, int(unix.Mkdev(1, 3))) //nolint:gosec // Fixed device number 0x103 fits int on both supported architectures.
 }
 
 // LandlockReadThread holds an existing locked sibling for repeated open
