@@ -160,6 +160,18 @@ func InvokeX32(t *testing.T) {
 	require.FailNowf(t, "x32 call returned instead of terminating", "errno=%v", errno)
 }
 
+// SeccompMaximumFilter constructs a maximum-sized, permissive native program
+// for individual and aggregate instruction-limit scenarios.
+func SeccompMaximumFilter(t *testing.T) *seccomp.Filter {
+	t.Helper()
+	instructions := make([]seccomp.Instruction, seccomp.MaxInstructions)
+	for index := range instructions {
+		instructions[index] = seccomp.Instruction{Code: seccomp.LoadConstant, K: uint32(index)}
+	}
+	instructions[len(instructions)-1] = seccomp.Instruction{Code: seccomp.Return, K: uint32(seccomp.Allow)}
+	return SeccompFilter(t, instructions)
+}
+
 // SeccompFilter constructs an immutable native program through the public API.
 func SeccompFilter(t *testing.T, instructions []seccomp.Instruction) *seccomp.Filter {
 	t.Helper()

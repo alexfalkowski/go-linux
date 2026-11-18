@@ -85,17 +85,33 @@ func TestMaximumProgramLoads(t *testing.T) {
 		return
 	}
 	test.LockThread()
-	native, err := seccomp.NativeArchitecture()
-	require.NoError(t, err)
-	instructions := make([]seccomp.Instruction, seccomp.MaxInstructions)
-	for index := range instructions {
-		instructions[index] = seccomp.Instruction{Code: seccomp.LoadConstant, K: uint32(index)}
-	}
-	instructions[len(instructions)-1] = seccomp.Instruction{Code: seccomp.Return, K: uint32(seccomp.Allow)}
-	filter, err := seccomp.New(native, instructions)
-	require.NoError(t, err)
+	filter := test.SeccompMaximumFilter(t)
 
 	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+}
+
+func TestFilterTreeExhaustionDoesNotAttachRejectedFilter(t *testing.T) {
+	if !test.SeccompProcess(t) {
+		return
+	}
+	test.LockThread()
+	filter := test.SeccompMaximumFilter(t)
+	filtersBefore := test.SeccompFilterCount(t)
+
+	// Nine maximum-sized bodies exceed Linux's 32768-instruction path limit
+	// on both supported architectures, even without inherited filters.
+	// https://man7.org/linux/man-pages/man2/seccomp.2.html
+	for loaded := range 9 {
+		err := filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true})
+		if err != nil {
+			require.ErrorIs(t, err, test.ErrNoMemory)
+			require.Positive(t, loaded, "at least one maximum-sized filter must load before exhaustion")
+			require.Equal(t, filtersBefore+loaded, test.SeccompFilterCount(t), "the rejected filter must not attach")
+			return
+		}
+	}
+
+	require.FailNow(t, "filter stacking did not reach the kernel's aggregate instruction limit")
 }
 
 func TestLoadRejectsInvalidScopeBeforeChangingState(t *testing.T) {
