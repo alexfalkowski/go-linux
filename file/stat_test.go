@@ -175,6 +175,44 @@ func TestStatTranslatesSpecialFileTypes(t *testing.T) {
 	}
 }
 
+func TestStatTranslatesBlockDeviceMetadata(t *testing.T) {
+	path := test.BlockDevice(t)
+	dir := test.OpenFile(t, filepath.Dir(path))
+	// O_PATH obtains an inode reference without opening the device for data I/O.
+	device, err := file.Open(dir, filepath.Base(path), file.OpenOptions{Flags: file.Path | file.NoFollow})
+	require.NoError(t, err)
+	test.Cleanup(t, device)
+	want := test.FileStatx(t, device, uint32(file.MaskType))
+
+	metadata, err := file.Stat(device, file.MaskType)
+	require.NoError(t, err)
+	require.NotZero(t, metadata.Mask&file.MaskType)
+	require.Equal(t, os.ModeDevice, metadata.Mode.Type())
+	require.Equal(t, want.Rdev_major, metadata.RdevMajor)
+	require.Equal(t, want.Rdev_minor, metadata.RdevMinor)
+}
+
+func TestStatReportsNoDumpChanges(t *testing.T) {
+	source := test.TempFile(t, 0)
+	test.SetNoDump(t, source, false)
+	initial, err := file.Stat(source, file.MaskBasic)
+	require.NoError(t, err)
+	require.NotZero(t, initial.AttributesMask&file.NoDump, "the fixture filesystem must report NoDump support")
+	require.Zero(t, initial.Attributes&file.NoDump)
+
+	test.SetNoDump(t, source, true)
+	set, err := file.Stat(source, file.MaskBasic)
+	require.NoError(t, err)
+	require.NotZero(t, set.AttributesMask&file.NoDump)
+	require.NotZero(t, set.Attributes&file.NoDump)
+
+	test.SetNoDump(t, source, false)
+	cleared, err := file.Stat(source, file.MaskBasic)
+	require.NoError(t, err)
+	require.NotZero(t, cleared.AttributesMask&file.NoDump)
+	require.Zero(t, cleared.Attributes&file.NoDump)
+}
+
 func TestStatMatchesIndependentKernelMetadata(t *testing.T) {
 	// Focused ABI check: verify Linux identifiers and masks independently from
 	// the package's conversion, without exposing raw access in its public API.
