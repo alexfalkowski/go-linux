@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E01 — Establish the expanded coverage inventory**.
+Next: **E02 — Add file allocation and range operations**.
 
-Resume note: none. Replace this line with a short active-item or verification blocker only while work is incomplete.
+Resume note: E01 inventory changes await required CI for this revision. Resolve that evidence before starting E02.
 
 ## Objective and scope
 
@@ -16,7 +16,7 @@ Include focused eBPF support for workload network accounting and process-event t
 
 Low-level perf counters, userfaultfd, and keyrings below have specific workload-measurement, checkpoint/paging, and credential-isolation roles; they do not authorize building a complete profiler, checkpoint engine, or secret-management product.
 
-This file is the temporary execution queue for contributors and coding agents. It follows the unfinished-work-only pattern of the former `IMPLEMENTATION.md`, visible in Git history through `59ae631`; that file was removed in `e61eefa` after its final work shipped. Keep this requested filename as the single current queue.
+This file is the temporary execution queue for contributors and coding agents. It follows the unfinished-work-only pattern of the former `IMPLEMENTATION.md`, visible in Git history through `59ae631`; that file was removed in `e61eefa` after its final work shipped. Keep `IMPLEMENTATION.md` as the single current queue. The [support coverage index](docs/support.md#coverage-index) describes shipped capabilities and composition boundaries; this queue owns future deliverables.
 
 ## How to execute one item
 
@@ -33,20 +33,30 @@ This file is the temporary execution queue for contributors and coding agents. I
 
 These scenarios set the scope; they do not require this module to implement an entire runtime, orchestrator, or database. Existing namespaces, capabilities, Landlock, pidfd lifecycle, sockets, counters, timers, and filesystem observers remain useful foundations. Reuse standard Go networking and process startup when assembling the examples.
 
-| Items | Application or container outcome |
-| --- | --- |
-| E02–E10 | Allocate database files, maintain sparse storage, control synchronization/direct I/O, and manage mapped buffer/index regions. |
-| E11–E13 | Discover and prepare container filesystems, configure mounts, apply propagation/ID mappings, and activate a private root filesystem. |
-| E14–E16 | Supervise worker processes and implement explicit file-access/syscall mediation for isolated workloads. |
-| E17–E19 | Connect private network namespaces with virtual links, bridges, addresses, neighbors, rules, and routes. |
-| E20–E26 | Bound and observe workload CPU, memory, I/O, task counts, affinity, scheduling, and process limits. |
-| E27–E29 | Perform asynchronous storage I/O with explicit completion, registration, cancellation, and resource lifetimes. |
-| E30–E31 | Embed bounded performance counting/record collection when a workload needs it; full profiling tools remain separate. |
-| E32–E33 | Combine cgroup network accounting and process-event tracing with resource control and process inspection through Cilium-backed eBPF loading, maps, attachments, and event readers. |
-| E36–E37 | Handle page faults for selected lazy-paging/checkpoint integration scenarios without rebuilding a checkpoint engine. |
-| E38–E39 | Manage private workload keyrings and explicit kernel key requests without becoming a general secret store. |
-| E40–E44 | Coordinate independent worker/database processes using priority queues, shared memory, and semaphore sets. |
-| E01, E45 | Establish the exact boundary and verify that these facilities compose into the intended application/container scenarios. |
+| Items | Application or container outcome and home | Required verification route |
+| --- | --- | --- |
+| E02–E07 | Extend `file` for database allocation, sparse ranges, advice/synchronization, locking, metadata, and temporary/direct-I/O files. | Rootless file suite; mount lane with disposable filesystems for specialized modes and filesystem-wide synchronization. |
+| E08–E10 | Extend `mmap` for synchronized mapped indexes, locked buffers, residency, resizing, and advice. | Rootless mmap suite with bounded fault/limit children; filesystem fixtures where required. |
+| E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
+| E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
+| E14a | Add orphan adoption and reaping for worker trees and container init; proposed `process` home, retaining `pidfd` for identified targets. | Rootless bounded subreaper children plus PID-namespace init scenarios in the namespace lane. |
+| E15–E16 | Extend `seccomp` for syscall mediation and target file injection. | New required notification lane with real supervisor/target exchange and isolated container/native paths. |
+| E17–E19 | Extend `netlink/route` for private veth/bridge networks, neighbor/rule policy routing, lookups, and multiple next hops. Evaluate vishvananda/netlink internally. | Existing combined Netlink/native lane with independent connectivity and routing observations. |
+| E20–E23 | Extend `cgroup` for workload stop/kill, I/O/cpuset, deeper CPU/memory/PIDs observations, and configured hugetlb/RDMA/misc/dmem controllers. Evaluate containerd/cgroups internally. | Existing delegated cgroup/native lane; disposable storage and configured hardware fixtures for enforcement. |
+| E23a | Extend `cgroup` to start a standard Go command directly in its owned delegation. Reuse Go's clone-into-cgroup startup internally. | Existing delegated lane, observing membership and accounting from the child's first action. |
+| E24 | Proposed `sched`: place worker threads on permitted CPUs. | Rootless bounded affinity children and native architecture lanes. |
+| E25 | Extend `sched` for worker policy, deadline budgets, and I/O priority. | Rootless permitted transitions plus a new explicitly selected required scheduling lane for privileged policies. |
+| E26 | Proposed `rlimit`: constrain worker resources and inspect atomic prior limits. | Rootless bounded children; explicitly isolated privileged transitions. |
+| E27–E29 | Proposed `uring`: asynchronous storage requests, registered resources, cancellation, linked operations, and readiness. Implement with existing bindings and liburing as reference. | New required uring/native lane exercising actual queues and GC/lifetime stress. |
+| E30–E31 | Proposed `perf`: bounded workload counters/groups and sampling records. | New required perf/native lane with software events; hardware PMUs only on configured runners. |
+| E32–E33 | Proposed `bpf`: Cilium-backed cgroup network accounting and process-event tracing composed with `cgroup`, `procfs`, and `pidfd`. | New required eBPF/native lane with private networking/delegation and actual compiled program fixtures. |
+| E36–E37 | Proposed `userfaultfd`: lazy paging and selected checkpoint integration primitives. | New required fault-handling/native lane with bounded faulting children and provisioned memory-type variants. |
+| E38–E39 | Proposed `keyring`: private worker keys, requests, expiry, and selected key controls. | New required keyring/native lane with private session rings and controlled request helpers when selected. |
+| E40–E41 | Proposed `mqueue`: cross-process priority messages, timing, and readiness. | New required IPC/native lane inside private IPC namespaces. |
+| E42–E44 | Proposed `sysvipc`: typed messages, atomic semaphore batches, and shared-memory attachment lifetimes. | Extend the required IPC/native lane with independent processes and bounded waits/faults. |
+| E45 | Compose storage/worker/container lifecycles; retain standard Go startup, external NAT/firewall policy, and optional CRIU composition. | Combined explicitly isolated lifecycle scenario, then all applicable native baseline CI lanes and coverage merge. |
+
+Every new lane above requires the local/container/CI wiring and reports specified under Local verification and CI before its first item can complete. These are verification routes to implement, not commands already available. IDs E34–E35 remain unused; surviving IDs are stable.
 
 Before implementing an item, inspect the maintained upstream APIs/source and choose one of these routes:
 
@@ -97,14 +107,14 @@ Use the actual native architecture. Inspect target scope: `package` scopes the s
 
 Local development may have more useful privileges through Docker than through the agent shell. A shell namespace denial is not proof that local isolated verification is unavailable. Check daemon access and use the existing facility launchers before leaving a local privilege blocker. Do not assume that a rootless Docker daemon grants initial-user-namespace capabilities; prove the selected operation inside the actual container. Keep host resources unchanged: use private namespaces, test-owned files/devices/IPC objects, bounded children, and explicitly disposable cgroup delegations.
 
-Use the Go image currently configured by CI; `alexfalkowski/go:5.23` is the reference at plan creation. These commands already exist:
+Use the Go image currently configured by CI, `alexfalkowski/go:5.24`. These commands already exist:
 
 ```sh
-make verify-rootless-container image=alexfalkowski/go:5.23 arch=amd64 package=file
-make verify-mount-container image=alexfalkowski/go:5.23 arch=amd64
-make verify-netlink-container image=alexfalkowski/go:5.23 arch=amd64
-make verify-namespace-container image=alexfalkowski/go:5.23 arch=amd64
-make verify-cgroup-container image=alexfalkowski/go:5.23 arch=amd64
+make verify-rootless-container image=alexfalkowski/go:5.24 arch=amd64 package=file
+make verify-mount-container image=alexfalkowski/go:5.24 arch=amd64
+make verify-netlink-container image=alexfalkowski/go:5.24 arch=amd64
+make verify-namespace-container image=alexfalkowski/go:5.24 arch=amd64
+make verify-cgroup-container image=alexfalkowski/go:5.24 arch=amd64
 ```
 
 Select the matching launcher; these are alternatives for different scopes, not a checklist to run for every item. The existing fanotify and clock-change launchers remain available for changes affecting those packages. Clock changes require an explicitly disposable VM. Container launchers perform dependency setup and can write vendor/report files; use a writable disposable checkout if necessary, without changing ownership of unrelated work.
@@ -119,15 +129,9 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 
 ### Existing file and memory facilities
 
-#### E01 — Establish the expanded coverage inventory
-
-- **Deliver:** Reconcile the existing 21 facilities and the families below against their public APIs and Linux 7.0 [UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/linux). Trace server/database storage and worker lifecycles plus container startup, rootfs setup, credentials, resource placement, networking, exec/reaping, and teardown. Extend the support guide with a concise coverage index; keep detailed operation/flag/field coverage and technical omissions in each authoritative usage guide.
-- **Decide:** For each capability, identify the standard-library contribution, the remaining Linux-specific contract, the current implementation, and build/internal-reuse/external-composition candidates. Low-level syscall overlap is permitted; equivalent high-level Go operations should be reused. Distinguish implemented, partial, absent, externally supplied, and explicitly excluded coverage. Consumer demand is not a gate; E32–E33 own the focused eBPF capability using Cilium internally.
-- **Acceptance:** Every remaining item has a concrete application/container scenario, a package or external-composition home, and a verification route. Identify uncovered essentials such as root activation, namespace/credential startup, PID 1/reaping, and NAT/firewall integration without pretending this library already implements a complete runtime. Keep genuinely missing in-scope mechanisms explicit for sequencing, and do not duplicate full OCI/CNI/CRIU implementations. Record fresh local/container observations in the existing verification owner; current documentation must still describe shipped behavior accurately.
-
 #### E02 — Add file allocation and range operations
 
-- **Implement:** Extend `file` with typed [fallocate](https://man7.org/linux/man-pages/man2/fallocate.2.html) operations: allocation with/without size preservation, hole punching, zeroing, collapse/insert, and unsharing where present in the baseline. Borrow ordinary `*os.File` handles using the package's existing lifetime protection.
+- **Implement:** Extend `file` with typed [fallocate](https://man7.org/linux/man-pages/man2/fallocate.2.html) operations: allocation with/without size preservation, hole punching, zeroing, collapse/insert, unsharing, and Linux 7.0's distinct `FALLOC_FL_WRITE_ZEROES` operation. Check the [versioned UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h), including its reserved codepoint. Borrow ordinary `*os.File` handles using the package's existing lifetime protection.
 - **Contracts:** Preserve operation-specific flag combinations, filesystem alignment rules, signed range/overflow validation, size/content effects, and errno. Never emulate allocation by truncating or writing zeros. Do not claim every filesystem supports every mode.
 - **Evidence:** Test temporary files on a filesystem supporting the required modes, checking actual size/content and independent extent/allocation observations where useful. Keep unsupported filesystem modes visible; add an isolated filesystem fixture to the existing mount lane when the ordinary checkout filesystem cannot establish them.
 
@@ -151,13 +155,13 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 
 #### E06 — Complete extended file metadata
 
-- **Implement:** Extend `file.Metadata` and its masks with remaining baseline [statx](https://man7.org/linux/man-pages/man2/statx.2.html) fields, including direct-I/O alignment, subvolume identity, and atomic-write limits when present in Linux 7.0. Check the versioned structure and pinned `x/sys` binding before choosing representation.
+- **Implement:** Extend `file.Metadata` and its masks with remaining baseline [statx](https://man7.org/linux/man-pages/man2/statx.2.html) fields: direct-I/O memory/offset/read alignment, subvolume identity, atomic-write minimum/maximum/optimized-maximum units and segment limits, and the named atomic-write attribute. Check the versioned structure and pinned `x/sys` binding before choosing representation. Observing limits does not itself add atomic data-write operations.
 - **Contracts:** Preserve validity masks independently of zero values, Linux integer widths, units, and unknown output bits. Do not reinterpret unavailable fields as supported zero limits or silently change existing mask/default behavior.
 - **Evidence:** Extend focused native comparisons and public metadata scenarios. Supply suitable filesystem fixtures for positive fields where possible; distinguish a supported query returning an unavailable field from a positive observation of that field's semantics.
 
 #### E07 — Extend Linux-specific open and rename controls
 
-- **Implement:** Extend `file` for `O_TMPFILE`, direct-I/O opening, and rename whiteouts where the baseline/filesystem supports them. Add the concrete operation needed to link an unnamed temporary inode into a directory; retain the standard-library boundary for ordinary path operations.
+- **Implement:** Extend `file` for `O_TMPFILE`, direct-I/O opening, explicit `O_SYNC`/`O_DSYNC` opening, and rename whiteouts where the baseline/filesystem supports them. Add the concrete operation needed to link an unnamed temporary inode into a directory; retain the standard-library boundary for ordinary path operations.
 - **Contracts:** Preserve permission/umask behavior, unnamed-inode ownership, direct-I/O alignment requirements, atomic rename modes, and whiteout privilege/filesystem restrictions. Keep current zero options and path-resolution guarantees unchanged. Do not expose descriptor plumbing to complete the workflow.
 - **Evidence:** Demonstrate temporary creation/write/link/cleanup, permitted aligned direct I/O, invalid alignment behavior, and whiteout identity through isolated filesystem/namespace fixtures. A normal rename is not positive whiteout evidence.
 
@@ -175,7 +179,7 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 
 #### E10 — Add mapped-region resizing and further advice
 
-- **Implement:** Add a deliberate [mremap](https://man7.org/linux/man-pages/man2/mremap.2.html) operation and expand typed `madvise` choices against the baseline. Preserve the original mapping if remapping fails and maintain the pinned `x/sys` mapper's bookkeeping correctly.
+- **Implement:** Add a deliberate [mremap](https://man7.org/linux/man-pages/man2/mremap.2.html) operation and expand typed `madvise` choices against the baseline: lazy free/removal, fork/dump controls, merge/huge-page advice, cold/pageout, read/write population, locked-page discard, and guard installation/removal where their mapping requirements can be represented. Preserve the original mapping if remapping fails and maintain the pinned `x/sys` mapper's bookkeeping correctly. Explain concrete unsupported combinations; hardware poison/offline and remote-process advice remain excluded because they exceed this region owner's scope.
 - **Contracts:** Define when all existing slices/pointers become invalid and how callers obtain the new view. Do not approximate remapping by reslicing. Fixed-address or alias-producing modes require a separately sound ownership contract; retain explicit exclusions for modes the region owner cannot represent safely.
 - **Evidence:** Verify grow/shrink, retained contents, failed-remap ownership, view lengths, and final unmapping in bounded children where stale access can fault. Exercise added advice without promising kernel heuristics or testing undefined stale-slice use in the main test process.
 
@@ -204,6 +208,12 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 - **Implement:** Add a concrete [pidfd_getfd](https://man7.org/linux/man-pages/man2/pidfd_getfd.2.html) operation on `pidfd.Process`. A target process's file number is target identity input; return an independently owned standard `*os.File` without exposing the local pidfd.
 - **Contracts:** Preserve ptrace/LSM permission checks, target exit races, close-on-exec, shared offsets/status flags, and unconditional failure cleanup. Duplication must not steal or close the target's original file. Do not reopen through procfs as a fallback.
 - **Evidence:** Coordinate a test-owned child to demonstrate reading the same open description, shared offsets, independent closure, invalid target numbers, denied access, process exit, and local close races. Add required isolated verification if the ordinary rootless policy rejects the syscall.
+
+#### E14a — Add orphan adoption and reaping controls
+
+- **Implement:** Add the Linux-specific supervision primitives missing from identified-target `pidfd` waits: inspect/set child-subreaper state and reap adopted children with returned PID and exit status. The proposed `process` package must complement standard `os/exec` and `os/signal`; settle its caller and dependency direction before export. Use the baseline [prctl controls](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/prctl.h) and [wait selectors](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/wait.h) through maintained bindings. Keep signal-forwarding and restart policy with the application.
+- **Contracts:** Subreaper state is process-wide; namespace PID 1 already has orphan-adoption duties. Designate one reaper and prevent examples from racing wait-any operations with `Cmd.Wait` or `pidfd.Process.Wait`. Preserve no-ready-child versus no-child results, reparenting, interruption, and PID reuse. Do not claim a cancelable blocking wait without an actual interruption mechanism or install raw signal handlers.
+- **Evidence:** Use bounded process trees to prove orphan adoption, actual zombie collection, subreaper state/inheritance, and parent isolation. Extend the required namespace lane to demonstrate PID 1 descendant reaping and signal forwarding through standard Go signal handling. No test may reap unrelated runner children or alter the parent runner's subreaper state.
 
 #### E15 — Add seccomp notification listeners and responses
 
@@ -261,6 +271,12 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 - **Contracts:** Separate kernel/configuration absence, delegation denial, and unsupported controller operations. Discover available resources without changing global pools, hardware configuration, or ancestor delegation. Configuration-specific omissions need technical explanations in the usage guide.
 - **Evidence:** Provide record fixtures and actual delegated read/write/enforcement evidence for selected required controllers. Hardware-backed variants need appropriate isolated runners; parser coverage is insufficient to claim those live operations verified. Keep unavailable promised core variants pending rather than declaring this item complete through broad skips.
 
+#### E23a — Start commands atomically in a delegated cgroup
+
+- **Implement:** Add a concrete operation on `cgroup.Group` that starts a caller-configured standard Go command in the captured group using Go's `SysProcAttr.UseCgroupFD`/`CgroupFD` support internally. Borrow the group's identity under lifetime protection; callers must not obtain its descriptor. Keep command I/O, namespace/credential configuration, and ordinary waiting with `os/exec`; do not introduce another process launcher or raw clone wrapper.
+- **Contracts:** Preserve command-start failure and pipe cleanup, caller ownership, concurrent group close, explicit delegation, and incompatible preexisting startup settings. A successful child begins in the selected group; do not emulate that guarantee with `Start` followed by `AddProcess`, which permits early execution and charges elsewhere. Document that later migration and hierarchy mutation remain possible.
+- **Evidence:** In the existing required cgroup lane, observe membership and a bounded resource charge from the child's first action, before any parent migration could occur. Cover failed startup, removed/inaccessible groups, command reuse rejection, caller-owned pipes, and concurrent close without leaking children or descriptors. Retain ordinary `AddProcess` migration semantics and demonstrate composition with namespace/credential child startup.
+
 ### New scheduling and resource facilities
 
 #### E24 — Add typed CPU affinity
@@ -271,7 +287,7 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 
 #### E25 — Add scheduling policies and I/O priorities
 
-- **Implement:** Extend `sched` with [scheduling attributes](https://man7.org/linux/man-pages/man2/sched_setattr.2.html), policy/priority inspection and mutation, and explicit I/O-priority operations. Preserve normal, FIFO, RR, and deadline domains where supported; expose size/version negotiation.
+- **Implement:** Extend `sched` with [scheduling attributes](https://man7.org/linux/man-pages/man2/sched_setattr.2.html), policy/priority inspection and mutation, and explicit I/O-priority operations. Preserve normal, batch, idle, FIFO, RR, and deadline domains where supported; expose size/version negotiation. Preserve observed `SCHED_EXT` policy identity, but compose with an external scheduler for its BPF program/policy rather than expanding E32's network/tracing scope.
 - **Contracts:** Keep nice values, real-time priority, deadline runtime/deadline/period, utilization clamps, reset-on-fork, and target thread/group scopes distinct. Do not treat a successful unprivileged policy change as proof of privileged real-time coverage.
 - **Evidence:** Use locked, bounded children for permitted transitions, inheritance, rejection, and independently observed policy. Privileged real-time/deadline tests require a disposable runner with appropriate limits/capabilities and conservative bounds; add a matching required lane rather than changing shared host policy.
 
@@ -353,7 +369,8 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 
 #### E39 — Add key requests, expiry, and remaining key controls
 
-- **Implement:** Add typed `request_key` operations, timeout/expiry control, supported request authorization/destination choices, and remaining baseline keyring controls assigned by the coverage inventory. Distinguish key types the kernel handles from cryptographic algorithms the library implements.
+- **Implement:** Add typed `request_key` operations, timeout/expiry control, supported request authorization/destination choices, ring clearing, atomic key moves, link restrictions, capability discovery, and security-label inspection. Account explicitly for instantiate/reject/negate and authority-assumption controls when implementing the controlled request-helper workflow. Distinguish key types the kernel handles from cryptographic algorithms the library implements.
+- **Boundary:** Keep shared user-persistent rings and session-to-parent credential replacement outside private workload-ring management. Cryptographic DH/public-key operations and watch-queue notifications require separate algorithm/transport contracts and are excluded from this sequence; do not expose a generic keyctl escape hatch for them. Record these omissions in the first keyring usage guide.
 - **Contracts:** Document possible external request-key helper execution, credential/thread scope, interruption, negative keys, and asynchronous expiry. Notifications or specialized key types need explicit safe contracts and configuration coverage; retain technical exclusions rather than accepting arbitrary untyped `keyctl` commands.
 - **Evidence:** Verify requests satisfied from the private ring without invoking uncontrolled host helpers, bounded expiry and negative/error behavior, and delegated controls on test-owned keys. Helper-backed success requires a dedicated controlled fixture, not assumptions about the developer's host configuration.
 
@@ -392,6 +409,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 #### E45 — Reconcile coverage, compatibility, and verification
 
 - **Review:** Reconcile the support index and every affected usage guide against current exported operations and Linux 7.0 semantics. Account for remaining flags, ioctls, opcodes, record fields, configuration-specific variants, and genuine technical exclusions. Do not equate a package's existence with complete facility coverage or silently waive an unfinished earlier item.
-- **Integrate:** Exercise allocated/synchronized mapped database files, uring cancellation/registered-resource cleanup, bounded workload measurement, and shared-memory/IPC lifetimes. Add a container-style lifecycle using standard Go child startup, existing namespaces/capabilities/security APIs, a private prepared/activated rootfs, delegated cgroup placement, and private virtual networking, followed by exit/reaping and cleanup. Include eBPF network counters and process-event tracing with cgroup/procfs/pidfd operations, keeping application control policy separate from observation and preserving attachment cleanup. Run any combined privileged scenario only through an explicit isolated verification route. Document externally supplied pieces such as NAT/firewall policy and optional checkpoint engines; do not imply that the example is a complete secure container runtime.
+- **Integrate:** Exercise allocated/synchronized mapped database files, uring cancellation/registered-resource cleanup, bounded workload measurement, and shared-memory/IPC lifetimes. Add a container-style lifecycle using standard Go child startup and UID/GID mappings, existing namespaces/capabilities/security APIs, a private prepared/activated rootfs, atomic delegated cgroup startup from E23a, and private virtual networking, followed by PID 1/orphan reaping from E14a and cleanup. Include eBPF network counters and process-event tracing with cgroup/procfs/pidfd operations, keeping application control policy separate from observation and preserving attachment cleanup. Run any combined privileged scenario only through an explicit isolated verification route. Document externally supplied pieces such as image/rootfs contents, device policy, NAT/firewall policy, DNS/IP allocation, and optional checkpoint engines; do not imply that the example is a complete secure container runtime.
 - **Verify:** Observe all applicable required native baseline and isolated CI jobs for the actual final revision, including each new facility lane and coverage merge. Reconcile local newer-kernel evidence with exact-baseline evidence, preserve unresolved defensive/configuration limits in the existing verification-limit owner, and verify that no core scenario is covered only by a skip or parser fixture.
 - **Acceptance:** Another agent can use and verify the shipped APIs from their documentation, all agreed items have their required evidence, and remaining technical exclusions are explicit. Remove this file when its last item is complete. Release/tag/publish only under the user's actual authorization.

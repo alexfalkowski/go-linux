@@ -76,6 +76,8 @@ The bounded representation supports aligned native-endian 32-bit absolute loads,
 
 `ActionAvailable` probes a single named action without data; it returns false without an error for kernel EOPNOTSUPP, and preserves other failures. Unknown actions and user notification are rejected during construction instead of relying on Linux's fatal unknown-action behavior. Notification listeners/brokers, strict mode, speculative-execution opt-out, and a policy compiler remain outside this package.
 
+Against the [Linux 7.0 seccomp UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/seccomp.h), the loader exposes TSYNC and LOG only. NEW_LISTENER, notification-size queries, receive/respond/ID-validation/ADDFD ioctls, listener flags, and WAIT_KILLABLE_RECV are absent. TSYNC_ESRCH is not selected: synchronization conflicts retain the documented refusing-TID result. There is no notification descriptor hidden behind an existing `Filter` operation.
+
 ## Runtime, inheritance, and errors
 
 A valid filter can crash or deadlock Go by denying scheduler, futex, memory, signal, time, I/O, or thread-exit syscalls. Runtime needs vary by Go release, architecture, enabled race instrumentation, and application behavior. The package does not silently add syscall exceptions or claim that an example filter is sufficient for a Go application. A successful load only establishes the requested kernel filter operation.

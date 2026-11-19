@@ -42,6 +42,8 @@ The pidfd and wake descriptor remain private. Use `Signal`, `WaitReady`, and `Wa
 
 Thread pidfds, process-group signaling, process creation, ptrace waits, stop/continue notifications, descriptor stealing with `pidfd_getfd`, and resource-usage accounting are omitted.
 
+The [Linux 7.0 pidfd UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/pidfd.h) also offers process-information and namespace-acquisition ioctls; these are not exposed. Numeric process/descriptor observations in [procfs](procfs.md) do not provide those stable-handle operations. There is no child-subreaper control or wait-any operation: `Wait` reaps only its identified eligible child, and opening a process never adopts its descendants. A namespace PID 1 must arrange orphan reaping and signal forwarding separately; `Cmd.Wait` remains responsible for command pipe cleanup. This package alone is not a container init.
+
 ## Verification and prerequisites
 
 Run `package=pidfd make specs` through the repository harness. Ordinary operations require permitted pidfd_open, pidfd_send_signal, pidfs/fcntl inspection, eventfd, poll, and waitid calls. Tests use procfs, `/bin/sh`, `/bin/cat`, and bounded test-owned children. Core-dump status and lowered descriptor limits run in subprocesses without changing host policy. A sibling-process fixture verifies non-child observation while its parent retains reaping.
