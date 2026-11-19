@@ -48,6 +48,12 @@ Each `Diagnostic` contains a Severity byte, normally `e`, `w`, or `i`, and a Mes
 
 Other operations wrap `*os.PathError` and preserve kernel errno identity. `EPERM`, `EACCES`, `EINVAL`, and `ENOSYS` are not blanket unsupported-feature signals: capabilities, filters, filesystem support, configuration, and kernel policy differ. Zero owners match `os.ErrInvalid`; repeated Close and ordinary methods on closed owners match `os.ErrClosed` for otherwise valid arguments.
 
+## Coverage boundary
+
+Compared with the [Linux 7.0 mount UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/mount.h), Config exposes only SET_FLAG, SET_STRING, and CMD_CREATE before `Mount`. Binary, path/path-empty, and file parameters, exclusive superblock creation, fspick, and reconfiguration are absent. `Clone` supplies CLONE/CLOEXEC and optional recursive selection; creating a mount namespace through open_tree is not exposed. Attach uses its documented empty-path selectors, without beneath/group-setting controls.
+
+There is no listmount/statmount discovery API. `Handle.Stat` returns ordinary root-inode metadata, not a structured mount record; `Attributes` reports only the four named restrictions. Atime, NoSymFollow, propagation, ID mapping, namespace selectors, and unique mount traversal are not represented. Procfs mountinfo remains a separate selected observation in [procfs](procfs.md). There is no pivot_root/root-activation operation. Normal/lazy unmount are supported; force/expire and arbitrary legacy mount calls are not. Namespace setup, rootfs contents, and application cleanup policy remain explicit caller concerns.
+
 ## Isolation, concurrency, and verification
 
 The caller supplies namespace isolation, applicable `CAP_SYS_ADMIN`, filesystem support, attachment/propagation policy, and unmount cleanup. The library never enters a namespace. Do not run attachment examples against host mounts. A container's UID 0 alone does not establish the required capabilities or syscall permissions.

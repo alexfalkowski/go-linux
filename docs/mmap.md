@@ -47,4 +47,10 @@ Errors preserve errno and standard identities through `errors.Is`/`errors.As`, w
 
 A zero Region returns nil from Bytes and `os.ErrInvalid` from other methods. After successful Close, Bytes returns nil and other methods, including repeated Close, match `os.ErrClosed` before validating method arguments. A failed Close retains ownership for retry. Kernel protection/advice errors may follow partial application. Do not copy a Region after use; nil receivers are unsupported.
 
+## Coverage boundary
+
+Only `Private`/`Shared`, the listed protection bits, and the five listed advice values are accepted. There is no msync, mlock/mlock2/munlock, mincore, or mremap operation. [Linux 7.0 memory controls](https://github.com/torvalds/linux/blob/v7.0/include/uapi/asm-generic/mman-common.h) also include lazy-free/removal, fork/dump behavior, merge/huge-page advice, cold/pageout, population, locked-page discard, and guard operations; none is accepted by `Advise` today. Advice must not be supplied by casting additional Linux values into this package's enum.
+
+Executable/protection-key mappings, fixed addresses, huge-page selection, MAP_SYNC, process-wide locking, and remote-process memory advice are outside the current surface. Fixed-address/alias mappings need ownership beyond this single-region owner, and hardware-poison/offline operations can affect the host beyond a region. No current method provides those contracts. Ordinary Go allocation and synchronization remain with the runtime and standard library.
+
 Run `package=mmap make specs` for ordinary-user integration coverage, including bounded subprocess protection/lifetime faults. The package has no privileged profile. See the [verification guide](verification.md) for runner requirements, report locations, and verified environments.

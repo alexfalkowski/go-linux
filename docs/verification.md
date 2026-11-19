@@ -75,7 +75,7 @@ The native rootless CI jobs use machine executors to control the container sysca
 Use a native Linux Docker host, a nonroot invoking user, and the Go image from [.circleci/config.yml](../.circleci/config.yml):
 
 ```sh
-make verify-rootless-container image=alexfalkowski/go:5.23 arch=amd64 package=xattr
+make verify-rootless-container image=alexfalkowski/go:5.24 arch=amd64 package=xattr
 ```
 
 Omit `package` for the complete rootless suite used by CI. The launcher downloads the [Moby default seccomp profile at a pinned revision](https://github.com/moby/profiles/blob/f862455628f78f84c937e967e4a03902fb1dee11/seccomp/default.json), checks its SHA-256 digest, and passes it explicitly to Docker. This allowlist includes getxattrat, setxattrat, listxattrat, and removexattrat. The host Docker runtime/libseccomp must recognize those syscalls. Profile download or checksum failures stop verification; the launcher does not fall back to an unconfined container.
@@ -87,7 +87,7 @@ A root setup process remaps the image's `circleci` user and home to the invoking
 Netlink's isolated fixtures need permitted mapped user/network namespaces and network administration inside those private namespaces. They do not require fanotify's initial-user-namespace CAP_SYS_ADMIN. Use a native Linux Docker host and the Go image from CI:
 
 ```sh
-make verify-netlink-container image=alexfalkowski/go:5.23 arch=amd64
+make verify-netlink-container image=alexfalkowski/go:5.24 arch=amd64
 ```
 
 The same launcher runs locally and in `build-netlink` on native amd64/arm64. It uses the existing privileged-container setup, refreshes dependencies, records `environment.json`, and runs `make verify-netlink`. Dependency setup and image acquisition may require network/registry access and a writable checkout/vendor directory. Use a writable disposable source copy if existing vendor ownership prevents refresh. Rootless Docker works in the observed local configuration; prerequisite and operation failures remain failures on other hosts.
@@ -103,7 +103,7 @@ The dump fixtures verify the actual kernel interruption marker independently, th
 The namespace package's ordinary-user suite covers all eight handle types, identity, adoption, ownership, lifetime, concurrency, errors, and examples. Thread transitions run only in bounded subprocesses selected by the namespace profile. Run the same isolated suite locally and in CI with the configured Go image:
 
 ```sh
-make verify-namespace-container image=alexfalkowski/go:5.23 arch=amd64
+make verify-namespace-container image=alexfalkowski/go:5.24 arch=amd64
 ```
 
 The launcher requires a native Linux Docker host that permits privileged containers and mapped user namespaces. It refreshes dependencies and runs `make verify-namespace`, recording prerequisites and the standard reports directly in `test/reports/`. A writable disposable checkout can be used when dependency ownership prevents refresh. Namespace and capability transition fixtures create private mapped user namespaces before creating or entering further namespaces. Landlock device-node fixtures instead retain initial credentials in private mount-namespace children, because ordinary device creation requires initial-user-namespace CAP_MKNOD. Security privilege fixtures retain the container's starting credentials and change only bounded child processes. Tests verify mount, cgroup, IPC, network, UTS, PID, and time creation; permitted entry; user hierarchy/owner inspection; standard child creation; single-threaded user/time restrictions; and worker-thread cleanup after success, failure, and recovered panic. The startup thread is reserved while tests run so thread-destruction observations target workers rather than Go's permanently parked startup-thread special case. No host namespace is entered or mutated.
@@ -117,7 +117,7 @@ Run `make specs package=capability` for ordinary-user inspection, invalid masks,
 Positive permitted/effective/inheritable transitions, bounding drops, ambient changes, thread isolation, securebits refusal, and exec transformations run in private mapped user-namespace subprocesses. They share the existing namespace lane and launcher:
 
 ```sh
-make verify-namespace-container image=alexfalkowski/go:5.23 arch=amd64
+make verify-namespace-container image=alexfalkowski/go:5.24 arch=amd64
 ```
 
 This runs the packages in the namespace lane with `profile=namespaces required=true`. With the configured tools and permitted namespaces directly available, use `make verify-namespace arch=amd64`. The disposable children need a bounding set containing the tested capabilities, including CAP_CHOWN, CAP_MAC_OVERRIDE, and CAP_BPF, and effective CAP_SETPCAP for bounding/securebits changes. The privileged container provides the intended fixture environment; root or a successful namespace probe alone is not operation evidence. Exec tests change securebits only in children to distinguish ambient inheritance from UID-0 restoration, and execute only the test binary without file capabilities. Rootless runs skip the unselected privileged scenarios; selected required prerequisites and all failures after child startup fail.
@@ -163,7 +163,7 @@ Enforcement scenarios keep the test runner outside each limited leaf and release
 The `build-cgroup` CI matrix uses the same container launcher available locally on a native Linux Docker host:
 
 ```sh
-make verify-cgroup-container image=alexfalkowski/go:5.23 arch=amd64
+make verify-cgroup-container image=alexfalkowski/go:5.24 arch=amd64
 ```
 
 The launcher requires permitted privileged containers, cgroup v2, and CPU, memory, and PIDs controllers delegated to Docker containers. It explicitly selects a private cgroup namespace and checks that the v2 membership starts at its root, including on hybrid hosts with unrelated v1 entries. A fresh namespace-rooted cgroup2 mount exposes only the container's subtree; no host cgroup directory is bind-mounted. The launcher moves itself into a separate runner leaf, enables the three controllers for a sibling delegation, refreshes dependencies, and invokes `make verify-cgroup`. This supplies common-ancestor migration permission without changing host workload membership, controller configuration, or limits. Docker removes the disposable subtree when the container exits. Missing controllers, mount permissions, or delegation fail the run without a host-hierarchy fallback. See the [Linux 7.0 cgroup namespace rules](https://docs.kernel.org/7.0/admin-guide/cgroup-v2.html#interaction-with-other-namespaces).
@@ -175,7 +175,7 @@ Use the configured Go image and a writable checkout/vendor directory; dependency
 Use a native Linux Docker host that permits privileged containers. Select the Go image from [.circleci/config.yml](../.circleci/config.yml) and the host architecture; the current amd64 invocation is:
 
 ```sh
-make verify-mount-container image=alexfalkowski/go:5.23 arch=amd64
+make verify-mount-container image=alexfalkowski/go:5.24 arch=amd64
 ```
 
 The launcher runs dependency setup and `make verify-mount`, which records `environment.json` and runs the mount package's required namespace suite. This includes an inotify observer that verifies Unmount followed by Ignored when a private tmpfs filesystem is unmounted. Reports are bind-mounted back to `test/reports/`. Each fixture creates separate user/mount namespaces and makes propagation private before mounting. Required prerequisite or operation failures fail the command. The caller must provide the permitted isolation environment; changing a container image does not change its host kernel. Dependency setup requires a writable checkout and vendor directory; use a writable disposable source copy when existing dependency ownership prevents refresh.
@@ -187,7 +187,7 @@ With tools installed directly, `make verify-mount arch=amd64` runs the same disc
 Use a native Linux host with a rootful Docker daemon and initial-user-namespace `CAP_SYS_ADMIN`. The host kernel must provide `CONFIG_FANOTIFY` and `CONFIG_FANOTIFY_ACCESS_PERMISSIONS`. Rootless Docker cannot supply the required initial-namespace privilege, including with `--privileged`; the launcher rejects that environment before running setup.
 
 ```sh
-make verify-fanotify-container image=alexfalkowski/go:5.23 arch=amd64
+make verify-fanotify-container image=alexfalkowski/go:5.24 arch=amd64
 ```
 
 The launcher uses the configured Go image and runs dependency setup followed by `make verify-fanotify`. That target records the environment and runs `package=fanotify profile=namespaces required=true` through the ordinary race/coverage harness. Each live fixture reexecutes in a private mount namespace without creating a user namespace, preserving the required initial-namespace privilege. It makes mount propagation private and uses only test-owned files and private tmpfs instances; no host files or mounts receive marks. Tests verify notification files, inode/mount/filesystem marks, permission responses and shutdown, iterator cleanup, deadlines, and concurrent close. Examples run in the same isolated fixtures. The `build-fanotify` CI matrix requires these operations on native amd64 and arm64; capabilities and successful namespace creation alone do not count as fanotify evidence.
@@ -203,7 +203,7 @@ Inside that VM, using its native architecture and the configured Go image:
 
 ```sh
 sudo timedatectl set-ntp false
-make verify-timerfd-container image=alexfalkowski/go:5.23 arch=amd64 clock_change=true
+make verify-timerfd-container image=alexfalkowski/go:5.24 arch=amd64 clock_change=true
 ```
 
 The explicit acknowledgment is required before Docker starts. The launcher runs dependency setup and `make verify-timerfd`, selecting only timerfd with the `clockchange` build tag, required prerequisites, vet, race detection, and reports. Missing clock-setting permission fails. The tagged suite includes typed epoll registration during forward/backward clock cancellation, ECANCELED reads without fabricated expirations, and readiness cleared after consumption. Cleanup restores wall time using monotonic elapsed time, but abrupt termination can prevent restoration; discard the VM afterwards.
@@ -245,6 +245,7 @@ Additional local evidence covers a newer kernel:
 
 | Scope | Go / kernel / architecture | Observed prerequisites | Evidence and limits |
 | --- | --- | --- | --- |
+| Coverage inventory and representative `file` operations | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | Direct shell: UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2, read-only cgroup v2, namespace creation denied with EPERM. Rootless Docker is available. | Fresh `make test-environment` confirms the local prerequisites. The configured `alexfalkowski/go:5.24` image's `make verify-rootless-container arch=amd64 package=file` run passes lint, script lint, security scans, vet, race/coverage tests, and coverage generation from a disposable source copy. Test events contain 88 passes and one explicitly unselected namespace-only block-device case; file statement coverage is 98.9%. Reports use `test/reports/e01-file-*`. This checks representative shipped file behavior, not the absent expansion mechanisms, isolated block metadata, Linux 7.0, arm64, or the complete matrix. |
 | `file` metadata and `seccomp` aggregate instruction limit | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | Ordinary user: UID 1000, no effective capabilities, NoNewPrivs=1, seccomp mode 2. Configured Go image: UID 0 in privileged rootless Docker, visible block inodes, permitted seccomp and namespace operations. | The required file/seccomp namespace-profile run passes all 153 cases with race detection and no skips, including aggregate filter-tree refusal without attachment, block-device mode/identity through a path-only handle, and NoDump set/clear. The ordinary-user run passes 148 cases with five unselected profile cases. Reports use `test/reports/verification-limits-namespace-*`; Linux 7.0 and arm64 evidence remains for CI. |
 | R01 rootless surface and typed readiness composition | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; configured Go image and pinned Moby syscall profile | `verify-rootless-container` passes lint, script lint, security scans, vet, tests with race detection, and coverage: 1,509 cases pass and 108 isolated-profile cases are explicitly unselected. The five-package eventfd/timerfd/epoll/memfd/mmap subset passes all 279 cases without skips, both directly and within that run. Examples exercise shared mappings and typed counter/timer readiness; registration tests establish independent lifetime, validation, cleanup, and concurrent close. The image run uses a writable disposable source copy with matching Go sources and dependency declarations. Rootless statement coverage is 88.2%; child counters are not merged. Exact Linux 7.0 and native arm64 probes reject this runner. Other verification gaps are recorded in [verification limits](verification-limits.md). |
 | `sysfs` block/network attributes and fixture compatibility | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; readable sysfs and writable temporary fixtures | All 115 cases pass with race detection and no skips directly and through the configured Go image's required rootless launcher. Tests establish typed values, unknown bits/bytes, size limits, symlinks/partitions, missing attributes, disappearance/replacement, errno, concurrent reads, descriptor cleanup, and examples. Statement coverage is 97.8%. The rootless Docker mapping requires a writable disposable source copy; implementation, tests, and dependency declarations match the checkout. Exact Linux 7.0 and native arm64 probes reject this runner. Rare defensive failures remain recorded in [verification limits](verification-limits.md). |

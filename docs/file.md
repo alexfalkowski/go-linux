@@ -50,6 +50,14 @@ Names pass to Linux unchanged. Trailing slashes, empty names, symlink expansion,
 
 Each name is relative to its matching borrowed directory, or absolute with that anchor ignored. Both anchors must remain live for admission to the operation. Rename has ordinary Linux path resolution and does not confine untrusted names. The library does not emulate modes with existence checks or multiple renames. Filesystem support failures and cross-mount errors retain errno. Entry replacement/exchange is atomic, but later lookups are separate operations; success does not promise crash durability or synchronize storage.
 
+## Coverage boundary
+
+The [Linux 7.0 UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/linux) includes more than these operations. `Open` accepts only the flags listed above; `O_TMPFILE`, `O_DIRECT`, `O_SYNC`, and `O_DSYNC` are not exposed. There is no operation to publish an unnamed temporary inode. Ordinary creation, I/O, logical resizing, and `File.Sync` remain standard Go operations.
+
+No allocation/range, file-advice/readahead, fdatasync/syncfs, flock, or POSIX/OFD record-lock API is present. In particular, fallocate allocation, KEEP_SIZE, PUNCH_HOLE, ZERO_RANGE, COLLAPSE_RANGE, INSERT_RANGE, UNSHARE_RANGE, and the baseline's distinct WRITE_ZEROES operation are absent; `Truncate` does not implement them. Reserved fallocate bits are not operations. See the [versioned allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h).
+
+The accepted statx request mask is exactly `MaskBasic|MaskBirthTime|MaskMountID|MaskUniqueMountID`, including individual basic bits. Direct-I/O memory/offset/read alignment, subvolume identity, and atomic-write unit/segment limits from [stat.h](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h) have no fields or request constants here. Returned unknown mask/attribute bits survive, including an atomic-write attribute bit without a named constant; that does not expose the omitted fields or implement atomic data writes. Whiteout rename is absent. Filesystem-specific ioctls, reflink/extent inspection, and device control are outside this surface.
+
 ## Ownership, errors, and verification
 
 Every input is borrowed for one call and stays caller-owned on success and failure. Descriptor references are pinned internally against concurrent Close; operations either use the original open description or fail with `os.ErrClosed`. The package does not alter input flags or offsets. Separate calls are safe concurrently, while logical sequences require caller coordination. No context or syscall-deadline API is promised.

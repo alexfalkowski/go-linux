@@ -85,4 +85,12 @@ An `Event` reports current `Populated` and `Frozen` state and retains unknown un
 
 Use one watcher reader/iterator at a time; `Close` and `SetReadDeadline` can run concurrently. Close interrupts a pending read with `os.ErrClosed`; deadlines match `os.ErrDeadlineExceeded`. Iteration yields a terminal error once, then ends. Breaking performs no further I/O, and reusing the same sequence resumes until a terminal error. Group operations are safe concurrently, but sequences of configuration and lifecycle calls require caller coordination. Zero owners match `os.ErrInvalid`; repeated close and valid operations after closure match `os.ErrClosed`. Invalid arguments precede closed state. Kernel errors preserve errno; missing controllers, wrong topology, permission failures, and read-only mounts remain distinguishable.
 
+## Coverage boundary
+
+The named mutation controllers are exactly CPU, memory, and PIDs. [Linux 7.0 cgroup v2](https://docs.kernel.org/7.0/admin-guide/cgroup-v2.html) also defines I/O, cpuset, hugetlb, RDMA, misc, and device-memory controls; those are not typed operations here. Unknown controller names can be observed but cannot be enabled by casting them into `Controller`. Configured/effective CPU and memory-node sets, per-device I/O limits/statistics, and controller-specific resource identities are absent.
+
+`cpu.stat` and the represented event maps retain unknown unsigned counters, without supplying missing file operations. CPU burst/idle/utilization controls and pressure, memory min/low/swap/reclaim/stat/pressure and local-event files, and additional PIDs observations are outside the current set. Frozen snapshots do not provide freeze/thaw commands; populated events do not provide recursive kill. There is no typed command-start integration, so post-start migration cannot establish first-instruction resource placement/accounting. Go's cgroup startup fields require an internal bridge to this owned handle before callers can use that guarantee without raw access.
+
+Threaded hierarchies, ancestor/systemd management, and BPF device-access policy remain separate from the supported delegated domain-group operations. Closing a group neither kills descendants nor removes their groups.
+
 See [executable examples](../cgroup/example_test.go), the [design rationale](design/cgroup.md), and [verification requirements and delegated runtime evidence](verification.md#cgroup-verification). Known defensive execution limits are recorded in [verification limits](verification-limits.md).
