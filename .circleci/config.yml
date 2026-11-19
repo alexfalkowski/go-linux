@@ -16,7 +16,7 @@ executors:
     machine:
       image: ubuntu-2604:current
     environment:
-      GO_LINUX_CI_IMAGE: &go-image alexfalkowski/go:5.24
+      GO_LINUX_CI_IMAGE: &go-image alexfalkowski/go:5.25
     resource_class: arm.medium
   go-amd64:
     <<: *go
@@ -36,7 +36,7 @@ executors:
     resource_class: arm.medium
   release:
     docker:
-      - image: alexfalkowski/release:8.51
+      - image: alexfalkowski/release:8.52
   alpine:
     docker:
       - image: alpine:latest
