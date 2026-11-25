@@ -12,6 +12,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// ReservedAllocationMode is the reserved fallocate(2) codepoint.
+const ReservedAllocationMode = unix.FALLOC_FL_NO_HIDE_STALE
+
 // FileStatx independently observes Linux metadata for focused ABI comparisons.
 // The file remains open and no offset or flags are changed.
 func FileStatx(t *testing.T, file *os.File, mask uint32) unix.Statx_t {
@@ -23,6 +26,35 @@ func FileStatx(t *testing.T, file *os.File, mask uint32) unix.Statx_t {
 	})
 	require.NoError(t, err)
 	return stat
+}
+
+// FileAllocatedBlocks independently counts the file's allocated 512-byte blocks.
+func FileAllocatedBlocks(t *testing.T, file *os.File) int64 {
+	t.Helper()
+	var stat unix.Stat_t
+	FileControl(t, file, func(fd uintptr) {
+		require.NoError(t, unix.Fstat(int(fd), &stat))
+	})
+	return stat.Blocks
+}
+
+// FileAllocationBlockSize provides alignment for range tests. The advanced
+// operations require a filesystem such as ext4 or XFS. In optional runs,
+// classify tmpfs explicitly since it cannot zero, collapse, or insert ranges.
+func FileAllocationBlockSize(t *testing.T, file *os.File, needsZeroOrShift bool) int {
+	t.Helper()
+	var stat unix.Statfs_t
+	FileControl(t, file, func(fd uintptr) {
+		require.NoError(t, unix.Fstatfs(int(fd), &stat))
+	})
+	if needsZeroOrShift && stat.Type == unix.TMPFS_MAGIC {
+		options, err := testenv.FromEnvironment()
+		require.NoError(t, err)
+		const reason = "tmpfs lacks zero-range, collapse, and insert; set TMPDIR to a directory on a supporting filesystem"
+		require.False(t, options.Required, reason)
+		t.Skip(reason)
+	}
+	return int(stat.Bsize)
 }
 
 // SetNoDump changes only the temporary file's dump-exclusion flag. The fixture

@@ -94,3 +94,33 @@ func ExampleRename() {
 
 	// Output: new old
 }
+
+func ExampleFallocate() {
+	path, err := os.MkdirTemp("", "allocation-example-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(path)
+
+	segment, err := os.Create(filepath.Join(path, "segment"))
+	if err != nil {
+		panic(err)
+	}
+	defer segment.Close()
+
+	// Reserve space for the next log segment before appending any records.
+	if err := file.Fallocate(segment, file.Allocate|file.KeepSize, 0, 64*1024); err != nil {
+		panic(err)
+	}
+	if _, err := segment.WriteString("record\n"); err != nil {
+		panic(err)
+	}
+
+	info, err := segment.Stat()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(info.Size())
+
+	// Output: 7
+}
