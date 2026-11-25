@@ -37,6 +37,9 @@ const ErrConnectionRefused = syscall.ECONNREFUSED
 // ErrExists preserves Linux EEXIST for exact error assertions.
 const ErrExists = syscall.EEXIST
 
+// ErrFileTooLarge preserves Linux EFBIG for exact error assertions.
+const ErrFileTooLarge = syscall.EFBIG
+
 // ErrInvalidArgument preserves Linux EINVAL for exact error assertions.
 const ErrInvalidArgument = syscall.EINVAL
 

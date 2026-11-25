@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E02 — Add file allocation and range operations**.
+Next: **E02a — Unshare reflinked file ranges**.
 
-Resume note: E01 inventory changes await required CI for this revision. Resolve that evidence before starting E02.
+Resume note: E02 passed the required local file suite on native amd64 with ext4 temporary files. Confirm the final revision's required CircleCI results, including Linux 7.0 rootless runs on amd64 and arm64 and merged coverage, before starting E02a.
 
 ## Objective and scope
 
@@ -107,14 +107,14 @@ Use the actual native architecture. Inspect target scope: `package` scopes the s
 
 Local development may have more useful privileges through Docker than through the agent shell. A shell namespace denial is not proof that local isolated verification is unavailable. Check daemon access and use the existing facility launchers before leaving a local privilege blocker. Do not assume that a rootless Docker daemon grants initial-user-namespace capabilities; prove the selected operation inside the actual container. Keep host resources unchanged: use private namespaces, test-owned files/devices/IPC objects, bounded children, and explicitly disposable cgroup delegations.
 
-Use the Go image currently configured by CI, `alexfalkowski/go:5.24`. These commands already exist:
+Use the Go image from [CircleCI](.circleci/config.yml), currently `alexfalkowski/go:5.26`. These commands already exist:
 
 ```sh
-make verify-rootless-container image=alexfalkowski/go:5.24 arch=amd64 package=file
-make verify-mount-container image=alexfalkowski/go:5.24 arch=amd64
-make verify-netlink-container image=alexfalkowski/go:5.24 arch=amd64
-make verify-namespace-container image=alexfalkowski/go:5.24 arch=amd64
-make verify-cgroup-container image=alexfalkowski/go:5.24 arch=amd64
+make verify-rootless-container image=alexfalkowski/go:5.26 arch=amd64 package=file
+make verify-mount-container image=alexfalkowski/go:5.26 arch=amd64
+make verify-netlink-container image=alexfalkowski/go:5.26 arch=amd64
+make verify-namespace-container image=alexfalkowski/go:5.26 arch=amd64
+make verify-cgroup-container image=alexfalkowski/go:5.26 arch=amd64
 ```
 
 Select the matching launcher; these are alternatives for different scopes, not a checklist to run for every item. The existing fanotify and clock-change launchers remain available for changes affecting those packages. Clock changes require an explicitly disposable VM. Container launchers perform dependency setup and can write vendor/report files; use a writable disposable checkout if necessary, without changing ownership of unrelated work.
@@ -129,11 +129,15 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 
 ### Existing file and memory facilities
 
-#### E02 — Add file allocation and range operations
+#### E02a — Unshare reflinked file ranges
 
-- **Implement:** Extend `file` with typed [fallocate](https://man7.org/linux/man-pages/man2/fallocate.2.html) operations: allocation with/without size preservation, hole punching, zeroing, collapse/insert, unsharing, and Linux 7.0's distinct `FALLOC_FL_WRITE_ZEROES` operation. Check the [versioned UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h), including its reserved codepoint. Borrow ordinary `*os.File` handles using the package's existing lifetime protection.
-- **Contracts:** Preserve operation-specific flag combinations, filesystem alignment rules, signed range/overflow validation, size/content effects, and errno. Never emulate allocation by truncating or writing zeros. Do not claim every filesystem supports every mode.
-- **Evidence:** Test temporary files on a filesystem supporting the required modes, checking actual size/content and independent extent/allocation observations where useful. Keep unsupported filesystem modes visible; add an isolated filesystem fixture to the existing mount lane when the ordinary checkout filesystem cannot establish them.
+- **Implement:** Extend `file.Fallocate` for `FALLOC_FL_UNSHARE_RANGE` with its valid allocation-mode flag combinations, including optional size preservation. Preserve contents, alignment and extent semantics, signed range validation, borrowing, and errno. Use the existing binding and leave unsupported filesystems observable.
+- **Evidence:** In an isolated fixture such as reflink-enabled XFS in the mount lane, establish that temporary files share extents, unshare the selected range, and independently verify the changed extent sharing and preserved contents. Require the positive scenario on both native architectures.
+
+#### E02b — Write zeroes for subsequent overwrites
+
+- **Implement:** Extend `file.Fallocate` for Linux 7.0's distinct `FALLOC_FL_WRITE_ZEROES` operation. Preserve its exclusive mode and size/alignment rules, signed range validation, borrowing, and errno. Keep filesystem and backing-device rejection visible.
+- **Evidence:** Exercise an isolated disposable ext4 filesystem on storage that reports write-zeroes-with-unmap support. Use actual size/content and independent extent observations to distinguish written extents from ordinary zero-range. Extend the mount lane to require positive native amd64/arm64 evidence with suitable storage. Keep this item pending if the runner cannot provision the backing-device prerequisite.
 
 #### E03 — Add file advice and synchronization controls
 

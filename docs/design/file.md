@@ -12,6 +12,8 @@ Open passes names unchanged. Cleaning a path in userspace can change symlink/par
 
 Borrowed descriptors are pinned for the syscall rather than duplicated and retained. Nested lifetime references permit Rename to use the same anchor twice without introducing lock-order synchronization. This protects identity against concurrent close but does not interrupt blocking filesystem work. See [the private borrowing boundary](../../file/control.go).
 
+Fallocate uses the maintained x/sys binding with the same lifetime protection. One typed mode represents the kernel operation and its permitted size modifier, so a caller can reserve log capacity without inadvertently growing the visible log. The wrapper checks mode combinations and signed range arithmetic before borrowing. It leaves alignment and file-state checks to the filesystem, where the relevant allocation units and EOF are known. Forwarding one request preserves distinctions such as storage reserved by zero-range and storage released by hole punching. [Linux 7.0 VFS implementation](https://github.com/torvalds/linux/blob/v7.0/fs/open.c)
+
 ## Keep metadata validity separate from values
 
 Metadata retains Linux's returned field mask and attribute-support mask. An unsupported field cannot be inferred from a zero value, and a single query is not an atomic snapshot. Unsigned Linux sizes and identifiers retain their ranges, while mode bits and valid timestamps convert to Go representations. Unknown output bits survive inspection; unknown input bits are rejected rather than silently ignored.

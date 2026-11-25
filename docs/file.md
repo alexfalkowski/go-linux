@@ -1,10 +1,10 @@
 # file
 
-`github.com/alexfalkowski/go-linux/file` adds explicit Linux path-resolution, metadata, and rename controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. This package follows the module's Linux 7.0+ and Go floor in `go.mod`; filesystem support and security policy remain observable requirements.
+`github.com/alexfalkowski/go-linux/file` adds Linux path-resolution, metadata, rename, and allocation controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. The module supports Linux 7.0+ and the Go floor in `go.mod`. Filesystem support and security policy can vary by operation.
 
 ## Good for
 
-Good for controlled path lookup, extended metadata inspection, and atomic file replacement or exchange. [GNU mv's exchange mode](https://www.gnu.org/software/coreutils/manual/coreutils.html#mv-invocation) demonstrates swapping two existing files or directories atomically on supporting filesystems.
+Use it for controlled path lookup, extended metadata inspection, atomic file replacement or exchange, and preallocating log segments. [GNU mv's exchange mode](https://www.gnu.org/software/coreutils/manual/coreutils.html#mv-invocation) demonstrates swapping two existing entries atomically on supporting filesystems.
 
 ## Restricted opening
 
@@ -50,11 +50,35 @@ Names pass to Linux unchanged. Trailing slashes, empty names, symlink expansion,
 
 Each name is relative to its matching borrowed directory, or absolute with that anchor ignored. Both anchors must remain live for admission to the operation. Rename has ordinary Linux path resolution and does not confine untrusted names. The library does not emulate modes with existence checks or multiple renames. Filesystem support failures and cross-mount errors retain errno. Entry replacement/exchange is atomic, but later lookups are separate operations; success does not promise crash durability or synchronize storage.
 
+## Allocation and ranges
+
+Reserve storage for a log segment before writing the first record. Size preservation keeps the logical end of the file at the last written record.
+
+```go
+if err := file.Fallocate(segment, file.Allocate|file.KeepSize, 0, 64*1024); err != nil {
+    return err
+}
+```
+
+Pass a writable open file, a mode, and a byte offset and length. The [executable example](../file/example_test.go) writes a record to a preallocated segment.
+
+| Mode | File effect |
+| --- | --- |
+| `Allocate` (zero) | Reserves storage and extends the file when the range ends beyond EOF. Existing data is preserved. Add `KeepSize` to preserve EOF. |
+| `PunchHole` with `KeepSize` | Frees whole blocks and zeros partial blocks in the range. Size stays the same. |
+| `ZeroRange` | Zeros the range and reserves storage for it. Add `KeepSize` to preserve EOF. |
+| `CollapseRange` | Removes bytes, shifts later data toward the start, and shrinks the file. The range must end before EOF. |
+| `InsertRange` | Inserts a hole, shifts later data toward the end, and grows the file. The insertion offset must be before EOF. |
+
+Offsets must be nonnegative and lengths positive. Invalid inputs match `os.ErrInvalid`. A range end outside the signed 64-bit range returns EFBIG. The filesystem checks alignment and can reject a mode with EOPNOTSUPP. Collapse and insert commonly require both offset and length to be aligned to the filesystem's block size. KeepSize is required for hole punching and cannot be combined with collapse or insert.
+
+Fallocate borrows the open file and preserves its current offset. Coordinate overlapping reads, writes, mappings, and range mutations at the application level. The call can block in the kernel. Errors use `*os.PathError` and preserve errno. The package passes the operation to Linux without fallback or rollback. Use the usual file synchronization calls for durability. [Linux fallocate(2)](https://man7.org/linux/man-pages/man2/fallocate.2.html)
+
 ## Coverage boundary
 
 The [Linux 7.0 UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/linux) includes more than these operations. `Open` accepts only the flags listed above; `O_TMPFILE`, `O_DIRECT`, `O_SYNC`, and `O_DSYNC` are not exposed. There is no operation to publish an unnamed temporary inode. Ordinary creation, I/O, logical resizing, and `File.Sync` remain standard Go operations.
 
-No allocation/range, file-advice/readahead, fdatasync/syncfs, flock, or POSIX/OFD record-lock API is present. In particular, fallocate allocation, KEEP_SIZE, PUNCH_HOLE, ZERO_RANGE, COLLAPSE_RANGE, INSERT_RANGE, UNSHARE_RANGE, and the baseline's distinct WRITE_ZEROES operation are absent; `Truncate` does not implement them. Reserved fallocate bits are not operations. See the [versioned allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h).
+The allocation API accepts the modes in the table. Reflink unsharing and the distinct Linux write-zeroes mode are outside the current surface, along with file advice, readahead, fdatasync, syncfs, flock, and POSIX/OFD record locks. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
 
 The accepted statx request mask is exactly `MaskBasic|MaskBirthTime|MaskMountID|MaskUniqueMountID`, including individual basic bits. Direct-I/O memory/offset/read alignment, subvolume identity, and atomic-write unit/segment limits from [stat.h](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h) have no fields or request constants here. Returned unknown mask/attribute bits survive, including an atomic-write attribute bit without a named constant; that does not expose the omitted fields or implement atomic data writes. Whiteout rename is absent. Filesystem-specific ioctls, reflink/extent inspection, and device control are outside this surface.
 
@@ -64,4 +88,4 @@ Every input is borrowed for one call and stays caller-owned on success and failu
 
 Invalid supported-surface options match `os.ErrInvalid` before file access. Nil files match `os.ErrInvalid`, and closed files match `os.ErrClosed`. Kernel failures such as EEXIST, ELOOP, EXDEV, EAGAIN, EACCES, and ENOTDIR retain identity through `errors.Is`. Open/metadata errors use `*os.PathError`; rename errors use `*os.LinkError` with both names. A failed Open returns nil with nothing for the caller to clean up.
 
-Run `package=file make specs` for the real-kernel race/coverage suite. No capability or isolation profile is needed: tests use temporary directories and read-only observations of procfs, `/dev/null`, and existing mount points. Descriptor exhaustion runs only in a bounded subprocess. The [verification guide](verification.md) records actual runner evidence and gaps; the [design note](design/file.md) explains scope and API tradeoffs.
+Run `package=file make specs` for the real-kernel race/coverage suite. The [verification guide](verification.md#file-verification) describes temporary filesystem prerequisites and the isolated metadata scenario. The [design note](design/file.md) explains API tradeoffs.
