@@ -91,4 +91,4 @@ Every input is borrowed for one call and stays caller-owned on success and failu
 
 Invalid supported-surface options match `os.ErrInvalid` before file access. Nil files match `os.ErrInvalid`, and closed files match `os.ErrClosed`. Kernel failures such as EEXIST, ELOOP, EXDEV, EAGAIN, EACCES, and ENOTDIR retain identity through `errors.Is`. Open/metadata errors use `*os.PathError`; rename errors use `*os.LinkError` with both names. A failed Open returns nil with nothing for the caller to clean up.
 
-Run `package=file make specs` for the real-kernel race/coverage suite. The [verification guide](verification.md#file-verification) describes temporary filesystem prerequisites and the isolated metadata scenario. The [design note](design/file.md) explains API tradeoffs.
+Run `package=file make specs` for the real-kernel race/coverage suite. The [verification guide](verification.md#file-verification) describes temporary filesystem prerequisites and the isolated metadata scenario. The [design note](agents/accepted-design/file.md) explains API tradeoffs.

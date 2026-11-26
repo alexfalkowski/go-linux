@@ -1,5 +1,7 @@
 # Cgroup design
 
+Part of the [accepted-design index](../accepted-design.md).
+
 ## Explicit hierarchy ownership
 
 Cgroup directories are shared kernel objects, often managed by a service manager. An owned directory reference provides stable identity without claiming ownership of the hierarchy. Closing a local reference therefore never removes a cgroup or changes membership, controllers, or limits. Explicit child removal prevents an error path or deferred close from unexpectedly destroying a workload. Creation owns rollback when acquisition fails; concurrent external modifications can prevent removal and their cleanup error remains visible.
@@ -22,4 +24,4 @@ Kernfs can remove a pinned control file without notifying its inode. Directory d
 
 ## Baseline sources
 
-The [Linux 7.0 cgroup v2 specification](https://github.com/torvalds/linux/blob/v7.0/Documentation/admin-guide/cgroup-v2.rst) defines controller distribution, delegation containment, resource formats, memory nonblocking writes, and file notification semantics. The [Linux 7.0 membership implementation](https://github.com/torvalds/linux/blob/v7.0/kernel/cgroup/cgroup.c) emits namespace-relative PIDs, including zero when the task is invisible. Runtime runner evidence belongs to the [verification guide](../verification.md), and missing execution evidence is recorded in [verification limits](../verification-limits.md).
+The [Linux 7.0 cgroup v2 specification](https://github.com/torvalds/linux/blob/v7.0/Documentation/admin-guide/cgroup-v2.rst) defines controller distribution, delegation containment, resource formats, memory nonblocking writes, and file notification semantics. The [Linux 7.0 membership implementation](https://github.com/torvalds/linux/blob/v7.0/kernel/cgroup/cgroup.c) emits namespace-relative PIDs, including zero when the task is invisible. Runtime runner evidence belongs to the [verification guide](../../verification.md), and missing execution evidence is recorded in [verification limits](../../verification-limits.md).

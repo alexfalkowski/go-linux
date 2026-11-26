@@ -1,5 +1,7 @@
 # Routing Netlink decisions
 
+Part of the [accepted-design index](../accepted-design.md).
+
 ## Typed facilities over the shared exchange
 
 The base Netlink package already owns sender validation, sequence matching, multipart completion, memory bounds, diagnostics, polling, and descriptor lifetime. Routing depends on that package rather than reimplementing its exchange or adding protocol-specific branches to the transport. Request and multicast sockets remain separate; multiplexing them would require a receive loop, pending-request registry, buffering policy, and cancellation model without a current requirement. Standard `net` supplies network I/O and basic interface inspection, but does not express Linux configuration, table IDs, or change notifications.

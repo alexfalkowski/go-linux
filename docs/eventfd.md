@@ -52,4 +52,4 @@ Register privately duplicates the counter with close-on-exec without changing it
 
 Readiness is advisory and does not reserve records or capacity against competing I/O. Keep I/O bounded with counter deadlines; a Wait timeout does not set those deadlines, and counter deadlines do not affect Wait. The descriptor stays private. Kernel-producer integration remains outside the current API.
 
-Kernel errors retain their errno through `errors.Is` and `errors.As`. Policy denials are returned without a fallback or blanket unsupported classification. See the [package documentation](../eventfd/doc.go), [design note](design/eventfd.md), and [verification commands](verification.md).
+Kernel errors retain their errno through `errors.Is` and `errors.As`. Policy denials are returned without a fallback or blanket unsupported classification. See the [package documentation](../eventfd/doc.go), [design note](agents/accepted-design/eventfd.md), and [verification commands](verification.md).

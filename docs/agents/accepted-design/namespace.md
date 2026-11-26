@@ -1,6 +1,8 @@
 # namespace design decisions
 
-See the [usage guide](../namespace.md) for calling contracts and [verification](../verification.md#namespace-verification) for runner requirements.
+Part of the [accepted-design index](../accepted-design.md).
+
+See the [usage guide](../../namespace.md) for calling contracts and [verification](../../verification.md#namespace-verification) for runner requirements.
 
 ## Own namespace references, preserve Go process creation
 

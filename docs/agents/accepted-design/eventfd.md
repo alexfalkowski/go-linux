@@ -1,6 +1,8 @@
 # eventfd design decisions
 
-See the [usage guide](../eventfd.md) for counter operations and [verification](../verification.md) for runtime evidence.
+Part of the [accepted-design index](../accepted-design.md).
+
+See the [usage guide](../../eventfd.md) for counter operations and [verification](../../verification.md) for runtime evidence.
 
 ## Preserve kernel records through Go I/O
 
@@ -10,7 +12,7 @@ The initial value remains `uint32` to match creation, while later records carry 
 
 ## Require runtime polling at construction
 
-Atomic nonblocking creation lets Go's poller implement waiting, deadlines, and close interruption without a goroutine per counter. `os.NewFile` can return a file after poller registration failed, so the constructor probes a zero deadline before publishing the owner. Failure closes the file instead of silently losing the advertised interruption behavior. [The constructor and record methods](../../eventfd/counter.go) contain this boundary.
+Atomic nonblocking creation lets Go's poller implement waiting, deadlines, and close interruption without a goroutine per counter. `os.NewFile` can return a file after poller registration failed, so the constructor probes a zero deadline before publishing the owner. Failure closes the file instead of silently losing the advertised interruption behavior. [The constructor and record methods](../../../eventfd/counter.go) contain this boundary.
 
 The file remains private because generic file methods would expose operations outside the record contract. Explicit epoll registration is a typed operation on Counter: it delegates lifetime protection and duplication to Poller.Add while consumption stays with the counter. The independent registration can outlive Counter.Close, so shutdown must release both owners. Kernel-producer registration and raw adoption still require separate concrete ownership decisions.
 

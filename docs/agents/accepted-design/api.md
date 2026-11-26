@@ -1,6 +1,8 @@
 # API conventions
 
-These conventions govern the library's public Go APIs. Package design notes explain choices specific to each facility; usage belongs in `docs/<package>.md` and GoDoc. [Verification](../verification.md) owns contributor commands, runner requirements, and the verified environment matrix; [verification limits](../verification-limits.md) records missing execution evidence. Design notes record decisions, alternatives, and consequences rather than API inventories, implementation history, or test reports.
+Part of the [accepted-design index](../accepted-design.md).
+
+These conventions govern the library's public Go APIs. Package design notes explain choices specific to each facility; usage belongs in `docs/<package>.md` and GoDoc. [Verification](../../verification.md) owns contributor commands, runner requirements, and the verified environment matrix; [verification limits](../../verification-limits.md) records missing execution evidence. Design notes record decisions, alternatives, and consequences rather than API inventories, implementation history, or test reports.
 
 ## Standard-library boundary
 
@@ -38,4 +40,4 @@ Do not emulate atomic kernel operations with multiple racy calls, silently weake
 
 ## Compatibility
 
-The support floor is Linux 7.0 and the Go version declared in [go.mod](../../go.mod). Check selected operations against versioned Linux sources; runner policy and filesystem support remain separate prerequisites. Newer optional features must not silently raise the floor. Preserve exported names, zero defaults, ownership, error matching, and blocking/close behavior as compatibility surfaces. Record necessary migrations with the affected usage documentation. Runtime results belong to the [verification guide](../verification.md), and missing execution evidence belongs to [verification limits](../verification-limits.md), not to parallel status lists here.
+The support floor is Linux 7.0 and the Go version declared in [go.mod](../../../go.mod). Check selected operations against versioned Linux sources; runner policy and filesystem support remain separate prerequisites. Newer optional features must not silently raise the floor. Preserve exported names, zero defaults, ownership, error matching, and blocking/close behavior as compatibility surfaces. Record necessary migrations with the affected usage documentation. Runtime results belong to the [verification guide](../../verification.md), and missing execution evidence belongs to [verification limits](../../verification-limits.md), not to parallel status lists here.

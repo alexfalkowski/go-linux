@@ -1,12 +1,14 @@
 # pidfd design decisions
 
-The [usage guide](../pidfd.md) owns acquisition, signaling, and reaping workflows. [Verification](../verification.md) records runtime evidence, including the remaining positive core-dump-status gap.
+Part of the [accepted-design index](../accepted-design.md).
+
+The [usage guide](../../pidfd.md) owns acquisition, signaling, and reaping workflows. [Verification](../../verification.md) records runtime evidence, including the remaining positive core-dump-status gap.
 
 ## Independent identity without replacing process management
 
 Go already uses pidfds for `os.Process`. OpenProcess duplicates the stable handle inside `Process.WithHandle`; looking up Process.Pid again would reintroduce a PID-reuse window. The duplicate gives independent local ownership while preserving the original process manager's reaping responsibility. Numeric Open remains useful when no stable handle exists, but cannot establish identity before acquisition.
 
-Adopt consumes the input on both success and failure, eliminating conditional caller cleanup. Validation uses pidfs identity and descriptor flags rather than signal zero: signal permission is unrelated to descriptor type, and an already reaped handle is still a valid pidfd. Thread handles and path-only descriptors are excluded because they do not provide the promised process operations. See [acquisition and validation](../../pidfd/process.go).
+Adopt consumes the input on both success and failure, eliminating conditional caller cleanup. Validation uses pidfs identity and descriptor flags rather than signal zero: signal permission is unrelated to descriptor type, and an already reaped handle is still a valid pidfd. Thread handles and path-only descriptors are excluded because they do not provide the promised process operations. See [acquisition and validation](../../../pidfd/process.go).
 
 ## Interrupt waits without changing shared flags
 

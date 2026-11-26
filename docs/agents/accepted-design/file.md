@@ -1,6 +1,8 @@
 # file design decisions
 
-The [usage guide](../file.md) owns operations and caller examples; [verification](../verification.md) owns execution evidence and source-reviewed limits.
+Part of the [accepted-design index](../accepted-design.md).
+
+The [usage guide](../../file.md) owns operations and caller examples; [verification](../../verification.md) owns execution evidence and source-reviewed limits.
 
 ## Extend standard files without another owner
 
@@ -10,7 +12,7 @@ The [usage guide](../file.md) owns operations and caller examples; [verification
 
 Open passes names unchanged. Cleaning a path in userspace can change symlink/parent traversal or trailing-slash semantics; retrying without a restriction could violate the caller's security policy. Cached lookup failure remains observable for the same reason. Rename uses one renameat2 operation instead of racy existence checks or multi-step exchange emulation. Only Open supplies lookup restrictions; directory-relative StatAt and Rename are not presented as confined operations.
 
-Borrowed descriptors are pinned for the syscall rather than duplicated and retained. Nested lifetime references permit Rename to use the same anchor twice without introducing lock-order synchronization. This protects identity against concurrent close but does not interrupt blocking filesystem work. See [the private borrowing boundary](../../file/control.go).
+Borrowed descriptors are pinned for the syscall rather than duplicated and retained. Nested lifetime references permit Rename to use the same anchor twice without introducing lock-order synchronization. This protects identity against concurrent close but does not interrupt blocking filesystem work. See [the private borrowing boundary](../../../file/control.go).
 
 Fallocate uses the maintained x/sys binding with the same lifetime protection. One typed mode represents the kernel operation and its permitted size modifier, so a caller can reserve log capacity without inadvertently growing the visible log. The wrapper checks mode combinations and signed range arithmetic before borrowing. It leaves alignment and file-state checks to the filesystem, where the relevant allocation units and EOF are known. Forwarding one request preserves distinctions such as storage reserved by zero-range and storage released by hole punching. [Linux 7.0 VFS implementation](https://github.com/torvalds/linux/blob/v7.0/fs/open.c)
 

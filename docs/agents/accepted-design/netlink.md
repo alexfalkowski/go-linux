@@ -1,10 +1,12 @@
 # Netlink decisions
 
+Part of the [accepted-design index](../accepted-design.md).
+
 ## Transport and caller boundary
 
 Netlink is a record protocol with variable-length headers, protocol-specific payloads, and lossy multicast delivery. `io.Reader`, `net.Conn`, and a syscall callback would conceal required boundaries or move descriptor management back to callers. The package owns typed framing and exchanges over the existing `socket` transport, keeping descriptor lifetime and Go polling in one place. Message headers preserve Linux names and identifiers, while encoding derives lengths from the actual payload. The maintained `x/sys/unix` constants and Linux 7.0 [Netlink UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/netlink.h) and [Generic Netlink UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/genetlink.h) define the layout; no unsafe casts or architecture-specific syscall tables are needed.
 
-Protocol payloads remain byte slices because fixed headers and attribute policies belong to their facility. This is a concrete kernel messaging operation, not descriptor access. [netlink/route](../netlink-route.md) owns routing semantics without adding route-specific knowledge here. Unknown attribute IDs, output flags, and extended ACK TLVs survive decoding so new kernel information remains inspectable. Generic family discovery validates the bounded controller schema, tolerates historical unflagged nests, and retains operations/policy data without pretending it is a complete schema compiler. Scalar helpers enforce width and byte order; ordinary attribute framing intentionally does not enforce arbitrary family policy.
+Protocol payloads remain byte slices because fixed headers and attribute policies belong to their facility. This is a concrete kernel messaging operation, not descriptor access. [netlink/route](../../netlink-route.md) owns routing semantics without adding route-specific knowledge here. Unknown attribute IDs, output flags, and extended ACK TLVs survive decoding so new kernel information remains inspectable. Generic family discovery validates the bounded controller schema, tolerates historical unflagged nests, and retains operations/policy data without pretending it is a complete schema compiler. Scalar helpers enforce width and byte order; ordinary attribute framing intentionally does not enforce arbitrary family policy.
 
 ## Exchange ownership and concurrency
 

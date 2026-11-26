@@ -1,6 +1,8 @@
 # xattr design decisions
 
-The [usage guide](../xattr.md) owns caller workflows and contracts; [verification](../verification.md) owns environment evidence.
+Part of the [accepted-design index](../accepted-design.md).
+
+The [usage guide](../../xattr.md) owns caller workflows and contracts; [verification](../../verification.md) owns environment evidence.
 
 ## Borrow standard files
 

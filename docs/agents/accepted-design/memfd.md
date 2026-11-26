@@ -1,12 +1,14 @@
 # memfd design decisions
 
-The [usage guide](../memfd.md) documents file operations and seals; [verification](../verification.md) records runtime evidence. This note explains the choices behind the wrapper.
+Part of the [accepted-design index](../accepted-design.md).
+
+The [usage guide](../../memfd.md) documents file operations and seals; [verification](../../verification.md) records runtime evidence. This note explains the choices behind the wrapper.
 
 ## A file owner with a restricted surface
 
 Ordinary I/O delegates to a private `os.File`, preserving Go's file behavior without embedding its raw descriptor methods. Mapping is a concrete `File.Map` operation returning an independent `mmap.Region`; this permits composition without making descriptor borrowing part of the public API. The dependency points from memfd to mmap, with no reverse dependency or shared descriptor superclass.
 
-Copy methods need the same boundary. An `os.File` copy fallback can invoke the peer's optional `ReaderFrom` or `WriterTo` method with the underlying file. The wrapper narrows the peer to its basic interface before delegation so user callbacks cannot recover that file. This can bypass specialized copying; no zero-copy performance guarantee is made. See [the copy adapters](../../memfd/file.go).
+Copy methods need the same boundary. An `os.File` copy fallback can invoke the peer's optional `ReaderFrom` or `WriterTo` method with the underlying file. The wrapper narrows the peer to its basic interface before delegation so user callbacks cannot recover that file. This can bypass specialized copying; no zero-copy performance guarantee is made. See [the copy adapters](../../../memfd/file.go).
 
 ## Sealable data files by default
 

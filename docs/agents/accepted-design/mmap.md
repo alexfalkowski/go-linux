@@ -1,6 +1,8 @@
 # mmap design decisions
 
-The [usage guide](../mmap.md) explains mapping access and synchronization; [verification](../verification.md) records kernel and fault-test evidence.
+Part of the [accepted-design index](../accepted-design.md).
+
+The [usage guide](../../mmap.md) explains mapping access and synchronization; [verification](../../verification.md) records kernel and fault-test evidence.
 
 ## Own the mapping rather than its source file
 
@@ -10,7 +12,7 @@ The owner retains the original slice required by the pinned x/sys mapper. Whole-
 
 ## Escaped slices prevent automatic lifetime management
 
-A mutex can serialize Region methods but cannot protect memory after Bytes returns. A finalizer could unmap memory while a caller still holds a slice, so cleanup is explicit and callers coordinate all view access. Keeping the Region reachable also cannot make an explicitly closed mapping safe. A failed unmap retains the owner and original mapping for retry, matching x/sys's bookkeeping. See [Region lifetime operations](../../mmap/region.go).
+A mutex can serialize Region methods but cannot protect memory after Bytes returns. A finalizer could unmap memory while a caller still holds a slice, so cleanup is explicit and callers coordinate all view access. Keeping the Region reachable also cannot make an explicitly closed mapping safe. A failed unmap retains the owner and original mapping for retry, matching x/sys's bookkeeping. See [Region lifetime operations](../../../mmap/region.go).
 
 A file-size check would race with truncation and reject legitimate mappings beyond current contents. The package therefore leaves backing-size coordination to the caller rather than pretending that construction makes later access safe.
 

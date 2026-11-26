@@ -1,6 +1,6 @@
 # Mapped regions
 
-Import `github.com/alexfalkowski/go-linux/mmap` for anonymous or file-backed mapped memory. Linux 7.0+ is the baseline; see [verification status](verification.md), [executable examples](../mmap/example_test.go), and [design decisions](design/mmap.md).
+Import `github.com/alexfalkowski/go-linux/mmap` for anonymous or file-backed mapped memory. Linux 7.0+ is the baseline; see [verification status](verification.md), [executable examples](../mmap/example_test.go), and [design decisions](agents/accepted-design/mmap.md).
 
 ## Good for
 

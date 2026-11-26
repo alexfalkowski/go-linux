@@ -93,4 +93,4 @@ The named mutation controllers are exactly CPU, memory, and PIDs. [Linux 7.0 cgr
 
 Threaded hierarchies, ancestor/systemd management, and BPF device-access policy remain separate from the supported delegated domain-group operations. Closing a group neither kills descendants nor removes their groups.
 
-See [executable examples](../cgroup/example_test.go), the [design rationale](design/cgroup.md), and [verification requirements and delegated runtime evidence](verification.md#cgroup-verification). Known defensive execution limits are recorded in [verification limits](verification-limits.md).
+See [executable examples](../cgroup/example_test.go), the [design rationale](agents/accepted-design/cgroup.md), and [verification requirements and delegated runtime evidence](verification.md#cgroup-verification). Known defensive execution limits are recorded in [verification limits](verification-limits.md).

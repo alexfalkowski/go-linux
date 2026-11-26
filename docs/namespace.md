@@ -82,4 +82,4 @@ A handle must not be copied after use. Its methods protect descriptor lifetime a
 
 Invalid `Current` types and `Unshare` masks fail before syscalls. `Equal` validates its receiver before its argument. Other errors preserve Linux errno with `errors.Is`/`errors.As`, normally through `os.PathError`; `Unshare` uses `os.SyscallError`. EPERM, EINVAL, EUSERS, ENOSYS, and resource-limit failures remain distinct. Missing privilege is never replaced by a weaker transition.
 
-See [design decisions](design/namespace.md) for API tradeoffs and [verification](verification.md#namespace-verification) for the isolated test workflow.
+See [design decisions](agents/accepted-design/namespace.md) for API tradeoffs and [verification](verification.md#namespace-verification) for the isolated test workflow.

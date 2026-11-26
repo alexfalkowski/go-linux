@@ -82,4 +82,4 @@ Seals are permanent and belong to the underlying inode, affecting every descript
 
 Errors retain the underlying errno for `errors.Is`/`errors.As`, with operation and file-label context for creation and sealing syscalls. Tests require permitted memfd creation, file operations, sealing, mappings, and executable opt-in. A policy denial remains a verification failure rather than being silently skipped. Huge pages, descriptor passing, and execution helpers are outside this package's current scope.
 
-See [GoDoc](https://pkg.go.dev/github.com/alexfalkowski/go-linux/memfd) for the callable API, the [design note](design/memfd.md) for rationale and Linux references, and [verification guidance](verification.md) for `package=memfd make specs` and reports.
+See [GoDoc](https://pkg.go.dev/github.com/alexfalkowski/go-linux/memfd) for the callable API, the [design note](agents/accepted-design/memfd.md) for rationale and Linux references, and [verification guidance](verification.md) for `package=memfd make specs` and reports.

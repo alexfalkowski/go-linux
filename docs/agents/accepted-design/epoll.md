@@ -1,6 +1,8 @@
 # epoll design decisions
 
-The [usage guide](../epoll.md) owns readiness and registration workflows; [verification](../verification.md) records runtime evidence and limits.
+Part of the [accepted-design index](../accepted-design.md).
+
+The [usage guide](../../epoll.md) owns readiness and registration workflows; [verification](../../verification.md) records runtime evidence and limits.
 
 ## Registrations own source lifetime
 
@@ -10,7 +12,7 @@ Opaque eventfd and timerfd owners join a set through their own typed Register me
 
 ## Stable identity across removal and reuse
 
-Events expose the Registration pointer returned by Add. The kernel carries a nonzero 64-bit token translated through the poller's registry, never a Go pointer or a descriptor number. Tokens are not recycled; exhaustion fails rather than permitting an old batch to identify a replacement. Removed tokens are filtered before translation, while already translated events retain their original identity. This preserves advisory readiness without pretending that removal retracts earlier observations. See [identity translation](../../epoll/poller.go).
+Events expose the Registration pointer returned by Add. The kernel carries a nonzero 64-bit token translated through the poller's registry, never a Go pointer or a descriptor number. Tokens are not recycled; exhaustion fails rather than permitting an old batch to identify a replacement. Removed tokens are filtered before translation, while already translated events retain their original identity. This preserves advisory readiness without pretending that removal retracts earlier observations. See [identity translation](../../../epoll/poller.go).
 
 ## Shutdown must outlive every kernel wait
 

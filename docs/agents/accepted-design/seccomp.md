@@ -1,6 +1,8 @@
 # seccomp design decisions
 
-See the [usage guide](../seccomp.md) for operations and [verification](../verification.md#seccomp-verification) for contributor commands and environments.
+Part of the [accepted-design index](../accepted-design.md).
+
+See the [usage guide](../../seccomp.md) for operations and [verification](../../verification.md#seccomp-verification) for contributor commands and environments.
 
 ## Bound the mechanism before adding a compiler
 
