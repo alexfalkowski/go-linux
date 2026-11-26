@@ -1,6 +1,8 @@
 # capability design decisions
 
-See the [usage guide](../capability.md) for contracts and [verification](../verification.md#capability-verification) for contributor commands and environments.
+Part of the [accepted-design index](../accepted-design.md).
+
+See the [usage guide](../../capability.md) for contracts and [verification](../../verification.md#capability-verification) for contributor commands and environments.
 
 ## Express masks and individual operations directly
 

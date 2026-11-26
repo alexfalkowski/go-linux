@@ -86,4 +86,4 @@ When clone/fork and exec are allowed, descendants inherit the creating thread's 
 
 Package validation errors match `os.ErrInvalid` through `os.SyscallError`. Kernel EPERM, EACCES, EINVAL, ENOSYS, resource errors, and policy-denied probes remain distinguishable with `errors.Is`/`errors.As`. A positive refusing TID is a `SynchronizationError`, not successful loading or a fabricated errno. The package never retries a failed irreversible operation or weakens the requested policy.
 
-See [design decisions](design/seccomp.md) and [verification](verification.md#seccomp-verification).
+See [design decisions](agents/accepted-design/seccomp.md) and [verification](verification.md#seccomp-verification).

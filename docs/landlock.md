@@ -88,4 +88,4 @@ Scopes have no exception rules. AbstractUnixSocket restricts connections to abst
 
 Log flags preserve Linux defaults when zero. Audit delivery depends on host configuration; acceptance of flags does not guarantee records. Kernel errors preserve errno through `os.SyscallError`; path lookup errors also retain `os.PathError`. Inspect with `errors.Is`/`errors.As`, preserving policy denials, disabled-facility errors, resource exhaustion, and failed application as distinct outcomes.
 
-See [design decisions](design/landlock.md) and [verification](verification.md#landlock-verification).
+See [design decisions](agents/accepted-design/landlock.md) and [verification](verification.md#landlock-verification).

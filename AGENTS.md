@@ -4,9 +4,16 @@
 
 Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 
+## Accepted design
+
+Read the [accepted-design index](docs/agents/accepted-design.md) and the relevant
+area files before proposing a change or recording a finding or audit entry.
+Apply each decision within its recorded scope and record new owner-accepted
+decisions in the relevant area file.
+
 ## Repository
 
-- API conventions are in `docs/design/api.md`; known execution limits are in `docs/verification-limits.md`.
+- Known execution limits are in `docs/verification-limits.md`.
 - Go library for Linux APIs; README lists implemented packages. `docs/verification.md` is a concise human contributor guide to commands, prerequisites, isolation/safety, reports, and a verified environment matrix. Keep detailed run results in CI reports and known execution limits in `docs/verification-limits.md`.
 - Check `go.mod` for the module path and Go version.
 - Keep dependencies and packages limited to implemented features.
@@ -15,7 +22,7 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 - Give nontrivial validation predicates and intermediate results descriptive local variable names before combining them in a condition. Extract inline callbacks, nested computations, and checks combining several distinct validation rules so the branch reads in domain terms. Keep simple error checks and range comparisons direct, and preserve short-circuit guards for indexing, nil access, side effects, and expensive work.
 - Design public APIs and examples to read like standard-library Go while preserving Linux names, typed modes/flags, record boundaries, clock domains, errno identity, and ownership. Use familiar Go interfaces and explicit resource operations where their contracts fit.
 - Keep descriptor access and syscall plumbing internal. Callers should use typed facility operations without obtaining descriptors, invoking syscalls, or managing duplication/poll registration themselves. Do not expose `SyscallConn`, `Fd`, raw callbacks, or underlying-file fields as a substitute for a concrete operation; avoid embedding that unintentionally exposes them. Migrate existing exports with their replacements, callers, docs, and tests together, preserving documented ownership and compatibility decisions.
-- Creation and adoption APIs own failure cleanup: return no resource on error, close everything acquired or consumed, and never require caller error-path cleanup. `Adopt` consumes its input even on failure; borrowing operations leave caller-owned inputs open. See `docs/design/api.md` for ownership contracts.
+- Creation and adoption APIs own failure cleanup: return no resource on error, close everything acquired or consumed, and never require caller error-path cleanup. `Adopt` consumes its input even on failure; borrowing operations leave caller-owned inputs open. See the [API conventions](docs/agents/accepted-design/api.md#ownership-and-lifetime).
 - Use `github.com/stretchr/testify/require` for every Go test assertion and explicit failure, including timeout paths; do not use `t.Fatal`, `t.Fatalf`, `t.Error`, `t.Errorf`, `t.Fail`, or `t.FailNow`. Keep `t.Skip` for unavailable optional prerequisites.
 - Keep each test focused on one named behavior, with only the setup, action, and assertions needed to demonstrate it. Split independent contracts into separate tests instead of appending configuration, notification, or error scenarios to an existing test. Use tables for variations of the same behavior; prefer direct calls over callback tables that merely list operations. A coherent lifecycle or ABI invariant may need several operations and assertions; preserve its ownership, cleanup, and boundary evidence.
 - Review test readability before finishing: read every changed test as a short behavioral example, remove unrelated or already-covered checks, and move repeated resource setup to `internal/test` when it simplifies the scenarios. Keep the action and behavioral assertions visible; do not hide them in callback-driven frameworks or pursue shorter tests by weakening coverage.
@@ -25,7 +32,7 @@ Use `bin/AGENTS.md` for shared skills and cross-repository defaults.
 - Write ordinary behavior tests as clients of the typed public API. Repeated `syscall`/`unix` calls or inspection of implementation state should trigger a review of the API/test boundary. Verify effects, returned values, errors, lifetime, and concurrency; do not add public raw access, inspection methods, or test-only production hooks merely to make assertions convenient.
 - Preserve focused real-kernel/ABI checks when they establish a documented Linux contract. Keep their behavioral assertions beside the scenarios, with Linux constants, errno aliases, wire fixtures, and independent syscall observations supplied by `internal/test`. Keep these checks distinct from ordinary caller scenarios, and do not replace kernel evidence with mocks or weaken ownership, cleanup, or prerequisite coverage to avoid low-level code.
 - Chosen Linux-only convention: use plain Go filenames without a `_linux` suffix and start every repository-owned Go file, including tests and `doc.go`, with `//go:build linux`. Preserve the standard `_test.go` suffix; leave dependency and submodule files unchanged.
-- Link each implemented public package from README to its usage guide in `docs/<package>.md`. Keep design notes in `docs/design/<package>.md` focused on decisions, alternatives, rationale, and consequences that add value beyond usage guides and GoDoc; omit API inventories, implementation diaries, CI histories, and work-status lists.
+- Link each implemented public package from README to its usage guide in `docs/<package>.md`. Keep accepted-design notes focused on decisions, alternatives, rationale, and consequences that add value beyond usage guides and GoDoc. Omit API inventories, implementation diaries, CI histories, and work-status lists.
 - Before adding documentation, identify the reader's concrete need and check existing coverage. Update the authoritative document and link to it instead of duplicating it. Verify prose against current code and remove obsolete sketches and stale work references; keep unique runtime evidence in `docs/verification.md` and known execution limits in `docs/verification-limits.md`.
 
 ## Setup and commands

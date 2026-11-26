@@ -99,4 +99,4 @@ Constructors return no resource on error and close acquired descriptors. Group a
 
 Too-small read buffers match `EINVAL` without consuming the next whole record. A malformed batch returns no partial result, closes identifiable files and the group, and matches `os.ErrInvalid`; unsupported metadata ABI versions match `EPROTO`. Corrupted framing cannot identify arbitrary later descriptors, so decoding is deliberately private and accepts only kernel batches from the configured group. No public byte parser may assume ownership of arbitrary process descriptors. Unknown extension payloads remain uninterpreted; unsupported reporting flags cannot be requested.
 
-See [verification](verification.md#fanotify-verification) for the isolated privileged runner and [design decisions](design/fanotify.md) for ownership and decoding rationale.
+See [verification](verification.md#fanotify-verification) for the isolated privileged runner and [design decisions](agents/accepted-design/fanotify.md) for ownership and decoding rationale.

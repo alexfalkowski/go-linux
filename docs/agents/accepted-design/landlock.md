@@ -1,6 +1,8 @@
 # Landlock design decisions
 
-See the [usage guide](../landlock.md) for the public workflow and [verification](../verification.md#landlock-verification) for contributor commands.
+Part of the [accepted-design index](../accepted-design.md).
+
+See the [usage guide](../../landlock.md) for the public workflow and [verification](../../verification.md#landlock-verification) for contributor commands.
 
 ## Preserve the requested policy
 

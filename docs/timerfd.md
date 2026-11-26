@@ -66,6 +66,6 @@ Register privately duplicates the timer with close-on-exec without changing armi
 
 Readiness is advisory: another reader can consume expirations, and rearming or disarming clears pending counts. Bound subsequent I/O with `SetReadDeadline`; its deadline is independent of the Wait timeout. The timer keeps its descriptor private.
 
-Kernel failures preserve errno identity through `errors.Is` and `errors.As`; policy denials remain observable. Initial omissions include alarm/wakeup clocks, clock adjustment, tick injection, adoption helpers, contexts, and exported ordinary files. See [GoDoc](../timerfd/doc.go), the [design note](design/timerfd.md), and [verification guidance](verification.md).
+Kernel failures preserve errno identity through `errors.Is` and `errors.As`; policy denials remain observable. Initial omissions include alarm/wakeup clocks, clock adjustment, tick injection, adoption helpers, contexts, and exported ordinary files. See [GoDoc](../timerfd/doc.go), the [design note](agents/accepted-design/timerfd.md), and [verification guidance](verification.md).
 
 Clock-changing integration tests are a separate opt-in mode for disposable VMs. Ordinary `make specs`, including root execution, leaves them disabled. See the [verification guide](verification.md) for `make verify-timerfd-container`, its explicit acknowledgment, and the dedicated CI machine jobs. Their observed results are recorded there.

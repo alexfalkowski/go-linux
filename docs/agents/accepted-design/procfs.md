@@ -1,5 +1,7 @@
 # Procfs design
 
+Part of the [accepted-design index](../accepted-design.md).
+
 ## Own the caller contract while reusing readers
 
 The package keeps callers on `go-linux/procfs` and delegates ordinary process/system statistics, descriptor data, enumeration, and mountinfo parsing to [Prometheus procfs](https://github.com/prometheus/procfs/tree/v0.23.0). Its existing Linux format knowledge avoids maintaining another general proc parser library. Pure Go and the dependency's Go floor fit this module without adding a monitoring registry, server, or cgo requirement.

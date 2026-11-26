@@ -1,6 +1,8 @@
 # inotify design decisions
 
-See the [usage guide](../inotify.md) for calling contracts and [verification](../verification.md) for runner evidence.
+Part of the [accepted-design index](../accepted-design.md).
+
+See the [usage guide](../../inotify.md) for calling contracts and [verification](../../verification.md) for runner evidence.
 
 ## Keep watch identity under kernel ownership
 

@@ -101,4 +101,4 @@ The shared tooling uses `betteralign` and `golangci-lint` for linting,
 image supplies these tools; install them locally to run the corresponding
 targets.
 
-For contributions, follow [AGENTS.md](AGENTS.md) and the [API conventions](docs/design/api.md). [Verification guidance](docs/verification.md) owns checks, profiles, reports, and runner requirements. Keep package behavior in GoDoc and its linked usage guide, with rationale in the corresponding design note.
+For contributions, follow [AGENTS.md](AGENTS.md) and the [API conventions](docs/agents/accepted-design/api.md). The [accepted-design index](docs/agents/accepted-design.md) links to package decisions and rationale. [Verification guidance](docs/verification.md) owns checks, profiles, reports, and runner requirements.

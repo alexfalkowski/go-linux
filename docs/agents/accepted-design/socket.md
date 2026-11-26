@@ -1,5 +1,7 @@
 # Socket decisions
 
+Part of the [accepted-design index](../accepted-design.md).
+
 ## Message operations and standard-library overlap
 
 The current consumer requirement is Netlink transport plus useful Linux ancillary operations. `net` already owns stream networking and Unix connection management. A bounded message API avoids duplicating its TCP stack or exposing a configurable syscall facade. Unix datagram endpoints and datagram/seqpacket pairs supply real local message and descriptor-passing use cases; Netlink uses `SOCK_RAW` because Linux gives it the same datagram semantics as `SOCK_DGRAM`.
@@ -22,4 +24,4 @@ The ancillary buffer is sized for a caller-selected file limit plus credentials.
 
 Netlink addresses preserve port IDs and the legacy group mask. Group membership methods accept group IDs and leave authorization to Linux. Extended acknowledgements, capped acknowledgements, and strict route checks are concrete operations, while protocol sequencing and decoding belong above transport. Receive never opts into `NETLINK_NO_ENOBUFS`, since hiding loss would undermine dump/notification correctness. No request multiplexer, receive goroutine, automatic retries after a consumed record, or socket-level transaction is implied.
 
-The baseline choices are established by Linux 7.0 [Netlink UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/netlink.h), [socket UAPI](https://github.com/torvalds/linux/blob/v7.0/include/linux/socket.h), and [Unix implementation](https://github.com/torvalds/linux/blob/v7.0/net/unix/af_unix.c). The [usage guide](../socket.md) owns operational contracts; runner evidence belongs to the [verification guide](../verification.md), and missing execution evidence is recorded in [verification limits](../verification-limits.md).
+The baseline choices are established by Linux 7.0 [Netlink UAPI](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/netlink.h), [socket UAPI](https://github.com/torvalds/linux/blob/v7.0/include/linux/socket.h), and [Unix implementation](https://github.com/torvalds/linux/blob/v7.0/net/unix/af_unix.c). The [usage guide](../../socket.md) owns operational contracts; runner evidence belongs to the [verification guide](../../verification.md), and missing execution evidence is recorded in [verification limits](../../verification-limits.md).

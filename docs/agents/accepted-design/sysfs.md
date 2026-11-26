@@ -1,5 +1,7 @@
 # Sysfs design
 
+Part of the [accepted-design index](../accepted-design.md).
+
 ## Reuse discovery behind a bounded API
 
 Like [procfs](procfs.md), this package owns its public types and keeps the [Prometheus dependency](https://github.com/prometheus/procfs/tree/v0.23.0/sysfs) private. Its sysfs filesystem and network-class enumeration support the explicit-root design without adding another dependency family. Importing that package also requires its existing `golang.org/x/sync` dependency. Exposing or embedding the upstream FS would commit this library to unrelated hardware collectors and future upstream methods.

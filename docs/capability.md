@@ -74,4 +74,4 @@ All values own no resources and require no `Close`. Independent calls use no sha
 
 Invalid masks match `os.ErrInvalid` before a syscall; other errors use `os.SyscallError` and preserve Linux errno for `errors.Is`/`errors.As`. EPERM, EINVAL, ENOSYS, security-policy denials, and resource failures remain distinguishable. The package does not retry a failed transition, weaken restrictions, or undo earlier successful operations in a sequence.
 
-See [design decisions](design/capability.md) and [verification](verification.md#capability-verification).
+See [design decisions](agents/accepted-design/capability.md) and [verification](verification.md#capability-verification).
