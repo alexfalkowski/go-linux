@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Run required mount tests in a privileged container on a native Linux Docker host.
+# Run required mount and reflink tests in a privileged container on native Linux.
 
 set -eo pipefail
 
@@ -7,13 +7,18 @@ set -eo pipefail
 source "$(dirname "$0")/container.sh"
 
 if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
-  printf 'usage: make verify-mount-container image=<tag> arch=<amd64|arm64>\n' >&2
+  printf 'usage: make verify-mount-container image=<tag> arch=<amd64|arm64> [kernel=7.0]\n' >&2
   exit 2
 fi
 
 mount_image=$1
 mount_arch=$2
 
+if [[ $(docker info --format '{{json .SecurityOptions}}') == *'name=rootless'* ]]; then
+  printf 'XFS loop mounting requires a rootful Docker daemon with initial-user-namespace CAP_SYS_ADMIN\n' >&2
+  exit 2
+fi
+
 printf 'executor=machine container=%s arch=%s privileged=true\n' "$mount_image" "$mount_arch"
 
-run_privileged_container "$mount_image" mount "$mount_arch"
+run_privileged_container "$mount_image" mount "$mount_arch" "kernel=${GO_LINUX_TEST_KERNEL:-supported}"

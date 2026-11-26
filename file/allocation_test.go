@@ -182,6 +182,8 @@ func TestFallocateRejectsInvalidInputsBeforeBorrowing(t *testing.T) {
 		{name: "collapse with keep size", mode: file.CollapseRange | file.KeepSize, length: 1, want: os.ErrInvalid},
 		{name: "insert with keep size", mode: file.InsertRange | file.KeepSize, length: 1, want: os.ErrInvalid},
 		{name: "multiple operations", mode: file.PunchHole | file.KeepSize | file.ZeroRange, length: 1, want: os.ErrInvalid},
+		{name: "unshare with zero range", mode: file.UnshareRange | file.ZeroRange, length: 1, want: os.ErrInvalid},
+		{name: "unshare range overflow", mode: file.UnshareRange, offset: math.MaxInt64, length: 1, want: test.ErrFileTooLarge},
 		{name: "reserved bit", mode: test.ReservedAllocationMode, length: 1, want: os.ErrInvalid},
 		{name: "unknown bit", mode: 1 << 31, length: 1, want: os.ErrInvalid},
 	} {
@@ -191,6 +193,19 @@ func TestFallocateRejectsInvalidInputsBeforeBorrowing(t *testing.T) {
 		})
 	}
 	require.ErrorIs(t, file.Fallocate(f, file.Allocate, math.MaxInt64-1, 1), os.ErrClosed)
+}
+
+func TestFallocateUnshareRangePreservesUnsupportedFilesystemError(t *testing.T) {
+	f := test.ShmemFile(t)
+	_, err := f.WriteAt([]byte("segment"), 0)
+	require.NoError(t, err)
+
+	err = file.Fallocate(f, file.UnshareRange, 0, 4096)
+	require.ErrorIs(t, err, test.ErrNotSupported)
+
+	contents, err := io.ReadAll(f)
+	require.NoError(t, err)
+	require.Equal(t, "segment", string(contents))
 }
 
 func TestFallocateRejectsUnavailableHandles(t *testing.T) {

@@ -17,7 +17,7 @@ type AllocationMode uint32
 // file if the end of the range is beyond EOF, unless KeepSize is set.
 const Allocate AllocationMode = unix.FALLOC_FL_ALLOCATE_RANGE
 
-// KeepSize preserves the logical size when combined with Allocate or ZeroRange.
+// KeepSize preserves the logical size with Allocate, ZeroRange, or UnshareRange.
 // PunchHole requires KeepSize.
 const KeepSize AllocationMode = unix.FALLOC_FL_KEEP_SIZE
 
@@ -36,6 +36,10 @@ const CollapseRange AllocationMode = unix.FALLOC_FL_COLLAPSE_RANGE
 // InsertRange inserts a hole starting before EOF and shifts later bytes toward
 // the end of the file. The size increases by the length of the range.
 const InsertRange AllocationMode = unix.FALLOC_FL_INSERT_RANGE
+
+// UnshareRange makes shared blocks private without changing existing contents.
+// It reserves storage for the range and can grow the file, unless KeepSize is set.
+const UnshareRange AllocationMode = unix.FALLOC_FL_UNSHARE_RANGE
 
 // Fallocate applies mode to length bytes starting at offset on a writable handle.
 // The file is borrowed and its current offset is unchanged. Concurrent Close
@@ -68,7 +72,8 @@ func Fallocate(f *os.File, mode AllocationMode, offset, length int64) error {
 
 func validateAllocation(mode AllocationMode, offset, length int64) error {
 	switch mode {
-	case Allocate, KeepSize, PunchHole | KeepSize, ZeroRange, ZeroRange | KeepSize, CollapseRange, InsertRange:
+	case Allocate, KeepSize, PunchHole | KeepSize, ZeroRange, ZeroRange | KeepSize,
+		CollapseRange, InsertRange, UnshareRange, UnshareRange | KeepSize:
 	default:
 		return os.ErrInvalid
 	}

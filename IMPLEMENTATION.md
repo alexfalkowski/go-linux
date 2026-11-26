@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E02a — Unshare reflinked file ranges**.
+Next: **E02b — Write zeroes for subsequent overwrites**.
 
-Resume note: E02 passed the required local file suite on native amd64 with ext4 temporary files. Confirm the final revision's required CircleCI results, including Linux 7.0 rootless runs on amd64 and arm64 and merged coverage, before starting E02a.
+Resume note: E02a passed the required rootless file suite and both XFS unshare modes in an emulated amd64 Linux 7.3.5 guest. Confirm the final revision's required CircleCI results, including positive XFS execution on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E02b.
 
 ## Objective and scope
 
@@ -107,19 +107,19 @@ Use the actual native architecture. Inspect target scope: `package` scopes the s
 
 Local development may have more useful privileges through Docker than through the agent shell. A shell namespace denial is not proof that local isolated verification is unavailable. Check daemon access and use the existing facility launchers before leaving a local privilege blocker. Do not assume that a rootless Docker daemon grants initial-user-namespace capabilities; prove the selected operation inside the actual container. Keep host resources unchanged: use private namespaces, test-owned files/devices/IPC objects, bounded children, and explicitly disposable cgroup delegations.
 
-Use the Go image from [CircleCI](.circleci/config.yml), currently `alexfalkowski/go:5.26`. These commands already exist:
+Use the Go image from [CircleCI](.circleci/config.yml), currently `alexfalkowski/go:5.27`. These commands already exist:
 
 ```sh
-make verify-rootless-container image=alexfalkowski/go:5.26 arch=amd64 package=file
-make verify-mount-container image=alexfalkowski/go:5.26 arch=amd64
-make verify-netlink-container image=alexfalkowski/go:5.26 arch=amd64
-make verify-namespace-container image=alexfalkowski/go:5.26 arch=amd64
-make verify-cgroup-container image=alexfalkowski/go:5.26 arch=amd64
+make verify-rootless-container image=alexfalkowski/go:5.27 arch=amd64 package=file
+make verify-mount-container image=alexfalkowski/go:5.27 arch=amd64
+make verify-netlink-container image=alexfalkowski/go:5.27 arch=amd64
+make verify-namespace-container image=alexfalkowski/go:5.27 arch=amd64
+make verify-cgroup-container image=alexfalkowski/go:5.27 arch=amd64
 ```
 
 Select the matching launcher; these are alternatives for different scopes, not a checklist to run for every item. The existing fanotify and clock-change launchers remain available for changes affecting those packages. Clock changes require an explicitly disposable VM. Container launchers perform dependency setup and can write vendor/report files; use a writable disposable checkout if necessary, without changing ownership of unrelated work.
 
-Use `kernel=supported` for useful local runs on any supported newer kernel; add `kernel=7.0` only on an actual Linux 7.0 host to collect exact-baseline evidence. A container image does not supply a different kernel. Existing rootless, Netlink, namespace, and cgroup CI matrices require exact Linux 7.0, and all existing required native amd64/arm64 matrices remain gates. New core facility lanes must also establish the Linux 7.0 baseline on both native architectures; newer optional-feature runs supplement those results.
+Use `kernel=supported` for local runs on any supported newer kernel. Add `kernel=7.0` on an actual Linux 7.0 host to collect exact-baseline evidence. A container image does not supply a different kernel. The rootless, Netlink, namespace, cgroup, and mount CI matrices require exact Linux 7.0. All required native amd64 and arm64 matrices remain gates. New core facility lanes must also establish the Linux 7.0 baseline on both native architectures. Newer optional-feature runs supplement those results.
 
 For a new facility whose live operations do not fit the existing lanes, its first implementation item must add a repository-defined verification target and matching local/container/CI path. Future names such as `verify-uring-container` are proposals, not currently available commands. Extend `internal/testenv`, explicit profile selection, container prerequisites, `.circleci/config.yml`, script lint inputs, and `scripts/coverage-workspace` together where needed. Keep new live suites selected deliberately so ordinary rootless runs do not acquire privileges or mutate shared state. Use narrowly justified syscall permissions; do not weaken the pinned rootless profile globally to obtain a pass.
 
@@ -128,11 +128,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E02a — Unshare reflinked file ranges
-
-- **Implement:** Extend `file.Fallocate` for `FALLOC_FL_UNSHARE_RANGE` with its valid allocation-mode flag combinations, including optional size preservation. Preserve contents, alignment and extent semantics, signed range validation, borrowing, and errno. Use the existing binding and leave unsupported filesystems observable.
-- **Evidence:** In an isolated fixture such as reflink-enabled XFS in the mount lane, establish that temporary files share extents, unshare the selected range, and independently verify the changed extent sharing and preserved contents. Require the positive scenario on both native architectures.
 
 #### E02b — Write zeroes for subsequent overwrites
 
