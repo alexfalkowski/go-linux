@@ -3,6 +3,7 @@
 package file_test
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -123,4 +124,31 @@ func ExampleFallocate() {
 	fmt.Println(info.Size())
 
 	// Output: 7
+}
+
+func ExampleFallocate_unshareRange() {
+	segment, err := os.CreateTemp("", "working-copy-*.db")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(segment.Name())
+	defer segment.Close()
+	if _, err := segment.WriteString("record\n"); err != nil {
+		panic(err)
+	}
+
+	// For a reflinked working copy, make this segment private before writing.
+	// This caller treats the reservation as optional on unsupported filesystems.
+	const segmentSize = 64 * 1024
+	if err := file.Fallocate(segment, file.UnshareRange|file.KeepSize, 0, segmentSize); err != nil && !errors.Is(err, errors.ErrUnsupported) {
+		panic(err)
+	}
+
+	contents, err := os.ReadFile(segment.Name())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(contents))
+
+	// Output: record
 }

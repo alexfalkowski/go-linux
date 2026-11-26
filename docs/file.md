@@ -69,8 +69,11 @@ Pass a writable open file, a mode, and a byte offset and length. The [executable
 | `ZeroRange` | Zeros the range and reserves storage for it. Add `KeepSize` to preserve EOF. |
 | `CollapseRange` | Removes bytes, shifts later data toward the start, and shrinks the file. The range must end before EOF. |
 | `InsertRange` | Inserts a hole, shifts later data toward the end, and grows the file. The insertion offset must be before EOF. |
+| `UnshareRange` | Reserves storage and makes shared blocks in the range private while preserving existing data. Add `KeepSize` to preserve EOF. |
 
 Offsets must be nonnegative and lengths positive. Invalid inputs match `os.ErrInvalid`. A range end outside the signed 64-bit range returns EFBIG. The filesystem checks alignment and can reject a mode with EOPNOTSUPP. Collapse and insert commonly require both offset and length to be aligned to the filesystem's block size. KeepSize is required for hole punching and cannot be combined with collapse or insert.
+
+Use `UnshareRange|KeepSize` before overwriting a range in a reflinked working copy when the logical file size must stay fixed. The filesystem determines the allocation granularity. An unaligned range can affect extent sharing at its boundary blocks while preserving their contents. The [working-copy example](../file/example_test.go) treats the reservation as optional. See [mount verification](verification.md#mount-verification) for the test on real reflinked files.
 
 Fallocate borrows the open file and preserves its current offset. Coordinate overlapping reads, writes, mappings, and range mutations at the application level. The call can block in the kernel. Errors use `*os.PathError` and preserve errno. The package passes the operation to Linux without fallback or rollback. Use the usual file synchronization calls for durability. [Linux fallocate(2)](https://man7.org/linux/man-pages/man2/fallocate.2.html)
 
@@ -78,9 +81,9 @@ Fallocate borrows the open file and preserves its current offset. Coordinate ove
 
 The [Linux 7.0 UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/linux) includes more than these operations. `Open` accepts only the flags listed above; `O_TMPFILE`, `O_DIRECT`, `O_SYNC`, and `O_DSYNC` are not exposed. There is no operation to publish an unnamed temporary inode. Ordinary creation, I/O, logical resizing, and `File.Sync` remain standard Go operations.
 
-The allocation API accepts the modes in the table. Reflink unsharing and the distinct Linux write-zeroes mode are outside the current surface, along with file advice, readahead, fdatasync, syncfs, flock, and POSIX/OFD record locks. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
+The allocation API accepts the modes in the table. The distinct Linux write-zeroes mode is outside the current surface, along with file advice, readahead, fdatasync, syncfs, flock, and POSIX/OFD record locks. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
 
-The accepted statx request mask is exactly `MaskBasic|MaskBirthTime|MaskMountID|MaskUniqueMountID`, including individual basic bits. Direct-I/O memory/offset/read alignment, subvolume identity, and atomic-write unit/segment limits from [stat.h](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h) have no fields or request constants here. Returned unknown mask/attribute bits survive, including an atomic-write attribute bit without a named constant; that does not expose the omitted fields or implement atomic data writes. Whiteout rename is absent. Filesystem-specific ioctls, reflink/extent inspection, and device control are outside this surface.
+The accepted statx request mask is exactly `MaskBasic|MaskBirthTime|MaskMountID|MaskUniqueMountID`, including individual basic bits. Direct-I/O memory/offset/read alignment, subvolume identity, and atomic-write unit/segment limits from [stat.h](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h) have no fields or request constants here. Returned unknown mask/attribute bits survive, including an atomic-write attribute bit without a named constant; that does not expose the omitted fields or implement atomic data writes. Whiteout rename is absent. Reflink creation, extent inspection, and device control are outside this surface.
 
 ## Ownership, errors, and verification
 

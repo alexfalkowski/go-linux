@@ -15,6 +15,14 @@ import (
 // ReservedAllocationMode is the reserved fallocate(2) codepoint.
 const ReservedAllocationMode = unix.FALLOC_FL_NO_HIDE_STALE
 
+// ShmemFile creates an ordinary writable memfd for testing shmem behavior.
+func ShmemFile(t *testing.T) *os.File {
+	t.Helper()
+	fd, err := unix.MemfdCreate(t.Name(), unix.MFD_CLOEXEC)
+	require.NoError(t, err)
+	return OwnDescriptor(t, fd, t.Name())
+}
+
 // FileStatx independently observes Linux metadata for focused ABI comparisons.
 // The file remains open and no offset or flags are changed.
 func FileStatx(t *testing.T, file *os.File, mask uint32) unix.Statx_t {

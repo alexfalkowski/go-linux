@@ -14,6 +14,8 @@ Borrowed descriptors are pinned for the syscall rather than duplicated and retai
 
 Fallocate uses the maintained x/sys binding with the same lifetime protection. One typed mode represents the kernel operation and its permitted size modifier, so a caller can reserve log capacity without inadvertently growing the visible log. The wrapper checks mode combinations and signed range arithmetic before borrowing. It leaves alignment and file-state checks to the filesystem, where the relevant allocation units and EOF are known. Forwarding one request preserves distinctions such as storage reserved by zero-range and storage released by hole punching. [Linux 7.0 VFS implementation](https://github.com/torvalds/linux/blob/v7.0/fs/open.c)
 
+Reflink unsharing uses the same operation and size modifier. Rewriting bytes in userspace would trigger ordinary writes, with their own failure and concurrency behavior. Letting the filesystem copy shared extents preserves its allocation rules and leaves support errors visible to the caller. [Linux 7.0 XFS implementation](https://github.com/torvalds/linux/blob/v7.0/fs/xfs/xfs_file.c)
+
 ## Keep metadata validity separate from values
 
 Metadata retains Linux's returned field mask and attribute-support mask. An unsupported field cannot be inferred from a zero value, and a single query is not an atomic snapshot. Unsigned Linux sizes and identifiers retain their ranges, while mode bits and valid timestamps convert to Go representations. Unknown output bits survive inspection; unknown input bits are rejected rather than silently ignored.
