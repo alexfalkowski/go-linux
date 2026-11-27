@@ -127,7 +127,7 @@ jobs:
     working_directory: ~/go-linux
     steps:
       - checkout-submodules
-      - run: make verify-mount-container image="$GO_LINUX_CI_IMAGE" arch=<< parameters.arch >> kernel=7.0
+      - run: make verify-mount-container image="$GO_LINUX_CI_IMAGE" arch=<< parameters.arch >> kernel=7.0 write-zeroes=true
       - store_test_results:
           path: test/reports
       - store_artifacts:

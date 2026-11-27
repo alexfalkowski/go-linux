@@ -182,6 +182,14 @@ The launcher uses the image's `mkfs.xfs` and util-linux `mount`, refreshes Go de
 
 With `mkfs.xfs` and util-linux `mount` installed directly, `make verify-mount arch=amd64` runs the same discovery and mount suite. Add `kernel=7.0` to require the exact kernel baseline. CircleCI selects it for both native architectures.
 
+CircleCI also selects the ext4 write-zeroes test with `write-zeroes=true`. Use this option on a disposable native runner with a loadable, initially unloaded `scsi_debug` module, root or passwordless `sudo`, and rootful Docker.
+
+```sh
+make verify-mount-container image=alexfalkowski/go:5.27 arch=amd64 kernel=7.0 write-zeroes=true
+```
+
+The launcher loads `scsi_debug` with one RAM-backed disk and enables WRITE SAME with unmap. It unloads the module when the container exits. The test finds the disk under the `scsi_debug` driver in sysfs and checks its queue's `write_zeroes_unmap_max_bytes` before formatting it with the image's `mkfs.ext4` in a private mount namespace. It verifies size and contents, partial-block boundaries, written extents and mapping reuse after overwrite, and an unwritten extent from ordinary zero-range. A selected test fails if the fixture cannot run. Plain `make verify-mount` selects the mount and XFS tests.
+
 ## Fanotify verification
 
 Use a native Linux host with a rootful Docker daemon and initial-user-namespace `CAP_SYS_ADMIN`. The host kernel must provide `CONFIG_FANOTIFY` and `CONFIG_FANOTIFY_ACCESS_PERMISSIONS`. Rootless Docker cannot supply the required initial-namespace privilege, including with `--privileged`; the launcher rejects that environment before running setup.
@@ -241,7 +249,11 @@ Both ordinary-user jobs ran as UID 1001 with zero effective/bounding capabilitie
 
 Both fanotify jobs ran as UID 0 with initial-user-namespace CAP_SYS_ADMIN and passed all 36 tests without skips, including the isolated notification, permission, lifetime, deadline, concurrent-close, and iterator scenarios and examples.
 
+On the E02a merge revision, both native mount jobs ran Go 1.27.4 on Linux 7.0.0-1016-aws and passed both XFS unshare modes with race detection. FIEMAP confirmed that the selected block became private and its neighbor stayed shared. [amd64 job](https://circleci.com/gh/alexfalkowski/go-linux/1845), [arm64 job](https://circleci.com/gh/alexfalkowski/go-linux/1857), [merged coverage](https://circleci.com/gh/alexfalkowski/go-linux/1858).
+
 These results establish the recorded revision and scenarios, not exhaustive kernel behavior or later revisions. CI runs the configured image toolchain rather than a separate minimum-Go-version matrix. Inspect the retained environment and test reports when accepting a new revision; compilation alone, image names, privileges, or source inspection do not establish runtime coverage. Remaining gaps and source-reviewed paths are recorded in [verification limits](verification-limits.md).
+
+The required mount suite also passed with race detection in an emulated amd64 Linux 7.0.0-1016-aws guest using Go 1.27.4. The disposable SCSI disk reported a positive write-zeroes-with-unmap limit. Ext4 passed the written-extent, overwrite, partial-block, and zero-range control scenarios. The run is recorded in `test/reports/e02b-ext4-vm-console.log`.
 
 Additional local evidence covers a newer kernel:
 
@@ -262,7 +274,6 @@ Additional local evidence covers a newer kernel:
 | `xattr` real-filesystem behavior, examples, and rootless container launcher | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes with race detection directly and through the launcher with the pinned Moby profile; this is not Linux 7.0 or arm64 evidence. Namespace creation fails with EPERM and is not needed by these tests. |
 | `eventfd`, `timerfd`, `inotify`, and `socket` poll-registration failure cleanup | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; child-local seccomp loading permitted | Required rootless package suites pass with race detection and no skips, including kernel-refused registration, nil-owner errors, and descriptor cleanup. |
 | `mount` namespace operations and inotify unmount observation | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 0 inside a privileged rootless-Docker container; mapped user/mount namespaces and private tmpfs operations permitted | All 40 cases pass with race detection and no skips through the configured container launcher, including Unmount then Ignored for the watched filesystem. The launcher ran from a disposable source copy because dependency refresh could not write the original vendor tree; source and dependency declarations matched. |
-| `file` reflink unsharing | Go 1.27.4 / 7.3.5-1-t2-resolute / emulated amd64 | Initial-user-namespace `CAP_SYS_ADMIN` in a disposable guest with loop devices, XFS, and `xfsprogs` | Both unshare modes pass with race detection. FIEMAP confirms that the selected block becomes private and its neighbor stays shared. Reports use the `reflink-vm-` prefix. Native Linux 7.0 verification on amd64 and arm64 remains pending. |
 | `inotify` lifecycle, decoding, examples, and actual queue overflow | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2 | Required rootless package suite passes directly with race detection and no skips; decoder fuzzing also passes. Namespace creation fails with EPERM and is not needed by these tests. |
 | `fanotify` decoder and resource cleanup | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | UID 1000, no effective/bounding capabilities, NoNewPrivs=1, seccomp mode 2; Docker daemon is rootless | Parser/ABI cleanup and invalid-input tests run with race detection, and decoder fuzzing passes; selected live fixtures fail for missing CAP_SYS_ADMIN. This is not notification or permission-operation evidence. |
 | `fanotify` notifications, permissions, and iterator cleanup | Go 1.27.4 / 7.3.4-3-t2-resolute / native amd64 | Direct host run as UID 0 with initial-user-namespace CAP_SYS_ADMIN, NoNewPrivs=0, seccomp mode 0; private mount namespaces available | The contributor-run `sudo env "PATH=$PATH" make verify-fanotify arch=amd64` passes all 45 cases with race detection and no skips, confirmed in retained JSON/JUnit reports. Both iterator break and panic scenarios pass, verifying borrowed-event closure, descriptor cleanup, unread-event draining, and exactly one terminal deadline error. Reports are preserved as `test/reports/fanotify-*`. Both notification and content groups return no owner and os.ErrNoDeadline without retaining a descriptor when the kernel rejects poll registration. The shared filter helper's eventfd/timerfd/inotify/socket regression suite passes all 294 cases with race detection and no skips. |

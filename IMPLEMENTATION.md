@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E02b — Write zeroes for subsequent overwrites**.
+Next: **E03 — Add file advice and synchronization controls**.
 
-Resume note: E02a passed the required rootless file suite and both XFS unshare modes in an emulated amd64 Linux 7.3.5 guest. Confirm the final revision's required CircleCI results, including positive XFS execution on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E02b.
+Resume note: E02b passed the required rootless file suite and the isolated ext4 scenarios in an emulated amd64 Linux 7.0.0-1016-aws guest. Confirm the final revision's required CircleCI results, including positive ext4 write-zeroes execution on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E03.
 
 ## Objective and scope
 
@@ -128,11 +128,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E02b — Write zeroes for subsequent overwrites
-
-- **Implement:** Extend `file.Fallocate` for Linux 7.0's distinct `FALLOC_FL_WRITE_ZEROES` operation. Preserve its exclusive mode and size/alignment rules, signed range validation, borrowing, and errno. Keep filesystem and backing-device rejection visible.
-- **Evidence:** Exercise an isolated disposable ext4 filesystem on storage that reports write-zeroes-with-unmap support. Use actual size/content and independent extent observations to distinguish written extents from ordinary zero-range. Extend the mount lane to require positive native amd64/arm64 evidence with suitable storage. Keep this item pending if the runner cannot provision the backing-device prerequisite.
 
 #### E03 — Add file advice and synchronization controls
 

@@ -152,3 +152,31 @@ func ExampleFallocate_unshareRange() {
 
 	// Output: record
 }
+
+func ExampleFallocate_writeZeroes() {
+	segment, err := os.CreateTemp("", "database-segment-*")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(segment.Name())
+	defer segment.Close()
+
+	// Prepare a new segment for overwrites when the storage supports it.
+	const segmentSize = 64 * 1024
+	if err := file.Fallocate(segment, file.WriteZeroes, 0, segmentSize); err != nil && !errors.Is(err, errors.ErrUnsupported) {
+		panic(err)
+	}
+	record := []byte("record")
+	recordOffset := int64(segmentSize - len(record))
+	if _, err := segment.WriteAt(record, recordOffset); err != nil {
+		panic(err)
+	}
+
+	info, err := segment.Stat()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(info.Size())
+
+	// Output: 65536
+}

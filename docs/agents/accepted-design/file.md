@@ -18,6 +18,8 @@ Fallocate uses the maintained x/sys binding with the same lifetime protection. O
 
 Reflink unsharing uses the same operation and size modifier. Rewriting bytes in userspace would trigger ordinary writes, with their own failure and concurrency behavior. Letting the filesystem copy shared extents preserves its allocation rules and leaves support errors visible to the caller. [Linux 7.0 XFS implementation](https://github.com/torvalds/linux/blob/v7.0/fs/xfs/xfs_file.c)
 
+Write-zeroes uses the same binding with its own exclusive allocation mode. Ext4 prepares written mappings for subsequent overwrites. Ordinary zero-range can leave unwritten extents that require conversion on the next write. Forwarding the mode directly preserves backing-device errors and lets the filesystem handle partial blocks. [Linux 7.0 ext4 implementation](https://github.com/torvalds/linux/blob/v7.0/fs/ext4/extents.c)
+
 ## Keep metadata validity separate from values
 
 Metadata retains Linux's returned field mask and attribute-support mask. An unsupported field cannot be inferred from a zero value, and a single query is not an atomic snapshot. Unsigned Linux sizes and identifiers retain their ranges, while mode bits and valid timestamps convert to Go representations. Unknown output bits survive inspection; unknown input bits are rejected rather than silently ignored.

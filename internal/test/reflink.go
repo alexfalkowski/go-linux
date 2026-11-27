@@ -107,11 +107,11 @@ func mountReflinkImage(t *testing.T) string {
 	target := filepath.Join(root, "xfs")
 	require.NoError(t, os.Mkdir(target, 0o700))
 
-	output, err := runReflinkTool(t, "mkfs.xfs", "-m", "reflink=1", image.Name())
+	output, err := runFilesystemTool(t, "mkfs.xfs", "-m", "reflink=1", image.Name())
 	require.NoError(t, err, "mkfs.xfs: %s", output)
 	// util-linux binds the loop device to this image with autoclear, so
 	// namespace teardown also releases it if the child is killed.
-	output, err = runReflinkTool(t, "mount", "-i", "-n", "-t", "xfs", "-o", "loop,nodev,nosuid,noexec", "--", image.Name(), target)
+	output, err = runFilesystemTool(t, "mount", "-i", "-n", "-t", "xfs", "-o", "loop,nodev,nosuid,noexec", "--", image.Name(), target)
 	if err != nil {
 		if _, exited := errors.AsType[*exec.ExitError](err); exited {
 			checkReflinkMountPrerequisites(t, output)
@@ -183,7 +183,7 @@ func reflinkLoopNodesAbsent() bool {
 	return true
 }
 
-func runReflinkTool(t *testing.T, name string, arguments ...string) ([]byte, error) {
+func runFilesystemTool(t *testing.T, name string, arguments ...string) ([]byte, error) {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
@@ -229,6 +229,15 @@ func FileBlockAllocatedAt(t *testing.T, file *os.File, offset uint64) bool {
 	t.Helper()
 
 	return fileExtentAt(t, file, offset) != nil
+}
+
+// FileBlockUnwrittenAt reports whether an allocated block is unwritten.
+func FileBlockUnwrittenAt(t *testing.T, file *os.File, offset uint64) bool {
+	t.Helper()
+
+	extent := fileExtentAt(t, file, offset)
+	require.NotNil(t, extent, "expected a mapped extent at %d", offset)
+	return extent.unwritten
 }
 
 func fileExtentAt(t *testing.T, file *os.File, offset uint64) *FileExtent {
