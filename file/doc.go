@@ -6,8 +6,10 @@
 // Open exposes openat2 resolution restrictions. Stat and StatAt query statx
 // validity masks, birth time, attributes, and mount identity. Rename exposes
 // renameat2 replacement and exchange modes. Fallocate reserves storage and
-// changes file ranges. The module supports Linux 7.0 or later. Filesystem and
-// security policy can still reject individual operations.
+// changes file ranges. Fadvise and Readahead guide kernel caching. Fdatasync
+// synchronizes file data, and SyncFS synchronizes the containing filesystem.
+// The module supports Linux 7.0 or later. Filesystem and security policy can
+// still reject individual operations.
 //
 // Input files are borrowed only during each call and remain caller-owned.
 // Concurrent Close is safe: each syscall pins its input descriptors or returns

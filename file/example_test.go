@@ -126,6 +126,57 @@ func ExampleFallocate() {
 	// Output: 7
 }
 
+func ExampleReadahead() {
+	path, err := os.MkdirTemp("", "scan-example-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(path)
+
+	name := filepath.Join(path, "segment")
+	if err := os.WriteFile(name, []byte("record\n"), 0o600); err != nil {
+		panic(err)
+	}
+	segment, err := os.Open(name)
+	if err != nil {
+		panic(err)
+	}
+	defer segment.Close()
+
+	if err := file.Fadvise(segment, file.Sequential, 0, 0); err != nil {
+		panic(err)
+	}
+	if err := file.Readahead(segment, 0, 64*1024); err != nil {
+		panic(err)
+	}
+	record, err := io.ReadAll(segment)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(record))
+
+	// Output: record
+}
+
+func ExampleFdatasync() {
+	log, err := os.CreateTemp("", "wal-example-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(log.Name())
+	defer log.Close()
+
+	if _, err := log.WriteString("record\n"); err != nil {
+		panic(err)
+	}
+	if err := file.Fdatasync(log); err != nil {
+		panic(err)
+	}
+	fmt.Println("log data synchronized")
+
+	// Output: log data synchronized
+}
+
 func ExampleFallocate_unshareRange() {
 	segment, err := os.CreateTemp("", "working-copy-*.db")
 	if err != nil {

@@ -1,6 +1,6 @@
 # file
 
-`github.com/alexfalkowski/go-linux/file` adds Linux path-resolution, metadata, rename, and allocation controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. The module supports Linux 7.0+ and the Go floor in `go.mod`. Filesystem support and security policy can vary by operation.
+`github.com/alexfalkowski/go-linux/file` adds Linux path-resolution, metadata, rename, allocation, access advice, and synchronization controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. The module supports Linux 7.0+ and the Go floor in `go.mod`. Filesystem support and security policy can vary by operation.
 
 ## Good for
 
@@ -80,18 +80,43 @@ Use `WriteZeroes` to prepare a new or reusable database segment for in-place ove
 
 Fallocate borrows the open file and preserves its current offset. Coordinate overlapping reads, writes, mappings, and range mutations at the application level. The call can block in the kernel. Errors use `*os.PathError` and preserve errno. The package passes the operation to Linux without fallback or rollback. Use the usual file synchronization calls for durability. [Linux fallocate(2)](https://man7.org/linux/man-pages/man2/fallocate.2.html)
 
+## Access advice and readahead
+
+Set sequential advice before scanning a segment. Use readahead to request advance reads for the first part of the scan.
+
+```go
+if err := file.Fadvise(segment, file.Sequential, 0, 0); err != nil {
+    return err
+}
+if err := file.Readahead(segment, 0, 64*1024); err != nil {
+    return err
+}
+```
+
+`Fadvise` accepts one hint. `Normal` restores defaults, `Random` disables automatic file readahead, `Sequential` increases the readahead window, and `NoReuse` tells Linux that accesses need not protect pages from reclamation. These four hints affect the open file description and are shared by duplicated handles. `WillNeed` requests advance reads for the byte range, and `DontNeed` asks Linux to reclaim cached pages in the range. The kernel and filesystem may limit or ignore every hint. [Linux 7.0 advice implementation](https://github.com/torvalds/linux/blob/v7.0/mm/fadvise.c)
+
+`Readahead` requires a readable handle. Linux can round requests to pages, limit the work, and block while resolving filesystem metadata. On Linux 7.0, a request for an ordinary tmpfs file can succeed without starting advance reads. Cache residency can change at any time. [Linux 7.0 readahead implementation](https://github.com/torvalds/linux/blob/v7.0/mm/readahead.c) · [Linux 7.0 tmpfs implementation](https://github.com/torvalds/linux/blob/v7.0/mm/shmem.c)
+
+Both calls borrow the file and preserve its current offset. Offsets and lengths are nonnegative byte counts. A zero length requests the range through EOF. A negative offset or length matches `os.ErrInvalid`, and a range end above `MaxInt64` returns EFBIG.
+
+## Data and filesystem synchronization
+
+After writing a record to an existing write-ahead log, use `file.Fdatasync(log)` to synchronize its data and the metadata needed to retrieve it, including size changes. For broader file metadata, use the standard `log.Sync()`. If a new or renamed directory entry must be durable, synchronize its containing directory separately with `dir.Sync()`.
+
+Use `file.SyncFS(dir)` for an explicit filesystem-wide checkpoint. A regular file or directory handle identifies the containing filesystem. The operation can synchronize other files and report writeback errors unrelated to the supplied file. Both synchronization calls preserve the input's offset and can block. Coordinate transaction ordering and recovery in the application. [Linux 7.0 synchronization implementation](https://github.com/torvalds/linux/blob/v7.0/fs/sync.c)
+
 ## Coverage boundary
 
 The [Linux 7.0 UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/linux) includes more than these operations. `Open` accepts only the flags listed above; `O_TMPFILE`, `O_DIRECT`, `O_SYNC`, and `O_DSYNC` are not exposed. There is no operation to publish an unnamed temporary inode. Ordinary creation, I/O, logical resizing, and `File.Sync` remain standard Go operations.
 
-The allocation API accepts the modes in the table. File advice, readahead, fdatasync, syncfs, flock, and POSIX/OFD record locks are outside the current surface. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
+The allocation API accepts the modes in the table. Whole-file and record locking and `sync_file_range` are outside the current surface. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
 
 The accepted statx request mask is exactly `MaskBasic|MaskBirthTime|MaskMountID|MaskUniqueMountID`, including individual basic bits. Direct-I/O memory/offset/read alignment, subvolume identity, and atomic-write unit/segment limits from [stat.h](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h) have no fields or request constants here. Returned unknown mask/attribute bits survive, including an atomic-write attribute bit without a named constant; that does not expose the omitted fields or implement atomic data writes. Whiteout rename is absent. Reflink creation, extent inspection, and device control are outside this surface.
 
 ## Ownership, errors, and verification
 
-Every input is borrowed for one call and stays caller-owned on success and failure. Descriptor references are pinned internally against concurrent Close; operations either use the original open description or fail with `os.ErrClosed`. The package does not alter input flags or offsets. Separate calls are safe concurrently, while logical sequences require caller coordination. No context or syscall-deadline API is promised.
+Every input is borrowed for one call and stays caller-owned on success and failure. Descriptor references are pinned internally against concurrent Close; operations either use the original open description or fail with `os.ErrClosed`. File status flags and offsets are preserved. Separate calls are safe concurrently, while logical sequences require caller coordination. No context or syscall-deadline API is promised.
 
-Invalid supported-surface options match `os.ErrInvalid` before file access. Nil files match `os.ErrInvalid`, and closed files match `os.ErrClosed`. Kernel failures such as EEXIST, ELOOP, EXDEV, EAGAIN, EACCES, and ENOTDIR retain identity through `errors.Is`. Open/metadata errors use `*os.PathError`; rename errors use `*os.LinkError` with both names. A failed Open returns nil with nothing for the caller to clean up.
+Invalid supported-surface options match `os.ErrInvalid` before file access. Nil files match `os.ErrInvalid`, and closed files match `os.ErrClosed`. Kernel failures such as EEXIST, ELOOP, EXDEV, EAGAIN, EACCES, and ENOTDIR retain identity through `errors.Is`. Operations use `*os.PathError` for context, with the exception of Rename, which uses `*os.LinkError` with both names. A failed Open returns nil with nothing for the caller to clean up.
 
 Run `package=file make specs` for the real-kernel race/coverage suite. The [verification guide](verification.md#file-verification) describes temporary filesystem prerequisites and the isolated metadata scenario. The [design note](agents/accepted-design/file.md) explains API tradeoffs.

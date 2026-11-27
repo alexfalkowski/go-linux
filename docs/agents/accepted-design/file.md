@@ -20,6 +20,10 @@ Reflink unsharing uses the same operation and size modifier. Rewriting bytes in 
 
 Write-zeroes uses the same binding with its own exclusive allocation mode. Ext4 prepares written mappings for subsequent overwrites. Ordinary zero-range can leave unwritten extents that require conversion on the next write. Forwarding the mode directly preserves backing-device errors and lets the filesystem handle partial blocks. [Linux 7.0 ext4 implementation](https://github.com/torvalds/linux/blob/v7.0/fs/ext4/extents.c)
 
+Access advice and readahead keep their distinct kernel contracts. Readahead requires readable access and kernel support for advance reads on the underlying file. Linux checks those prerequisites before using its advice machinery. Using the dedicated syscall preserves that validation and its errno. The other operations use the maintained x/sys bindings, while readahead uses the x/sys syscall number for the supported native ABIs. [Linux 7.0 readahead implementation](https://github.com/torvalds/linux/blob/v7.0/mm/readahead.c)
+
+Data synchronization and filesystem-wide synchronization have separate entry points so the scope of a write-ahead log flush or filesystem checkpoint is explicit. Filesystem-wide synchronization can surface errors involving other open files on the same filesystem. The standard library's `File.Sync` remains the full file synchronization operation. [Linux 7.0 synchronization implementation](https://github.com/torvalds/linux/blob/v7.0/fs/sync.c)
+
 ## Keep metadata validity separate from values
 
 Metadata retains Linux's returned field mask and attribute-support mask. An unsupported field cannot be inferred from a zero value, and a single query is not an atomic snapshot. Unsigned Linux sizes and identifiers retain their ranges, while mode bits and valid timestamps convert to Go representations. Unknown output bits survive inspection; unknown input bits are rejected rather than silently ignored.
