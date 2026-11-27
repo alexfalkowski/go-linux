@@ -40,6 +40,9 @@ const ErrExists = syscall.EEXIST
 // ErrFileTooLarge preserves Linux EFBIG for exact error assertions.
 const ErrFileTooLarge = syscall.EFBIG
 
+// ErrIllegalSeek preserves Linux ESPIPE for exact error assertions.
+const ErrIllegalSeek = syscall.ESPIPE
+
 // ErrInvalidArgument preserves Linux EINVAL for exact error assertions.
 const ErrInvalidArgument = syscall.EINVAL
 

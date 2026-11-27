@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E03 — Add file advice and synchronization controls**.
+Next: **E04 — Add whole-file advisory locking**.
 
-Resume note: E02b passed the required rootless file suite and the isolated ext4 scenarios in an emulated amd64 Linux 7.0.0-1016-aws guest. Confirm the final revision's required CircleCI results, including positive ext4 write-zeroes execution on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E03.
+Resume note: E03 passed the required rootless file suite on native amd64 and the isolated mount suite in an emulated amd64 Linux 7.0.0-1016-aws guest. Confirm the final revision's required CircleCI jobs, including positive `SyncFS` execution on disposable XFS on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E04.
 
 ## Objective and scope
 
@@ -35,7 +35,7 @@ These scenarios set the scope; they do not require this module to implement an e
 
 | Items | Application or container outcome and home | Required verification route |
 | --- | --- | --- |
-| E02–E07 | Extend `file` for database allocation, sparse ranges, advice/synchronization, locking, metadata, and temporary/direct-I/O files. | Rootless file suite; mount lane with disposable filesystems for specialized modes and filesystem-wide synchronization. |
+| E04–E07 | Extend `file` for advisory locking, metadata, and temporary/direct-I/O files. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
 | E08–E10 | Extend `mmap` for synchronized mapped indexes, locked buffers, residency, resizing, and advice. | Rootless mmap suite with bounded fault/limit children; filesystem fixtures where required. |
 | E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
 | E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
@@ -128,12 +128,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E03 — Add file advice and synchronization controls
-
-- **Implement:** Add typed [file access advice](https://man7.org/linux/man-pages/man2/posix_fadvise.2.html), readahead, `fdatasync`, and `syncfs` operations to `file`, distinguishing per-file data synchronization from filesystem-wide synchronization. Reuse standard `File.Sync` for its existing contract.
-- **Contracts:** Preserve offsets, range semantics, advisory behavior, and errno. Advice is not a residency guarantee. Synchronization is not a transaction, and filesystem-wide work must be explicit. Treat `sync_file_range` separately if exposed; it must never be documented as crash-durability synchronization.
-- **Evidence:** Verify borrowing, range validation, preserved offsets, and real successful calls; use independent observations only for guarantees Linux actually supplies. Exercise filesystem-wide synchronization on an isolated test filesystem. Do not manufacture deterministic cache-eviction or power-loss guarantees.
 
 #### E04 — Add whole-file advisory locking
 
