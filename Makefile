@@ -8,6 +8,7 @@ export GO_LINUX_TEST_REQUIRED := $(required)
 export GO_LINUX_TEST_ARCH := $(arch)
 export GO_LINUX_TEST_KERNEL := $(kernel)
 export GO_LINUX_TEST_CGROUP := $(delegation)
+export GO_LINUX_TEST_WRITE_ZEROES := $(value write-zeroes)
 
 include bin/build/make/help.mak
 include bin/build/make/go.mak
@@ -83,7 +84,7 @@ verify-mount:
 	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
 	@$(MAKE) specs package=mount profile=namespaces required=true
 
-# Run required mount verification in privileged Docker (set image=<tag> and arch=amd64 or arm64).
+# Run required mount verification in privileged Docker (image and arch required). Select write-zeroes=true on a disposable host.
 verify-mount-container: export image := $(value image)
 verify-mount-container:
 	@bash scripts/mount "$$image" "$$GO_LINUX_TEST_ARCH"

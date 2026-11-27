@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
-# Run required mount and reflink tests in a privileged container on native Linux.
+# Run mount verification with optional disposable SCSI storage on native Linux.
 
 set -eo pipefail
 
 # shellcheck source=scripts/container.sh
 source "$(dirname "$0")/container.sh"
 
-if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ]]; then
-  printf 'usage: make verify-mount-container image=<tag> arch=<amd64|arm64> [kernel=7.0]\n' >&2
+mount_write_zeroes=${GO_LINUX_TEST_WRITE_ZEROES:-false}
+if [[ $# -ne 2 || -z $1 || ( $2 != amd64 && $2 != arm64 ) ||
+  ( $mount_write_zeroes != true && $mount_write_zeroes != false ) ]]; then
+  printf 'usage: make verify-mount-container image=<tag> arch=<amd64|arm64> [kernel=7.0] [write-zeroes=true]\n' >&2
   exit 2
 fi
 
@@ -21,4 +23,17 @@ fi
 
 printf 'executor=machine container=%s arch=%s privileged=true\n' "$mount_image" "$mount_arch"
 
-run_privileged_container "$mount_image" mount "$mount_arch" "kernel=${GO_LINUX_TEST_KERNEL:-supported}"
+if [[ $mount_write_zeroes == true ]]; then
+  mount_privilege=()
+  if (( EUID != 0 )); then
+    mount_privilege=(sudo -n)
+  fi
+
+  # Only unload a module this run successfully loaded.
+  "${mount_privilege[@]}" modprobe --first-time scsi_debug \
+    add_host=1 max_luns=1 num_tgts=1 dev_size_mb=64 lbpws=1 lbprz=1 inq_product=go-linux-ext4
+  trap '"${mount_privilege[@]}" modprobe --remove --first-time scsi_debug' EXIT
+fi
+
+run_privileged_container "$mount_image" mount "$mount_arch" \
+  "kernel=${GO_LINUX_TEST_KERNEL:-supported}" "write-zeroes=$mount_write_zeroes"

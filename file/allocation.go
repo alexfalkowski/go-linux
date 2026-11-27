@@ -41,6 +41,11 @@ const InsertRange AllocationMode = unix.FALLOC_FL_INSERT_RANGE
 // It reserves storage for the range and can grow the file, unless KeepSize is set.
 const UnshareRange AllocationMode = unix.FALLOC_FL_UNSHARE_RANGE
 
+// WriteZeroes zeros the range and prepares its mappings for subsequent
+// overwrites. It extends the file if the range ends beyond EOF and must be
+// used alone. Filesystem granularity and backing-device support apply.
+const WriteZeroes AllocationMode = unix.FALLOC_FL_WRITE_ZEROES
+
 // Fallocate applies mode to length bytes starting at offset on a writable handle.
 // The file is borrowed and its current offset is unchanged. Concurrent Close
 // either lets an admitted operation finish on the original file or returns
@@ -73,7 +78,7 @@ func Fallocate(f *os.File, mode AllocationMode, offset, length int64) error {
 func validateAllocation(mode AllocationMode, offset, length int64) error {
 	switch mode {
 	case Allocate, KeepSize, PunchHole | KeepSize, ZeroRange, ZeroRange | KeepSize,
-		CollapseRange, InsertRange, UnshareRange, UnshareRange | KeepSize:
+		CollapseRange, InsertRange, UnshareRange, UnshareRange | KeepSize, WriteZeroes:
 	default:
 		return os.ErrInvalid
 	}
