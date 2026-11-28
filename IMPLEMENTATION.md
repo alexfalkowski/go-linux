@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E09 — Add mapped-memory locking and residency inspection**.
+Next: **E10 — Add mapped-region resizing and further advice**.
 
-Resume note: E08 passed the required rootless mmap suite on native amd64 Linux 7.3. Before starting E09, confirm the final E08 revision's required CircleCI jobs, including mapped-file synchronization, locked-page invalidation, and concurrent close in both native Linux 7.0 rootless jobs, plus merged coverage.
+Resume note: E09 passed the required rootless mmap suite on native amd64 Linux 7.3. Before starting E10, confirm the final E09 revision's required CircleCI jobs, including immediate and on-fault locking, residency, child-local `RLIMIT_MEMLOCK` enforcement, unlock, and close cleanup in both native Linux 7.0 rootless jobs, plus merged coverage.
 
 ## Objective and scope
 
@@ -35,7 +35,7 @@ These scenarios set the scope; they do not require this module to implement an e
 
 | Items | Application or container outcome and home | Required verification route |
 | --- | --- | --- |
-| E08–E10 | Extend `mmap` for synchronized mapped indexes, locked buffers, residency, resizing, and advice. | Rootless mmap suite with bounded fault/limit children; filesystem fixtures where required. |
+| E10 | Extend `mmap` to resize mappings and apply further memory advice. | Rootless mmap suite with bounded fault children and filesystem fixtures where required. |
 | E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
 | E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
 | E14a | Add orphan adoption and reaping for worker trees and container init; proposed `process` home, retaining `pidfd` for identified targets. | Rootless bounded subreaper children plus PID-namespace init scenarios in the namespace lane. |
@@ -127,12 +127,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E09 — Add mapped-memory locking and residency inspection
-
-- **Implement:** Add region-scoped [mlock/mlock2/munlock](https://man7.org/linux/man-pages/man2/mlock.2.html) and [mincore](https://man7.org/linux/man-pages/man2/mincore.2.html) operations. Represent page residency as a snapshot with explicit page units; support on-fault locking only when actually available.
-- **Contracts:** Keep mapping lifetime, locked-page accounting, alignment, memory limits, and on-fault semantics distinct. Memory locking is not a complete secret-storage policy. Do not introduce process-wide `mlockall` effects through a region method.
-- **Evidence:** Use bounded regions and child-local memory limits to verify successful locking, unlock, residency shape, limits/errors, and close cleanup. Avoid global memory pressure, host swap changes, and assumptions that an unlocked page must immediately become nonresident.
 
 #### E10 — Add mapped-region resizing and further advice
 

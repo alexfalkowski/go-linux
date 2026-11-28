@@ -3,12 +3,14 @@
 package test
 
 import (
+	"fmt"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/alexfalkowski/go-linux/capability"
 	"github.com/alexfalkowski/go-linux/internal/testenv"
 	"github.com/alexfalkowski/go-linux/memfd"
 	"github.com/alexfalkowski/go-linux/mmap"
@@ -108,19 +110,90 @@ func RejectSynchronousMappingWriteback(t *testing.T, view []byte) {
 // a page boundary and remain mapped until cleanup unlocks it.
 func LockMappingPage(t *testing.T, view []byte) {
 	t.Helper()
-
-	var limit unix.Rlimit
-	require.NoError(t, unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit))
-	pageSize := os.Getpagesize()
-	if pageSize > 0 && limit.Cur < uint64(pageSize) {
-		options, err := testenv.FromEnvironment()
-		require.NoError(t, err)
-		require.False(t, options.Required(), "one locked page requires RLIMIT_MEMLOCK of at least %d bytes, got %d", pageSize, limit.Cur)
-		t.Skipf("one locked page requires RLIMIT_MEMLOCK of at least %d bytes, got %d", pageSize, limit.Cur)
-	}
+	RequireMemoryLock(t, os.Getpagesize())
 
 	require.NoError(t, unix.Mlock(view))
 	t.Cleanup(func() {
 		require.NoError(t, unix.Munlock(view))
 	})
+}
+
+// RequireMemoryLock checks the soft limit in bytes for a bounded lock fixture.
+func RequireMemoryLock(t *testing.T, size int) {
+	t.Helper()
+	if size < 0 {
+		require.FailNow(t, "memory lock fixture size must be nonnegative")
+		return
+	}
+
+	var limit unix.Rlimit
+	require.NoError(t, unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit))
+	if limit.Cur < uint64(size) {
+		skipMemoryLock(t, fmt.Sprintf("fixture requires RLIMIT_MEMLOCK of at least %d bytes, got %d", size, limit.Cur))
+	}
+}
+
+// MemoryLockLimitProcess lowers RLIMIT_MEMLOCK only in a bounded child. The
+// caller runs its limit assertions when this returns true in the child.
+func MemoryLockLimitProcess(t *testing.T, size int) bool {
+	t.Helper()
+	if size < 0 {
+		require.FailNow(t, "memory lock fixture size must be nonnegative")
+		return false
+	}
+
+	const marker = "memlock-limited"
+	if os.Args[len(os.Args)-1] == marker {
+		var limit unix.Rlimit
+		require.NoError(t, unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit))
+		require.NoError(t, unix.Setrlimit(unix.RLIMIT_MEMLOCK, &unix.Rlimit{Cur: uint64(size), Max: limit.Max}))
+		return true
+	}
+
+	RequireMemoryLock(t, size)
+	sets, err := capability.Current()
+	require.NoError(t, err)
+	if sets.Effective&capability.IPCLock != 0 {
+		skipMemoryLock(t, "effective CAP_IPC_LOCK can bypass RLIMIT_MEMLOCK")
+	}
+
+	ctx, command := Command(t, t.Name(), "-test.v", "--", marker)
+	output, err := command.CombinedOutput()
+	require.NoError(t, ctx.Err(), "memory lock scenario exceeded its time bound")
+	require.NoError(t, err, "isolated memory lock scenario: %s", output)
+	t.Log(string(output))
+	return false
+}
+
+// LockedMemory observes the process's kernel-accounted locked bytes.
+func LockedMemory(t *testing.T) int {
+	t.Helper()
+
+	status, err := os.ReadFile("/proc/self/status")
+	require.NoError(t, err)
+
+	for line := range strings.SplitSeq(string(status), "\n") {
+		value, found := strings.CutPrefix(line, "VmLck:")
+		if !found {
+			continue
+		}
+
+		fields := strings.Fields(value)
+		require.Len(t, fields, 2)
+		require.Equal(t, "kB", fields[1])
+		size, err := strconv.Atoi(fields[0])
+		require.NoError(t, err)
+		return size * 1024
+	}
+
+	require.FailNow(t, "procfs status did not report VmLck")
+	return 0
+}
+
+func skipMemoryLock(t *testing.T, reason string) {
+	t.Helper()
+	options, err := testenv.FromEnvironment()
+	require.NoError(t, err)
+	require.False(t, options.Required(), reason)
+	t.Skip(reason)
 }
