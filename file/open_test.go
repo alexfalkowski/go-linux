@@ -110,6 +110,49 @@ func TestOpenSelectsAppendOrTruncateWrites(t *testing.T) {
 	}
 }
 
+func TestOpenSelectsWriteSynchronization(t *testing.T) {
+	dir := test.OpenFile(t, t.TempDir())
+
+	for _, scenario := range []struct {
+		name  string
+		flags file.OpenFlags
+		want  int
+	}{
+		{name: "default"},
+		{name: "data integrity", flags: file.DataSync, want: test.DataSyncFlag},
+		{name: "file integrity", flags: file.Sync, want: test.SyncFlag},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			opened, err := file.Open(dir, scenario.name, file.OpenOptions{
+				Flags: file.WriteOnly | file.Create | scenario.flags,
+				Perm:  0o600,
+			})
+			require.NoError(t, err)
+			test.Cleanup(t, opened)
+
+			require.Equal(t, scenario.want, test.FileFlags(t, opened)&test.SyncFlag)
+		})
+	}
+}
+
+func TestOpenTemporaryFilePreservesKernelFlagErrors(t *testing.T) {
+	dir := test.OpenFile(t, t.TempDir())
+
+	for _, scenario := range []struct {
+		name  string
+		flags file.OpenFlags
+	}{
+		{name: "read only", flags: file.ReadOnly},
+		{name: "named creation", flags: file.WriteOnly | file.Create},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			opened, err := file.Open(dir, ".", file.OpenOptions{Flags: file.TempFile | scenario.flags, Perm: 0o600})
+			require.ErrorIs(t, err, test.ErrInvalidArgument)
+			require.Nil(t, opened)
+		})
+	}
+}
+
 func TestExclusiveCreationPreservesExistingFileAndAnchor(t *testing.T) {
 	dir := test.OpenFile(t, t.TempDir())
 	created, err := file.Open(dir, "data", file.OpenOptions{Flags: file.Create | file.Exclusive, Perm: 0o600})
@@ -301,6 +344,10 @@ func TestOpenRejectsInvalidOptionsBeforeAcquiringAResource(t *testing.T) {
 		{name: "path with write", options: file.OpenOptions{Flags: file.Path | file.WriteOnly}},
 		{name: "path with read write", options: file.OpenOptions{Flags: file.ReadWrite | file.Path}},
 		{name: "path with create", options: file.OpenOptions{Flags: file.Path | file.Create}},
+		{name: "path with temporary file", options: file.OpenOptions{Flags: file.Path | file.TempFile}},
+		{name: "directory with permissions", options: file.OpenOptions{Flags: file.Directory, Perm: 0o600}},
+		{name: "incomplete temporary flag", options: file.OpenOptions{Flags: file.TempFile &^ file.Directory}},
+		{name: "incomplete sync flag", options: file.OpenOptions{Flags: file.Sync &^ file.DataSync}},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			for _, anchor := range []*os.File{dir, closed} {

@@ -188,9 +188,11 @@ CircleCI also selects the ext4 write-zeroes test with `write-zeroes=true`. Use t
 make verify-mount-container image=alexfalkowski/go:5.27 arch=amd64 kernel=7.0 write-zeroes=true
 ```
 
-The launcher loads `scsi_debug` with one RAM-backed disk and enables WRITE SAME with unmap. It unloads the module when the container exits. The test finds the disk under the `scsi_debug` driver in sysfs and checks its queue's `write_zeroes_unmap_max_bytes` before formatting it with the image's `mkfs.ext4` in a private mount namespace. It verifies size and contents, partial-block boundaries, written extents and mapping reuse after overwrite, and an unwritten extent from ordinary zero-range. A selected test fails if the fixture cannot run. Plain `make verify-mount` selects the mount and XFS tests.
+The launcher loads `scsi_debug` with one RAM-backed disk and enables WRITE SAME with unmap. It unloads the module when the container exits. The test finds the disk under the `scsi_debug` driver in sysfs and checks its queue's `write_zeroes_unmap_max_bytes` before formatting it with the image's `mkfs.ext4` in a private mount namespace. It verifies size and contents, partial-block boundaries, written extents and mapping reuse after overwrite, and an unwritten extent from ordinary zero-range. A selected test fails if the fixture cannot run. Plain `make verify-mount` runs the suite with the ext4 write-zeroes case unselected.
 
 The mount lane also exercises `file.SyncFS` through regular file and directory handles on a disposable XFS image. Both calls must succeed and leave their handles usable. The fixture checks kernel execution and handle behavior. Crash recovery and persistence after power loss need separate evidence.
+
+The XFS fixture also checks aligned direct reads and writes, observes EINVAL for misaligned write addresses, lengths, and offsets, and verifies both whiteout rename modes by observing the original inode at the destination and a 0:0 character-device inode at the source. The rootless file suite exercises publishing an unnamed inode and observes the requested synchronous status flags.
 
 ## Fanotify verification
 

@@ -1,6 +1,6 @@
 # file
 
-`github.com/alexfalkowski/go-linux/file` adds Linux path-resolution, metadata, rename, allocation, access advice, synchronization, and whole-file locking controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. The module supports Linux 7.0+ and the Go floor in `go.mod`. Filesystem support and security policy can vary by operation.
+`github.com/alexfalkowski/go-linux/file` adds Linux open, metadata, linking and rename, allocation, access advice, synchronization, and locking controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. The module supports Linux 7.0+ and the Go floor in `go.mod`. Filesystem support and security policy can vary by operation.
 
 ## Good for
 
@@ -30,9 +30,21 @@ The result is an ordinary owned `*os.File`, ready for standard I/O or compositio
 
 `OpenOptions{}` opens read-only with ordinary Linux resolution. Zero does not confine the lookup. `Beneath` rejects absolute names and escapes above the anchor; `InRoot` instead interprets absolute names, absolute symlinks, and parent traversal relative to that anchor for the duration of the lookup. They cannot be combined. `NoSymlinks` rejects traversal through any symlink, while the `NoFollow` open flag affects only the last component. `NoMagicLinks` excludes procfs-style magic-link traversal; request it explicitly with `Beneath` or `InRoot` if required. `NoXDev` rejects mount-point crossings, including bind mounts. `Cached` returns EAGAIN when lookup needs uncached work. No restriction is removed on retry, and the package performs no automatic retry.
 
-`Flags` accepts ReadOnly, WriteOnly, ReadWrite, Append, Create, Exclusive, Truncate, Directory, NoFollow, and Path. `Create` uses `Perm` in Go `os.FileMode` representation, including Go's setuid, setgid, and sticky constants; umask and filesystem policy still apply. `Perm` must be zero otherwise. All descriptors are atomically close-on-exec. A `Path` handle permits metadata and directory anchoring without data I/O. Combine `Path|NoFollow` to open a final symlink itself, including under `NoSymlinks` or `NoMagicLinks`.
+`Create` and `TempFile` use `Perm` in Go `os.FileMode` representation, including Go's setuid, setgid, and sticky constants. Umask and filesystem policy still apply. Set `Perm` to zero for other opens. All descriptors are atomically close-on-exec. A `Path` handle permits metadata and directory anchoring. Combine `Path|NoFollow` to open a final symlink itself, including under `NoSymlinks` or `NoMagicLinks`.
 
 Names pass to Linux unchanged. Trailing slashes, empty names, symlink expansion, and `..` keep kernel semantics. A live nonnil anchor is required even when an absolute path would ignore it. Blocking opens of special files can occupy an OS thread; closing the anchor does not cancel the call. The returned `os.File` retains standard I/O behavior, including that regular files do not support deadlines and a blocking special-file handle may lack runtime polling.
+
+## Unnamed temporary files
+
+Stage a manifest or backup in its destination filesystem before exposing a name. Open a writable unnamed file with `file.Open(dir, ".", file.OpenOptions{Flags: file.TempFile | file.WriteOnly, Perm: 0o600, Resolve: file.Beneath})`. For `TempFile`, the path names the directory in which to allocate the inode. Use either `WriteOnly` or `ReadWrite` and supply the intended permissions.
+
+Write through the returned file, then call `file.Link(draft, dir, "manifest")` to create the destination entry for that inode. The link fails with EEXIST if the name already exists. The destination uses ordinary path resolution on the same mount as the source. Linux checks the open-time credentials of the source or `CAP_DAC_READ_SEARCH`, along with destination permissions and hard-link policy. A linked entry survives closing the file. Closing the last reference to an unpublished inode discards it; add `Exclusive` to create a scratch file that cannot be published. If crash durability matters, synchronize the file and the containing directory at the appropriate steps. [Executable publication example](../file/example_test.go) · [Linux 7.0 link implementation](https://github.com/torvalds/linux/blob/v7.0/fs/namei.c)
+
+## Direct and synchronous I/O
+
+Add `Direct` to request `O_DIRECT` for a storage file. Query the open file with `Stat` and allocate buffers using the reported address, offset, and segment-length alignments. Check the read-specific alignment when Linux supplies one. Ordinary Go byte slices provide no filesystem-specific alignment guarantee. A misaligned operation can fail with EINVAL or use buffered I/O, depending on the filesystem and kernel. Coordinate access if the same file also has buffered I/O or mappings. [Linux open documentation](https://man7.org/linux/man-pages/man2/open.2.html)
+
+Add `DataSync` for a journal whose writes must synchronize data and the metadata needed to retrieve it. Add `Sync` when writes must also synchronize other associated file metadata. These flags apply to each write. Use `File.Sync` or `Fdatasync` for an explicit flush and synchronize the containing directory separately when its entry needs to persist. [Executable journal example](../file/example_test.go)
 
 ## Extended metadata
 
@@ -54,7 +66,9 @@ Use keyed `file.Metadata` literals in tests or adapters. Positional literals wri
 
 ## Rename modes
 
-`Rename(oldDir, oldName, newDir, newName, mode)` supports `Replace` (zero), `NoReplace`, and `Exchange`. `NoReplace` fails with EEXIST for an existing destination, including a dangling symlink. `Exchange` requires both entries and atomically swaps them, even when their types differ. Final symlinks are moved themselves. Modes cannot be combined. Whiteout creation is outside this initial scope.
+`Rename(oldDir, oldName, newDir, newName, mode)` accepts one named mode. `Replace` is the zero value. `NoReplace` fails with EEXIST for an existing destination, including a dangling symlink. `Exchange` requires both entries and atomically swaps them, even when their types differ. Final symlinks are moved themselves.
+
+When managing an overlay's writable layer, use `Whiteout` to move an entry and create a whiteout at its original name in the same operation. If both names already refer to the same inode, `Whiteout` succeeds as a no-op. Use `WhiteoutNoReplace` to protect an existing destination. An EEXIST conflict leaves both names intact. On a backing filesystem such as XFS, the whiteout is a character-device inode with device number 0:0. The modes require backing filesystem support and are subject to Linux's permissions and security policy for whiteout creation. [Linux 7.0 rename implementation](https://github.com/torvalds/linux/blob/v7.0/fs/namei.c) · [XFS whiteout implementation](https://github.com/torvalds/linux/blob/v7.0/fs/xfs/xfs_inode.c)
 
 Each name is relative to its matching borrowed directory, or absolute with that anchor ignored. Both anchors must remain live for admission to the operation. Rename has ordinary Linux path resolution and does not confine untrusted names. The library does not emulate modes with existence checks or multiple renames. Filesystem support failures and cross-mount errors retain errno. Entry replacement/exchange is atomic, but later lookups are separate operations; success does not promise crash durability or synchronize storage.
 
@@ -135,16 +149,16 @@ Choose `file.OFDLocks` when workers need separate open file descriptions. Each s
 
 ## Coverage boundary
 
-The [Linux 7.0 UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/linux) includes more than these operations. `Open` accepts only the flags listed above; `O_TMPFILE`, `O_DIRECT`, `O_SYNC`, and `O_DSYNC` are not exposed. There is no operation to publish an unnamed temporary inode. Ordinary creation, I/O, logical resizing, and `File.Sync` remain standard Go operations.
+Ordinary creation, I/O, logical resizing, and `File.Sync` use standard Go operations. The supported opening flags are declared in [OpenFlags](../file/open.go).
 
 The allocation API accepts the modes in the table. `sync_file_range` is outside the current surface. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
 
-Statx accepts the named field masks above, including individual basic bits. Whiteout rename is absent. Reflink creation, extent inspection, and device control are outside this surface. [Linux 7.0 statx definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h)
+Statx accepts the named field masks above, including individual basic bits. Reflink creation, extent inspection, and device control are outside this surface. [Linux 7.0 statx definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h)
 
 ## Ownership, errors, and verification
 
 Every input is borrowed for one call and stays caller-owned on success and failure. Descriptor references are pinned internally against concurrent Close; operations either use the original open description or fail with `os.ErrClosed`. File status flags and offsets are preserved. Separate calls are safe concurrently, while logical sequences require caller coordination. No context or syscall-deadline API is promised.
 
-Invalid supported-surface options match `os.ErrInvalid` before file access. Nil files match `os.ErrInvalid`, and closed files match `os.ErrClosed`. Kernel failures such as EEXIST, ELOOP, EXDEV, EAGAIN, EACCES, and ENOTDIR retain identity through `errors.Is`. Operations use `*os.PathError` for context, with the exception of Rename, which uses `*os.LinkError` with both names. A failed Open returns nil with nothing for the caller to clean up.
+Options rejected by Go validation match `os.ErrInvalid` before file access. Nil files match `os.ErrInvalid`, and closed files match `os.ErrClosed`. Kernel failures such as EEXIST, ELOOP, EXDEV, EAGAIN, EACCES, and ENOTDIR retain identity through `errors.Is`. `Link` and `Rename` use `*os.LinkError` to report the source and destination when available. Other operations use `*os.PathError`. A failed `Open` returns nil with nothing for the caller to clean up.
 
 Run `package=file make specs` for the real-kernel race/coverage suite. The [verification guide](verification.md#file-verification) describes temporary filesystem prerequisites and the isolated metadata scenario. The [design note](agents/accepted-design/file.md) explains API tradeoffs.

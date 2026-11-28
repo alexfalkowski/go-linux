@@ -3,11 +3,12 @@
 // Package file provides bounded Linux file extensions while reusing os.File
 // for ownership and ordinary I/O. Prefer os and os.Root for ordinary operations.
 //
-// Open exposes openat2 resolution restrictions. Stat and StatAt query statx
-// validity masks, birth time, attributes, mount and subvolume identity,
-// direct-I/O alignment, and atomic-write limits. Rename exposes
-// renameat2 replacement and exchange modes. Fallocate reserves storage and
-// changes file ranges. Fadvise and Readahead guide kernel caching. Fdatasync
+// Open exposes openat2 resolution restrictions and unnamed temporary, direct-I/O,
+// and synchronous opening. Link publishes an unnamed temporary file.
+// Stat and StatAt query statx validity masks, birth time, attributes, mount and
+// subvolume identity, direct-I/O alignment, and atomic-write limits. Rename
+// exposes renameat2 replacement, exchange, and whiteout modes. Fallocate reserves
+// storage and changes file ranges. Fadvise and Readahead guide kernel caching. Fdatasync
 // synchronizes file data, SyncFS synchronizes the containing filesystem, and
 // Flock applies whole-file advisory locks. SetRecordLock, WaitRecordLock, and
 // QueryRecordLock operate on POSIX or open-file-description byte-range locks.
@@ -21,7 +22,7 @@
 // Errors preserve errno identity through os.PathError or os.LinkError.
 //
 // Only Open enforces resolution restrictions, and only for that lookup.
-// StatAt and Rename use ordinary Linux path resolution and do not confine
+// StatAt, Link, and Rename use ordinary Linux path resolution and do not confine
 // paths beneath their directory arguments. An open file does not freeze its
 // contents, metadata, or directory entries.
 package file
