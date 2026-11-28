@@ -217,6 +217,41 @@ func ExampleFlock() {
 	// second record
 }
 
+func ExampleSetRecordLock() {
+	store, err := os.CreateTemp("", "record-store-*")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(store.Name())
+	defer store.Close()
+	if _, err := store.WriteString("one\ntwo\n"); err != nil {
+		panic(err)
+	}
+
+	// Each worker opens the store independently and locks the record it updates.
+	lock := file.RecordLock{Type: file.LockWrite, Range: file.LockRange{Start: 4, Length: 4}}
+	if err := file.SetRecordLock(store, file.OFDLocks, lock); err != nil {
+		panic(err)
+	}
+	if _, err := store.WriteAt([]byte("new\n"), lock.Range.Start); err != nil {
+		panic(err)
+	}
+	lock.Type = file.LockRelease
+	if err := file.SetRecordLock(store, file.OFDLocks, lock); err != nil {
+		panic(err)
+	}
+
+	contents, err := os.ReadFile(store.Name())
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(contents))
+
+	// Output:
+	// one
+	// new
+}
+
 func ExampleFallocate_unshareRange() {
 	segment, err := os.CreateTemp("", "working-copy-*.db")
 	if err != nil {

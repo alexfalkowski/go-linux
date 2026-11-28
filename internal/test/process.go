@@ -115,6 +115,15 @@ func CaptureCommand(t *testing.T, command *exec.Cmd) *os.File {
 	return reader
 }
 
+// ChildMarker reads one byte from a child handshake. Use a bounded reader.
+func ChildMarker(t *testing.T, reader io.Reader) byte {
+	t.Helper()
+	var marker [1]byte
+	_, err := io.ReadFull(reader, marker[:])
+	require.NoError(t, err, "read child handshake")
+	return marker[0]
+}
+
 // Child starts the current binary's TestProcessChild fixture. It announces
 // readiness, then exits with the byte written to the returned input pipe.
 // Cleanup always kills, reaps, and releases the standard-library process owner.

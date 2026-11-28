@@ -26,6 +26,8 @@ Data synchronization and filesystem-wide synchronization have separate entry poi
 
 Whole-file locks borrow the caller's file for a single `flock` request through the maintained x/sys binding. Keeping a private duplicate would extend the open file description's lifetime and could keep a lock alive after the caller closes their file. Forwarding conversion as one request preserves the kernel's contention and failure behavior. Blocking acquisition uses the kernel's wait semantics. [Linux 7.0 locking implementation](https://github.com/torvalds/linux/blob/v7.0/fs/locks.c)
 
+Record locks use the maintained `FcntlFlock` binding with an explicit ownership choice on every operation. Borrowing the original descriptor preserves both the POSIX rule for closing any descriptor on the inode and the OFD rule for closing the last reference. Resolving signed ranges in the kernel avoids a separate seek or size lookup that would race with another operation. Querying and acquisition stay separate because a conflict observation cannot reserve the range. [Linux 7.0 locking implementation](https://github.com/torvalds/linux/blob/v7.0/fs/locks.c)
+
 ## Keep metadata validity separate from values
 
 Metadata retains Linux's returned field mask and attribute-support mask. An unsupported field cannot be inferred from a zero value, and a single query is not an atomic snapshot. Unsigned Linux sizes and identifiers retain their ranges, while mode bits and valid timestamps convert to Go representations. Unknown output bits survive inspection; unknown input bits are rejected rather than silently ignored.

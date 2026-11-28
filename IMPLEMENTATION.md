@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E05 — Add POSIX and open-file-description record locks**.
+Next: **E06 — Complete extended file metadata**.
 
-Resume note: E04 passed the required rootless file suite directly on ext4 and in the pinned-profile container on native amd64 Linux 7.3. Confirm the final E04 revision's required CircleCI jobs, including successful `Flock` scenarios on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E05.
+Resume note: E05 passed the required rootless file suite directly on ext4 and in the pinned-profile container on native amd64 Linux 7.3. Confirm the final E05 revision's required CircleCI jobs, including successful POSIX and OFD record-lock scenarios on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E06.
 
 ## Objective and scope
 
@@ -35,7 +35,7 @@ These scenarios set the scope; they do not require this module to implement an e
 
 | Items | Application or container outcome and home | Required verification route |
 | --- | --- | --- |
-| E05–E07 | Extend `file` for byte-range locking, metadata, and temporary/direct-I/O files. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
+| E06–E07 | Extend `file` for metadata and temporary/direct-I/O files. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
 | E08–E10 | Extend `mmap` for synchronized mapped indexes, locked buffers, residency, resizing, and advice. | Rootless mmap suite with bounded fault/limit children; filesystem fixtures where required. |
 | E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
 | E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
@@ -128,12 +128,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E05 — Add POSIX and open-file-description record locks
-
-- **Implement:** Add typed byte-range query/acquire/release operations for both traditional and [OFD fcntl locks](https://man7.org/linux/man-pages/man2/fcntl_locking.2.html). Keep the two ownership models explicit rather than selecting one silently.
-- **Contracts:** Preserve range origins, zero/negative-length meanings where supported, lock-owner reporting, contention/deadlock errno, interruption, and the traditional process-lock effect of closing another handle to the inode. A generic Go mutex interface must not hide these differences.
-- **Evidence:** Compare independent processes and independent open descriptions for overlapping/nonoverlapping ranges, queries, contention, release, and close effects. Bound blocking/deadlock scenarios in children and prove that failed acquisition leaves the caller's file usable.
 
 #### E06 — Complete extended file metadata
 
