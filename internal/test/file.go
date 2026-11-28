@@ -15,6 +15,9 @@ import (
 // ReservedAllocationMode is the reserved fallocate(2) codepoint.
 const ReservedAllocationMode = unix.FALLOC_FL_NO_HIDE_STALE
 
+// ExtendedStatxMask requests all statx direct-I/O, subvolume, and atomic-write fields.
+const ExtendedStatxMask = unix.STATX_DIOALIGN | unix.STATX_DIO_READ_ALIGN | unix.STATX_SUBVOL | unix.STATX_WRITE_ATOMIC
+
 // ShmemFile creates an ordinary writable memfd for testing shmem behavior.
 func ShmemFile(t *testing.T) *os.File {
 	t.Helper()

@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E06 — Complete extended file metadata**.
+Next: **E07 — Extend Linux-specific open and rename controls**.
 
-Resume note: E05 passed the required rootless file suite directly on ext4 and in the pinned-profile container on native amd64 Linux 7.3. Confirm the final E05 revision's required CircleCI jobs, including successful POSIX and OFD record-lock scenarios on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E06.
+Resume note: E06 passed the required rootless file suite on native amd64 Linux 7.3 and the required mount suite in an emulated amd64 Linux 7.0 guest. Confirm the final E06 revision's required CircleCI jobs, including rootless metadata, positive XFS and Btrfs metadata on native Linux 7.0 amd64 and arm64, and merged coverage, before starting E07.
 
 ## Objective and scope
 
@@ -35,7 +35,7 @@ These scenarios set the scope; they do not require this module to implement an e
 
 | Items | Application or container outcome and home | Required verification route |
 | --- | --- | --- |
-| E06–E07 | Extend `file` for metadata and temporary/direct-I/O files. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
+| E07 | Extend `file` for temporary/direct-I/O files and rename whiteouts. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
 | E08–E10 | Extend `mmap` for synchronized mapped indexes, locked buffers, residency, resizing, and advice. | Rootless mmap suite with bounded fault/limit children; filesystem fixtures where required. |
 | E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
 | E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
@@ -128,12 +128,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E06 — Complete extended file metadata
-
-- **Implement:** Extend `file.Metadata` and its masks with remaining baseline [statx](https://man7.org/linux/man-pages/man2/statx.2.html) fields: direct-I/O memory/offset/read alignment, subvolume identity, atomic-write minimum/maximum/optimized-maximum units and segment limits, and the named atomic-write attribute. Check the versioned structure and pinned `x/sys` binding before choosing representation. Observing limits does not itself add atomic data-write operations.
-- **Contracts:** Preserve validity masks independently of zero values, Linux integer widths, units, and unknown output bits. Do not reinterpret unavailable fields as supported zero limits or silently change existing mask/default behavior.
-- **Evidence:** Extend focused native comparisons and public metadata scenarios. Supply suitable filesystem fixtures for positive fields where possible; distinguish a supported query returning an unavailable field from a positive observation of that field's semantics.
 
 #### E07 — Extend Linux-specific open and rename controls
 

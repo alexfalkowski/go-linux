@@ -17,7 +17,7 @@ mount_image=$1
 mount_arch=$2
 
 if [[ $(docker info --format '{{json .SecurityOptions}}') == *'name=rootless'* ]]; then
-  printf 'XFS loop mounting requires a rootful Docker daemon with initial-user-namespace CAP_SYS_ADMIN\n' >&2
+  printf 'Filesystem loop mounting requires a rootful Docker daemon with initial-user-namespace CAP_SYS_ADMIN\n' >&2
   exit 2
 fi
 

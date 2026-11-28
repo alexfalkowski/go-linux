@@ -79,7 +79,7 @@ verify-cgroup-container: export image := $(value image)
 verify-cgroup-container:
 	@bash scripts/cgroup "$$image" "$$GO_LINUX_TEST_ARCH"
 
-# Record prerequisites and run required isolated mount and XFS reflink tests.
+# Record prerequisites and run required isolated mount and filesystem tests.
 verify-mount:
 	@bash -eo pipefail -c '$(MAKE) test-environment profile=namespaces required=true | tee test/reports/environment.json'
 	@$(MAKE) specs package=mount profile=namespaces required=true

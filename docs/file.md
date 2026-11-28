@@ -42,7 +42,15 @@ Names pass to Linux unchanged. Trailing slashes, empty names, symlink expansion,
 
 `MaskMountID` requests the reusable ID used in procfs mountinfo; `MaskUniqueMountID` requests the system-lifetime nonreused identity. They share `Metadata.MountID`, and the returned mask identifies the kind. Linux prefers the unique kind if both are requested. `AttributesMask` separately identifies the meaningful bits of `Attributes`: an unset unsupported bit does not establish a false attribute. Unknown output mask and attribute bits are preserved. BlockSize and the containing DeviceMajor/DeviceMinor are always supplied; RdevMajor/RdevMinor apply to device inodes.
 
+For direct I/O, request `MaskDirectIOAlignment|MaskDirectIOReadAlignment`. The first bit validates `DirectIOMemoryAlignment` for buffer addresses and `DirectIOOffsetAlignment` for file offsets and I/O segment lengths, both in bytes. Valid zero values indicate that direct I/O is unsupported for the file. A valid, nonzero `DirectIOReadOffsetAlignment` supplies a separate offset and segment-length alignment for reads. Otherwise, use the general offset alignment for reads when available. The memory alignment applies to both reads and writes.
+
+For backup traversal, request `MaskSubvolumeID` and use `SubvolumeID` to identify the containing subvolume on that filesystem. Filesystems without subvolume metadata omit the bit.
+
+For protected direct writes, request `MaskAtomicWrite`. A returned bit validates the minimum and maximum write sizes in bytes, the optimized maximum size, and the maximum number of I/O vectors for one write. A valid zero minimum means the file does not support atomic writes. When atomic writes are supported, a zero optimized maximum means the ordinary maximum is the optimized limit. Check `AttributesMask&file.AtomicWrite` before interpreting the separate `Attributes&file.AtomicWrite` capability bit. These fields report kernel limits. Issuing protected writes is outside the `file` API.
+
 `StatAt` uses ordinary Linux resolution and permits escapes, intermediate symlinks, and mount crossings. For a constrained lookup, call `Open` with the required restrictions and then `Stat` on its result. Metadata fields can reflect different instants during concurrent mutation; neither one query nor multiple queries promise an atomic snapshot.
+
+Use keyed `file.Metadata` literals in tests or adapters. Positional literals written before the extended fields were added require conversion to keyed literals.
 
 ## Rename modes
 
@@ -131,7 +139,7 @@ The [Linux 7.0 UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/li
 
 The allocation API accepts the modes in the table. `sync_file_range` is outside the current surface. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
 
-The accepted statx request mask is exactly `MaskBasic|MaskBirthTime|MaskMountID|MaskUniqueMountID`, including individual basic bits. Direct-I/O memory/offset/read alignment, subvolume identity, and atomic-write unit/segment limits from [stat.h](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h) have no fields or request constants here. Returned unknown mask/attribute bits survive, including an atomic-write attribute bit without a named constant; that does not expose the omitted fields or implement atomic data writes. Whiteout rename is absent. Reflink creation, extent inspection, and device control are outside this surface.
+Statx accepts the named field masks above, including individual basic bits. Whiteout rename is absent. Reflink creation, extent inspection, and device control are outside this surface. [Linux 7.0 statx definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h)
 
 ## Ownership, errors, and verification
 
