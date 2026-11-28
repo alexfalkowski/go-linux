@@ -8,7 +8,8 @@
 // renameat2 replacement and exchange modes. Fallocate reserves storage and
 // changes file ranges. Fadvise and Readahead guide kernel caching. Fdatasync
 // synchronizes file data, SyncFS synchronizes the containing filesystem, and
-// Flock applies whole-file advisory locks.
+// Flock applies whole-file advisory locks. SetRecordLock, WaitRecordLock, and
+// QueryRecordLock operate on POSIX or open-file-description byte-range locks.
 // The module supports Linux 7.0 or later. Filesystem and security policy can
 // still reject individual operations.
 //

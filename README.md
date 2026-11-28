@@ -68,7 +68,7 @@ Choose a package by what you want to build. The tool links illustrate practical 
 | [pidfd](docs/pidfd.md) | Observing and signaling a stable process identity | [systemd child monitoring](https://www.freedesktop.org/software/systemd/man/latest/sd_event_add_child.html) |
 | [mount](docs/mount.md) | Preparing and attaching filesystems inside an isolated namespace | [runc filesystem setup](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md) |
 | [epoll](docs/epoll.md) | Waiting for multiple kernel I/O sources in an explicit event loop | [Redis readiness backend](https://github.com/redis/redis/blob/unstable/src/ae_epoll.c) |
-| [file](docs/file.md) | Restricting path lookup, querying metadata, renaming atomically, allocating file ranges, setting access advice, synchronizing storage, and locking whole files | [GNU mv atomic exchanges](https://www.gnu.org/software/coreutils/manual/coreutils.html#mv-invocation) |
+| [file](docs/file.md) | Restricting path lookup, querying metadata, renaming atomically, allocating file ranges, setting access advice, synchronizing storage, and locking files or byte ranges | [GNU mv atomic exchanges](https://www.gnu.org/software/coreutils/manual/coreutils.html#mv-invocation) |
 | [xattr](docs/xattr.md) | Preserving file metadata in backups and restores | [GNU tar extended attributes](https://www.gnu.org/software/tar/manual/html_node/Extended-File-Attributes.html) |
 | [inotify](docs/inotify.md) | Watching directories for rebuilds, indexing, or cache invalidation | [Watchman file watching](https://meta.github.io/watchman/docs/install) |
 | [fanotify](docs/fanotify.md) | Inspecting accessed files and answering permission requests | [ClamAV on-access scanning](https://docs.clamav.net/manual/OnAccess.html) |

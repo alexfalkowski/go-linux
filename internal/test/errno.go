@@ -37,6 +37,9 @@ const ErrNoChild = syscall.ECHILD
 // ErrConnectionRefused preserves Linux ECONNREFUSED for exact error assertions.
 const ErrConnectionRefused = syscall.ECONNREFUSED
 
+// ErrDeadlock preserves Linux EDEADLK for record-lock wait assertions.
+const ErrDeadlock = syscall.EDEADLK
+
 // ErrExists preserves Linux EEXIST for exact error assertions.
 const ErrExists = syscall.EEXIST
 

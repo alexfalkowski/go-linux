@@ -130,3 +130,13 @@ func OpenFile(t *testing.T, path string) *os.File {
 	Cleanup(t, file)
 	return file
 }
+
+// OpenWritableFile opens an existing file for reading and writing and
+// registers cleanup.
+func OpenWritableFile(t *testing.T, path string) *os.File {
+	t.Helper()
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	require.NoError(t, err)
+	Cleanup(t, file)
+	return file
+}
