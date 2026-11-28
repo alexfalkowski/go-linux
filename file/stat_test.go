@@ -246,6 +246,38 @@ func TestStatMatchesIndependentKernelMetadata(t *testing.T) {
 	}
 }
 
+func TestStatMatchesIndependentExtendedMetadata(t *testing.T) {
+	source := test.TempFile(t, 4096)
+	want := test.FileStatx(t, source, test.ExtendedStatxMask)
+	mask := file.MaskDirectIOAlignment | file.MaskDirectIOReadAlignment | file.MaskSubvolumeID | file.MaskAtomicWrite
+
+	got, err := file.Stat(source, mask)
+	require.NoError(t, err)
+
+	require.Equal(t, file.StatMask(want.Mask), got.Mask, "returned field validity")
+	require.Equal(t, file.Attributes(want.Attributes_mask), got.AttributesMask, "attribute support")
+	require.Equal(t, file.Attributes(want.Attributes), got.Attributes, "attribute values")
+	require.Equal(t, want.Subvol, got.SubvolumeID, "subvolume ID")
+	require.Equal(t, want.Dio_mem_align, got.DirectIOMemoryAlignment, "buffer alignment")
+	require.Equal(t, want.Dio_offset_align, got.DirectIOOffsetAlignment, "direct-I/O offset alignment")
+	require.Equal(t, want.Dio_read_offset_align, got.DirectIOReadOffsetAlignment, "direct-read offset alignment")
+	require.Equal(t, want.Atomic_write_unit_min, got.AtomicWriteUnitMin, "minimum atomic-write unit")
+	require.Equal(t, want.Atomic_write_unit_max, got.AtomicWriteUnitMax, "maximum atomic-write unit")
+	require.Equal(t, want.Atomic_write_unit_max_opt, got.AtomicWriteUnitMaxOptimized, "optimized maximum atomic-write unit")
+	require.Equal(t, want.Atomic_write_segments_max, got.AtomicWriteSegmentsMax, "atomic-write vector limit")
+}
+
+func TestStatAtReportsUnavailableExtendedFields(t *testing.T) {
+	proc := test.OpenFile(t, "/proc/self")
+	mask := file.MaskDirectIOAlignment | file.MaskDirectIOReadAlignment | file.MaskSubvolumeID | file.MaskAtomicWrite
+
+	metadata, err := file.StatAt(proc, "status", file.StatOptions{Mask: mask})
+	require.NoError(t, err)
+
+	require.Zero(t, metadata.Mask&mask, "procfs does not report any of the requested fields")
+	require.Zero(t, metadata.AttributesMask&file.AtomicWrite, "procfs does not report atomic-write attribute support")
+}
+
 func TestStatReportsMountRootAndUnavailableBirthTime(t *testing.T) {
 	proc := test.OpenFile(t, "/proc")
 	metadata, err := file.Stat(proc, file.MaskBirthTime|file.MaskMountID)

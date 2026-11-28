@@ -62,6 +62,22 @@ const MaskMountID StatMask = unix.STATX_MNT_ID
 // kind; the returned mask identifies which kind Metadata.MountID contains.
 const MaskUniqueMountID StatMask = unix.STATX_MNT_ID_UNIQUE
 
+// MaskDirectIOAlignment identifies direct-I/O memory and offset alignment
+// (STATX_DIOALIGN).
+const MaskDirectIOAlignment StatMask = unix.STATX_DIOALIGN
+
+// MaskDirectIOReadAlignment identifies separate direct-I/O read offset
+// alignment (STATX_DIO_READ_ALIGN). Request MaskDirectIOAlignment as well
+// for the memory requirement and the general offset alignment.
+const MaskDirectIOReadAlignment StatMask = unix.STATX_DIO_READ_ALIGN
+
+// MaskSubvolumeID identifies the filesystem-local subvolume ID (STATX_SUBVOL).
+const MaskSubvolumeID StatMask = unix.STATX_SUBVOL
+
+// MaskAtomicWrite identifies the atomic-write unit and segment limits
+// (STATX_WRITE_ATOMIC).
+const MaskAtomicWrite StatMask = unix.STATX_WRITE_ATOMIC
+
 // Attributes is the statx file-attribute bitmask. Unknown output bits are
 // preserved. An unset bit means false only when set in AttributesMask.
 type Attributes uint64
@@ -92,6 +108,11 @@ const Verity Attributes = unix.STATX_ATTR_VERITY
 
 // DAX indicates direct-access file semantics (STATX_ATTR_DAX).
 const DAX Attributes = unix.STATX_ATTR_DAX
+
+// AtomicWrite indicates support for direct I/O with torn-write protection
+// (STATX_ATTR_WRITE_ATOMIC). AttributesMask indicates whether the attribute
+// was reported, and MaskAtomicWrite identifies whether the limits are valid.
+const AtomicWrite Attributes = unix.STATX_ATTR_WRITE_ATOMIC
 
 // SyncMode selects statx metadata synchronization, not a bitmask.
 type SyncMode uint32
@@ -188,6 +209,41 @@ type Metadata struct {
 
 	// RdevMinor is the represented device's minor number for a device inode.
 	RdevMinor uint32
+
+	// SubvolumeID is the filesystem-local subvolume ID, valid with MaskSubvolumeID.
+	SubvolumeID uint64
+
+	// DirectIOMemoryAlignment is the buffer-address alignment in bytes for
+	// direct I/O, valid with MaskDirectIOAlignment. Zero means direct I/O is
+	// unsupported for this file.
+	DirectIOMemoryAlignment uint32
+
+	// DirectIOOffsetAlignment is the file-offset and segment-length alignment
+	// in bytes for direct I/O, valid with MaskDirectIOAlignment. Zero means
+	// direct I/O is unsupported for this file.
+	DirectIOOffsetAlignment uint32
+
+	// DirectIOReadOffsetAlignment is the file-offset and segment-length
+	// alignment in bytes for direct reads, valid with MaskDirectIOReadAlignment.
+	// A reported zero leaves DirectIOOffsetAlignment applicable to reads.
+	DirectIOReadOffsetAlignment uint32
+
+	// AtomicWriteUnitMin is the minimum protected direct-write size in bytes,
+	// valid with MaskAtomicWrite. Zero means atomic writes are unsupported.
+	AtomicWriteUnitMin uint32
+
+	// AtomicWriteUnitMax is the maximum protected direct-write size in bytes,
+	// valid with MaskAtomicWrite. Zero means atomic writes are unsupported.
+	AtomicWriteUnitMax uint32
+
+	// AtomicWriteUnitMaxOptimized is the optimized maximum protected
+	// direct-write size in bytes, valid with MaskAtomicWrite. When atomic
+	// writes are supported and this is zero, AtomicWriteUnitMax applies.
+	AtomicWriteUnitMaxOptimized uint32
+
+	// AtomicWriteSegmentsMax is the maximum number of I/O vectors for one
+	// protected direct write, valid with MaskAtomicWrite.
+	AtomicWriteSegmentsMax uint32
 }
 
 // Stat queries an open file itself using [statx(2)], including an unlinked file
@@ -232,7 +288,8 @@ func StatAt(dir *os.File, name string, options StatOptions) (Metadata, error) {
 }
 
 func statFlags(options StatOptions) (int, error) {
-	const masks = MaskBasic | MaskBirthTime | MaskMountID | MaskUniqueMountID
+	const masks = MaskBasic | MaskBirthTime | MaskMountID | MaskUniqueMountID |
+		MaskDirectIOAlignment | MaskDirectIOReadAlignment | MaskSubvolumeID | MaskAtomicWrite
 	if options.Mask & ^masks != 0 {
 		return 0, os.ErrInvalid
 	}
@@ -263,6 +320,14 @@ func metadata(stat unix.Statx_t) Metadata {
 		UID: stat.Uid, GID: stat.Gid, Mode: fileMode(stat.Mode),
 		DeviceMajor: stat.Dev_major, DeviceMinor: stat.Dev_minor,
 		RdevMajor: stat.Rdev_major, RdevMinor: stat.Rdev_minor,
+		SubvolumeID:                 stat.Subvol,
+		DirectIOMemoryAlignment:     stat.Dio_mem_align,
+		DirectIOOffsetAlignment:     stat.Dio_offset_align,
+		DirectIOReadOffsetAlignment: stat.Dio_read_offset_align,
+		AtomicWriteUnitMin:          stat.Atomic_write_unit_min,
+		AtomicWriteUnitMax:          stat.Atomic_write_unit_max,
+		AtomicWriteUnitMaxOptimized: stat.Atomic_write_unit_max_opt,
+		AtomicWriteSegmentsMax:      stat.Atomic_write_segments_max,
 	}
 }
 

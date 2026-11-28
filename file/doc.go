@@ -4,7 +4,8 @@
 // for ownership and ordinary I/O. Prefer os and os.Root for ordinary operations.
 //
 // Open exposes openat2 resolution restrictions. Stat and StatAt query statx
-// validity masks, birth time, attributes, and mount identity. Rename exposes
+// validity masks, birth time, attributes, mount and subvolume identity,
+// direct-I/O alignment, and atomic-write limits. Rename exposes
 // renameat2 replacement and exchange modes. Fallocate reserves storage and
 // changes file ranges. Fadvise and Readahead guide kernel caching. Fdatasync
 // synchronizes file data, SyncFS synchronizes the containing filesystem, and

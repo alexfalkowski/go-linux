@@ -13,6 +13,10 @@ run_privileged_container() {
     --workdir /home/circleci/go-linux \
     -- "$image" \
     bash -eo pipefail -c '
+      if [[ $0 == mount ]] && ! command -v btrfs >/dev/null; then
+        apt-get -qq update
+        DEBIAN_FRONTEND=noninteractive apt-get -qq install -y --no-install-recommends btrfs-progs
+      fi
       git config --global --add safe.directory /home/circleci/go-linux
       make dep
       make "verify-$0" arch="$1" "${@:2}"

@@ -14,7 +14,7 @@ import (
 )
 
 func TestFallocateUnsharesOnlyTheSelectedReflinkedRange(t *testing.T) {
-	path := test.ReflinkFilesystem(t)
+	path := test.XFSFilesystem(t)
 	if path == "" {
 		return
 	}

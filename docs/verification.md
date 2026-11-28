@@ -172,15 +172,15 @@ Use the configured Go image and a writable checkout/vendor directory; dependency
 
 ## Mount verification
 
-Use a native Linux host with rootful Docker, initial-user-namespace `CAP_SYS_ADMIN`, kernel support for XFS, and usable loop devices. Select the Go image from [.circleci/config.yml](../.circleci/config.yml) and the host architecture.
+Use a native Linux host with rootful Docker, initial-user-namespace `CAP_SYS_ADMIN`, kernel support for XFS and Btrfs, and usable loop devices. Select the Go image from [.circleci/config.yml](../.circleci/config.yml) and the host architecture.
 
 ```sh
 make verify-mount-container image=alexfalkowski/go:5.27 arch=amd64
 ```
 
-The launcher uses the image's `mkfs.xfs` and util-linux `mount`, refreshes Go dependencies, and runs `make verify-mount`. The target records `environment.json` and runs the mount package's required namespace suite. The tmpfs fixtures use private user and mount namespaces, including the inotify scenario that observes Unmount followed by Ignored. The reflink fixture retains initial-user-namespace privilege in a private mount namespace with private propagation. It formats and loop-mounts a disposable sparse XFS image, clones test-owned files with `FICLONE`, and checks physical mappings and sharing with `FIEMAP` before and after each unshare mode. The fixture unmounts the image and uses loop autoclear. Required prerequisite and operation failures fail the command. Reports are bind-mounted back to `test/reports/`. Use a writable disposable source copy when dependency ownership prevents refresh.
+The launcher uses the image's `mkfs.xfs` and util-linux `mount`, installs `btrfs-progs` inside the disposable container when needed, refreshes Go dependencies, and runs `make verify-mount`. The target records `environment.json` and runs the mount package's required namespace suite. The tmpfs fixtures use private user and mount namespaces, including the inotify scenario that observes Unmount followed by Ignored. The XFS and Btrfs fixtures retain initial-user-namespace privilege in private mount namespaces with private propagation. They loop-mount disposable sparse filesystem images and release them with unmount and loop autoclear. The XFS reflink test clones test-owned files with `FICLONE` and checks physical mappings and sharing with `FIEMAP` before and after each unshare mode. Required prerequisite and operation failures fail the command. Reports are bind-mounted back to `test/reports/`. Use a writable disposable source copy when dependency ownership prevents refresh.
 
-With `mkfs.xfs` and util-linux `mount` installed directly, `make verify-mount arch=amd64` runs the same discovery and mount suite. Add `kernel=7.0` to require the exact kernel baseline. CircleCI selects it for both native architectures.
+With `mkfs.xfs`, the Btrfs tools, and util-linux `mount` installed directly, `make verify-mount arch=amd64` runs the same discovery and mount suite. Add `kernel=7.0` to require the exact kernel baseline. CircleCI selects it for both native architectures.
 
 CircleCI also selects the ext4 write-zeroes test with `write-zeroes=true`. Use this option on a disposable native runner with a loadable, initially unloaded `scsi_debug` module, root or passwordless `sudo`, and rootful Docker.
 
@@ -224,6 +224,8 @@ With tools installed directly, use `make verify-timerfd arch=amd64 clock_change=
 
 Run `make specs package=file profile=rootless required=true` for ordinary file operations and metadata. The NoDump scenario sets and clears only a test-owned temporary file's flag, checking both the attribute value and its validity mask. Its temporary filesystem must support the inode-flag ioctls and report NoDump support through statx.
 
+The rootless suite compares extended metadata with an independent statx query and confirms that procfs leaves the requested fields unavailable. The [mount lane](#mount-verification) checks distinct direct-read and write alignments on a shared XFS extent and positive atomic-write limits and attributes on XFS. On Btrfs it compares the top-level and nested subvolume IDs with an independent `btrfs inspect-internal rootid` query.
+
 Allocation tests use disposable files and compare their size, contents, and allocated blocks. If the default temporary directory is on tmpfs, set `TMPDIR` to a writable directory on a filesystem that supports zero-range, collapse, and insert at the block alignment used by the fixtures. For example, from a checkout on extent-based ext4 without `bigalloc`, run `TMPDIR="$PWD/test" make specs package=file profile=rootless required=true`. Optional runs on tmpfs skip those specific scenarios with a prerequisite message. Required runs fail if the selected temporary filesystem cannot execute the requested operation.
 
 The rootless suite checks all six `Fadvise` hints, `Readahead` on a readable file, and `Fdatasync` after a log write. The tests verify range validation, kernel errors, and borrowed-file offsets. Cache policy and residency can vary with the filesystem and workload. The [mount lane](#mount-verification) executes filesystem-wide synchronization.
@@ -263,16 +265,21 @@ On the E03 merge revision `98f32f9`, both native Linux 7.0.0-1016-aws mount jobs
 
 On the E04 merge revision `2f329cf`, both native Linux 7.0.0-1016-aws rootless jobs passed all 11 `Flock` tests and examples with race detection. The coverage merge passed. [amd64 rootless job](https://circleci.com/gh/alexfalkowski/go-linux/2068), [arm64 rootless job](https://circleci.com/gh/alexfalkowski/go-linux/2060), [merged coverage](https://circleci.com/gh/alexfalkowski/go-linux/2072).
 
+On the E05 merge revision `fa4a688`, both native Linux 7.0.0-1016-aws rootless jobs passed the POSIX and OFD record-lock scenarios with race detection, including blocking acquisition and POSIX deadlock detection. The coverage merge passed. [amd64 rootless job](https://circleci.com/gh/alexfalkowski/go-linux/2098), [arm64 rootless job](https://circleci.com/gh/alexfalkowski/go-linux/2107), [merged coverage](https://circleci.com/gh/alexfalkowski/go-linux/2108).
+
 These results establish the recorded revision and scenarios, not exhaustive kernel behavior or later revisions. CI runs the configured image toolchain rather than a separate minimum-Go-version matrix. Inspect the retained environment and test reports when accepting a new revision; compilation alone, image names, privileges, or source inspection do not establish runtime coverage. Remaining gaps and source-reviewed paths are recorded in [verification limits](verification-limits.md).
 
 The required mount suite also passed with race detection in an emulated amd64 Linux 7.0.0-1016-aws guest using Go 1.27.4. The disposable SCSI disk reported a positive write-zeroes-with-unmap limit. Ext4 passed the written-extent, overwrite, partial-block, and zero-range control scenarios. The run is recorded in `test/reports/e02b-ext4-vm-console.log`.
 
 The E03 mount suite passed in the same emulated environment. It executed `SyncFS` on disposable XFS through regular file and directory handles, preserved the file offset, and left both handles usable. The run is recorded in `test/reports/e03-mount-guest-console.log`.
 
+The E06 mount suite passed all 41 cases with race detection in an emulated amd64 Linux 7.0.0-1016-aws guest with Go 1.27.4. The XFS fixtures observed distinct direct-I/O offset alignments and positive atomic-write limits. The Btrfs fixture checked two distinct subvolume IDs. A separate XFS probe on a disposable `scsi_debug` device with atomic writes enabled matched a 65,536-byte optimized maximum against native statx. Reports use the `e06-mount-guest-` and `e06-atomic-guest-` prefixes in `test/reports/`.
+
 Additional local evidence covers a newer kernel:
 
 | Scope | Go / kernel / architecture | Observed prerequisites | Evidence and limits |
 | --- | --- | --- | --- |
+| `file` extended metadata | Go 1.27.4 / 7.3.5-1-t2-resolute / native amd64 | Local ext4 and the pinned rootless container profile with zero effective and bounding capabilities. | Each required rootless run recorded 184 passes and one unselected block-device scenario. The container run also passed quality checks and reported 97.2% file statement coverage. Reports use the `e06-file-container-` prefix. |
 | `file` POSIX and OFD record locks | Go 1.27.4 / 7.3.5-1-t2-resolute / native amd64 | Direct ext4 fixtures and the rootless Go 5.27 image with the pinned Moby syscall profile and zero effective/bounding capabilities. | Both runs passed 181 cases with race detection and one unselected block-device metadata scenario. Container statement coverage is 97.2%. Blocking acquisition runs in bounded children whose counters are absent from the profile. Reports use the `e05-file-container-` prefix. |
 | `file` whole-file advisory locking | Go 1.27.4 / 7.3.5-1-t2-resolute / native amd64 | Direct ext4 fixtures and the rootless Go 5.27 image with the pinned Moby syscall profile and zero effective/bounding capabilities. | Both runs passed 156 cases with race detection and one unselected block-device metadata scenario. Container reports use the `e04-file-container-` prefix. |
 | `file` access advice and data synchronization | Go 1.27.4 / 7.3.5-1-t2-resolute / native amd64 | UID 1000, seccomp mode 2, zero effective/bounding capabilities, and temporary files on ext4. | The required rootless suite passed 145 cases with race detection and one unselected block-device metadata scenario. Reports use the `e03-file-` prefix. |

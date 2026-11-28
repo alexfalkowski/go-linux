@@ -56,6 +56,35 @@ func ExampleOpen() {
 	// Output: hello 5
 }
 
+func ExampleStat() {
+	status, err := os.Open("/proc/self/status")
+	if err != nil {
+		panic(err)
+	}
+	defer status.Close()
+
+	mask := file.MaskDirectIOAlignment | file.MaskDirectIOReadAlignment
+	metadata, err := file.Stat(status, mask)
+	if err != nil {
+		panic(err)
+	}
+	if metadata.Mask&file.MaskDirectIOAlignment == 0 {
+		fmt.Println("Direct I/O alignment unavailable")
+		return
+	}
+	if metadata.DirectIOMemoryAlignment == 0 {
+		fmt.Println("Direct I/O unsupported")
+		return
+	}
+	readAlignment := metadata.DirectIOOffsetAlignment
+	if metadata.Mask&file.MaskDirectIOReadAlignment != 0 && metadata.DirectIOReadOffsetAlignment != 0 {
+		readAlignment = metadata.DirectIOReadOffsetAlignment
+	}
+	fmt.Printf("Read offset alignment: %d bytes\n", readAlignment)
+
+	// Output: Direct I/O alignment unavailable
+}
+
 func ExampleRename() {
 	path, err := os.MkdirTemp("", "rename-example-")
 	if err != nil {
