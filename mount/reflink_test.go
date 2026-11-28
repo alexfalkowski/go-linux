@@ -34,7 +34,7 @@ func TestFallocateUnsharesOnlyTheSelectedReflinkedRange(t *testing.T) {
 			clone, err := os.CreateTemp(path, "clone-")
 			require.NoError(t, err)
 			test.Cleanup(t, clone)
-			block := test.FileAllocationBlockSize(t, source, false)
+			block := test.FileAllocationBlockSize(t, source, test.BasicAllocation)
 			selectedOffset := uint64(block) //nolint:gosec // statfs gives the positive block size of the fixture filesystem.
 			originalEOF := 2 * selectedOffset
 			original := append(bytes.Repeat([]byte("a"), block), bytes.Repeat([]byte("b"), block)...)

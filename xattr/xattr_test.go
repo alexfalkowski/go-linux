@@ -126,7 +126,7 @@ func TestEmptyAttributePathSelectsDirectory(t *testing.T) {
 	dir := test.OpenFile(t, t.TempDir())
 	require.NoError(t, xattr.Set(dir, "user.directory", []byte("dir"), xattr.Create))
 
-	value, err := xattr.GetAt(dir, "", "user.directory", xattr.PathOptions{NoFollow: true})
+	value, err := xattr.GetAt(dir, "", "user.directory", xattr.PathOptions{Symlinks: xattr.NoFollowFinalSymlink})
 	require.NoError(t, err)
 	require.Equal(t, "dir", string(value))
 }
@@ -169,7 +169,7 @@ func TestSymlinkOperationsSelectTheLinkOrItsTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "target", string(value))
 
-	noFollow := xattr.PathOptions{NoFollow: true}
+	noFollow := xattr.PathOptions{Symlinks: xattr.NoFollowFinalSymlink}
 	for _, path := range []string{"link", "dangling"} {
 		t.Run(path, func(t *testing.T) {
 			value, err := xattr.GetAt(dir, path, "user.link", noFollow)
@@ -244,6 +244,15 @@ func TestInvalidSetModesPrecedeHandleValidation(t *testing.T) {
 	for _, mode := range []xattr.SetMode{xattr.Create | xattr.Replace, 1 << 31} {
 		require.ErrorIs(t, xattr.Set(nil, "user.mode", nil, mode), os.ErrInvalid)
 	}
+}
+
+func TestInvalidSymlinkModeLeavesAttributesUnchanged(t *testing.T) {
+	file := test.TempFile(t, 0)
+
+	err := xattr.SetAt(file, "", "user.mode", []byte("value"), xattr.Upsert, xattr.PathOptions{Symlinks: 255})
+	require.ErrorIs(t, err, os.ErrInvalid)
+	_, err = xattr.Get(file, "user.mode")
+	require.ErrorIs(t, err, test.ErrNoData)
 }
 
 func TestOversizedValuesLeaveBorrowedHandleOpen(t *testing.T) {

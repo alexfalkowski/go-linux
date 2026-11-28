@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E08 — Add mapped-file synchronization**.
+Next: **E09 — Add mapped-memory locking and residency inspection**.
 
-Resume note: E07 passed the required rootless file suite on native amd64 Linux 7.3 and the required mount suite in an emulated amd64 Linux 7.0 guest. Before starting E08, confirm the final E07 revision's required CircleCI jobs, including temporary-file publication and synchronous opening in the rootless suite, aligned direct I/O and whiteout identity on isolated XFS, and merged coverage from native Linux 7.0 amd64 and arm64.
+Resume note: E08 passed the required rootless mmap suite on native amd64 Linux 7.3. Before starting E09, confirm the final E08 revision's required CircleCI jobs, including mapped-file synchronization, locked-page invalidation, and concurrent close in both native Linux 7.0 rootless jobs, plus merged coverage.
 
 ## Objective and scope
 
@@ -127,12 +127,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E08 — Add mapped-file synchronization
-
-- **Implement:** Add explicit whole-region [msync](https://man7.org/linux/man-pages/man2/msync.2.html) operations to `mmap`, with named synchronization/invalidation choices and a documented view-lifetime contract. Keep `Close` independent from flushing.
-- **Contracts:** Distinguish synchronous writeback, asynchronous semantics, invalidation, shared versus private mappings, and invalid combinations. State precisely what successful synchronization guarantees without claiming transactions or universal crash consistency.
-- **Evidence:** Exercise shared mapped writes and actual synchronization, invalid options, private/anonymous behavior, close races, and preserved source-file independence. Verify applicable errno and cleanup without adding raw address access.
 
 #### E09 — Add mapped-memory locking and residency inspection
 

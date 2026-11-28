@@ -31,7 +31,7 @@ func FillUnixDatagramQueue(t *testing.T, name string) int {
 	if limit > 65536 {
 		options, err := testenv.FromEnvironment()
 		require.NoError(t, err)
-		require.False(t, options.Required, "backpressure fixture requires max_dgram_qlen <= 65536; observed %d", limit)
+		require.False(t, options.Required(), "backpressure fixture requires max_dgram_qlen <= 65536; observed %d", limit)
 		t.Skipf("backpressure fixture bounds queue generation; host max_dgram_qlen=%d", limit)
 	}
 
@@ -172,7 +172,7 @@ func SendUrgent(t *testing.T, file *os.File) {
 		options, optionsErr := testenv.FromEnvironment()
 		require.NoError(t, optionsErr)
 		const reason = "EPOLLPRI socket fixture: sendmsg(MSG_OOB) returned EOPNOTSUPP; requires CONFIG_AF_UNIX_OOB; profile=rootless"
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 	require.NoError(t, err)

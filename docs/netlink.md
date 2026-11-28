@@ -43,7 +43,7 @@ Always inspect the returned error, even when `Response.Complete` is true. That f
 
 An incomplete exchange closes its request connection, including after receive timeout, malformed data, loss, or a size bound. Open a fresh connection before retrying. This prevents unread replies or a still-active dump from contaminating another request. A send failure leaves the connection open and retains its errno, including `EAGAIN`; the caller decides whether to retry. No transport error proves a kernel mutation was not applied. Constructors return no resource on failure and release everything acquired, including earlier multicast memberships.
 
-`Options.DatagramSize` defaults to 65536 bytes and `MaxResponseBytes` to 16 MiB of received wire data. These bounds are explicit, not guarantees that every family dump fits. `StrictCheck` requests the kernel's route GET/dump validation; validation support remains operation-specific. All connections enable extended and capped ACKs and retain option failures rather than silently changing behavior.
+`Options.DatagramSize` defaults to 65536 bytes and `MaxResponseBytes` to 16 MiB of received wire data. These bounds are explicit, not guarantees that every family dump fits. `netlink.Options{Validation: netlink.StrictValidation}` requests the kernel's route GET/dump validation. Validation support remains operation-specific. All connections enable extended and capped ACKs and retain option failures rather than silently changing behavior.
 
 ## Multicast
 

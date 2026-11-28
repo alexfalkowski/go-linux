@@ -21,7 +21,7 @@ func TestCallingThreadLeavesExistingSiblingUnrestricted(t *testing.T) {
 	probe := test.LandlockReadThread(t, denied, nil)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	_, err := os.ReadFile(denied)
 	require.ErrorIs(t, err, test.ErrPermissionDenied)
@@ -38,7 +38,7 @@ func TestAllThreadsRestrictsExistingSibling(t *testing.T) {
 	probe := test.LandlockReadThread(t, denied, nil)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.AllThreads, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.AllThreads, Privileges: landlock.SetNoNewPrivileges}))
 
 	_, err := os.ReadFile(denied)
 	require.ErrorIs(t, err, test.ErrPermissionDenied)
@@ -58,7 +58,7 @@ func TestAllThreadsReplacesDivergentSiblingDomain(t *testing.T) {
 	allow := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 	require.NoError(t, allow.AddPath(allowed, landlock.ReadFile))
 
-	require.NoError(t, allow.Restrict(landlock.Options{Synchronization: landlock.AllThreads, NoNewPrivileges: true}))
+	require.NoError(t, allow.Restrict(landlock.Options{Synchronization: landlock.AllThreads, Privileges: landlock.SetNoNewPrivileges}))
 	require.NoError(t, probe(), "TSYNC uses the caller's domain rather than stacking on the sibling's")
 }
 
@@ -72,7 +72,7 @@ func TestPolicySurvivesOrdinaryExec(t *testing.T) {
 	// Write restrictions permit loading the Go executable and its runtime files.
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.WriteFile})
 	require.NoError(t, ruleset.AddPath(allowed, landlock.WriteFile))
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 	require.NoError(t, ruleset.Close())
 	arguments := []string{}
 	if testing.CoverMode() != "" {
@@ -118,7 +118,7 @@ func TestSignalScopeDeniesExistingProcessButAllowsOwnThreadGroup(t *testing.T) {
 	})
 	ruleset := test.LandlockRuleset(t, landlock.Config{Scoped: landlock.Signal})
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	require.ErrorIs(t, test.SignalZero(child), test.ErrOperationNotPermitted)
 	require.NoError(t, test.SignalZero(self))

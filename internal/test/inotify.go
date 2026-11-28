@@ -28,7 +28,7 @@ func InotifyQueueLimit(t *testing.T) int {
 	if limit > 65536 {
 		options, err := testenv.FromEnvironment()
 		require.NoError(t, err)
-		require.False(t, options.Required, "overflow fixture requires max_queued_events <= 65536; observed %d", limit)
+		require.False(t, options.Required(), "overflow fixture requires max_queued_events <= 65536; observed %d", limit)
 		t.Skipf("overflow fixture bounds queue generation at 65536; host max_queued_events=%d", limit)
 	}
 	return limit

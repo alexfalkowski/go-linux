@@ -32,14 +32,19 @@ func OwnDescriptor(t *testing.T, fd int, name string) *os.File {
 	return file
 }
 
+// PidfdMode selects the status flags on a native process file.
+type PidfdMode int
+
+// BlockingPidfd opens a process file with blocking semantics.
+const BlockingPidfd PidfdMode = 0
+
+// NonblockingPidfd opens a process file with PIDFD_NONBLOCK.
+const NonblockingPidfd PidfdMode = unix.PIDFD_NONBLOCK
+
 // Pidfd acquires a raw process file for ownership/adoption scenarios.
-func Pidfd(t *testing.T, id int, nonblocking bool) *os.File {
+func Pidfd(t *testing.T, id int, mode PidfdMode) *os.File {
 	t.Helper()
-	var flags int
-	if nonblocking {
-		flags = unix.PIDFD_NONBLOCK
-	}
-	return pidfdFile(t, id, flags)
+	return pidfdFile(t, id, int(mode))
 }
 
 // FileFlags observes a standard-library file's status flags before adoption.

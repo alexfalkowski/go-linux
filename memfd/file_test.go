@@ -167,6 +167,12 @@ func TestFileCreationRejectsInvalidNames(t *testing.T) {
 	}
 }
 
+func TestFileCreationRejectsUnknownExecutionMode(t *testing.T) {
+	file, err := memfd.New("fixture", memfd.Options{Execution: 255})
+	test.NoResource(t, file, err, os.ErrInvalid)
+	test.PathError(t, err, "memfd_create", "fixture")
+}
+
 func TestRejectedFileNamesLeaveNoDescriptorBehind(t *testing.T) {
 	before := test.DescriptorCount(t)
 
@@ -298,7 +304,7 @@ func TestSealLockRejectsFurtherSealChanges(t *testing.T) {
 }
 
 func TestSealingExecutableFilesAlsoLocksWritesAndSize(t *testing.T) {
-	file := test.Memfd(t, memfd.Options{Executable: true})
+	file := test.Memfd(t, memfd.Options{Execution: memfd.AllowExecute})
 	require.Equal(t, memfd.Seals(0), test.Value(t, file.Seals))
 
 	stat := test.Value(t, file.Stat)

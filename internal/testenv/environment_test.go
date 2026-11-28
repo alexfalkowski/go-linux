@@ -87,7 +87,7 @@ func TestUnavailableNamespacesSkipOnlyWhenOptional(t *testing.T) {
 	optional, err := testenv.Check(testenv.Options{Profile: "namespaces"})
 	require.NoError(t, err)
 
-	required, err := testenv.Check(testenv.Options{Profile: "namespaces", Required: true})
+	required, err := testenv.Check(testenv.Options{Profile: "namespaces", Prerequisites: testenv.FailUnavailable})
 	require.Empty(t, required.Skip, "required coverage must never report a skip")
 
 	if optional.NamespaceError == "" {
@@ -180,7 +180,7 @@ func TestCgroupProfileRequiresExplicitDelegation(t *testing.T) {
 	require.NotEmpty(t, optional.Skip)
 	require.Equal(t, "not-run", optional.NamespaceProbe, "cgroup discovery must not require namespace creation")
 
-	required, err := testenv.Check(testenv.Options{Profile: "cgroup", Required: true})
+	required, err := testenv.Check(testenv.Options{Profile: "cgroup", Prerequisites: testenv.FailUnavailable})
 	require.Error(t, err)
 	require.Empty(t, required.Skip, "required coverage must fail instead of skipping")
 }
@@ -199,7 +199,7 @@ func TestCgroupDiscoveryReadsWithoutMutation(t *testing.T) {
 	before, err := os.ReadFile("/sys/fs/cgroup/cgroup.subtree_control")
 	require.NoError(t, err)
 
-	report, err := testenv.Check(testenv.Options{Profile: "cgroup", Delegation: "/sys/fs/cgroup", Required: true})
+	report, err := testenv.Check(testenv.Options{Profile: "cgroup", Delegation: "/sys/fs/cgroup", Prerequisites: testenv.FailUnavailable})
 	require.NoError(t, err)
 	require.Contains(t, report.Controllers, "delegation/cgroup.controllers")
 	require.Contains(t, report.Controllers, "delegation/cgroup.subtree_control")

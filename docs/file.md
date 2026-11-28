@@ -48,7 +48,7 @@ Add `DataSync` for a journal whose writes must synchronize data and the metadata
 
 ## Extended metadata
 
-`Stat(opened, file.MaskBasic|file.MaskBirthTime|file.MaskMountID)` observes the open inode, including after unlink. `StatAt(dir, name, file.StatOptions{...})` resolves a name relative to a borrowed directory. Set `NoFollow` for the final symlink itself, `NoAutomount` to avoid triggering a final automount, and `Sync` to SyncDefault, SyncForce, or SyncDont. An empty name observes the handle itself, permitting explicit synchronization of an open file.
+`Stat(opened, file.MaskBasic|file.MaskBirthTime|file.MaskMountID)` observes the open inode, including after unlink. `StatAt(dir, name, file.StatOptions{...})` resolves a name relative to a borrowed directory. Set `Flags` to `file.StatNoFollow` to query the symlink itself, `file.StatNoAutomount` to suppress a final automount, or their bitwise combination. Set `Sync` to SyncDefault, SyncForce, or SyncDont. An empty name observes the handle itself, permitting explicit synchronization of an open file.
 
 `Metadata.Mask` is the validity mask supplied by Linux. A requested field may be unavailable, and unrequested fields may be present. Check the returned bit rather than testing a field for zero. `MaskBasic` includes type, permission mode, link count, UID/GID, access/modification/status-change times, inode, size, and allocated 512-byte blocks. Birth time is filesystem-dependent. Times are UTC `time.Time` values; an unavailable timestamp is the zero Go time. Mode uses Go bits, and Linux unsigned size/identifier ranges are retained.
 

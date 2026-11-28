@@ -23,7 +23,7 @@ func TestFallocateWriteZeroesPreparesOverwritesOnExt4(t *testing.T) {
 		segment, err := os.CreateTemp(path, "write-zeroes-*")
 		require.NoError(t, err)
 		test.Cleanup(t, segment)
-		block := test.FileAllocationBlockSize(t, segment, false)
+		block := test.FileAllocationBlockSize(t, segment, test.BasicAllocation)
 		first := bytes.Repeat([]byte("a"), block)
 		second := bytes.Repeat([]byte("b"), block)
 		_, err = segment.Write(bytes.Join([][]byte{first, second}, nil))
@@ -54,7 +54,7 @@ func TestFallocateWriteZeroesPreparesOverwritesOnExt4(t *testing.T) {
 		control, err := os.CreateTemp(path, "zero-range-*")
 		require.NoError(t, err)
 		test.Cleanup(t, control)
-		block := test.FileAllocationBlockSize(t, control, false)
+		block := test.FileAllocationBlockSize(t, control, test.BasicAllocation)
 
 		require.NoError(t, file.Fallocate(control, file.ZeroRange, 0, int64(block)))
 
@@ -65,7 +65,7 @@ func TestFallocateWriteZeroesPreparesOverwritesOnExt4(t *testing.T) {
 		segment, err := os.CreateTemp(path, "unaligned-*")
 		require.NoError(t, err)
 		test.Cleanup(t, segment)
-		block := test.FileAllocationBlockSize(t, segment, false)
+		block := test.FileAllocationBlockSize(t, segment, test.BasicAllocation)
 		original := bytes.Repeat([]byte("a"), 2*block)
 		_, err = segment.Write(original)
 		require.NoError(t, err)

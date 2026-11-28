@@ -18,6 +18,15 @@ import (
 	"github.com/alexfalkowski/go-linux/cgroup"
 )
 
+// PrerequisitePolicy controls unavailable prerequisites for selected coverage.
+type PrerequisitePolicy uint8
+
+// SkipUnavailable permits a skip when a known prerequisite is unavailable.
+const SkipUnavailable PrerequisitePolicy = 0
+
+// FailUnavailable requires all selected prerequisites.
+const FailUnavailable PrerequisitePolicy = 1
+
 // Options selects verification coverage and optional runner identity checks.
 type Options struct {
 	// Profile selects rootless (the default), namespaces, or cgroup coverage.
@@ -33,8 +42,13 @@ type Options struct {
 	// Kernel selects supported (also the empty default), 7.0, or newer coverage.
 	Kernel string
 
-	// Required turns an unavailable selected prerequisite into an error.
-	Required bool
+	// Prerequisites selects how missing prerequisites are handled. Zero permits skips.
+	Prerequisites PrerequisitePolicy
+}
+
+// Required reports whether unavailable selected prerequisites must fail.
+func (options Options) Required() bool {
+	return options.Prerequisites == FailUnavailable
 }
 
 // Report records runner observations, including a namespace creation probe.
@@ -93,7 +107,9 @@ func FromEnvironment() (Options, error) {
 		if err != nil {
 			return Options{}, errors.New("GO_LINUX_TEST_REQUIRED must be a boolean")
 		}
-		options.Required = required
+		if required {
+			options.Prerequisites = FailUnavailable
+		}
 	}
 
 	return normalize(options)
@@ -137,7 +153,7 @@ func Check(options Options) (Report, error) {
 		}
 		reason := fmt.Sprintf("profile=namespaces operation=clone(user,mount,network)+uid/gid-mapping: %v; "+
 			"prerequisite=permitted user namespaces, mappings, and namespace quota", err)
-		if options.Required {
+		if options.Required() {
 			return report, fmt.Errorf("required %s: %w", reason, err)
 		}
 		report.Skip = reason
@@ -170,6 +186,9 @@ func normalize(options Options) (Options, error) {
 	default:
 		return Options{}, errors.New("kernel must be supported, 7.0, or newer")
 	}
+	if options.Prerequisites > FailUnavailable {
+		return Options{}, errors.New("invalid prerequisite policy")
+	}
 
 	return options, checkDelegationPath(options.Delegation)
 }
@@ -184,7 +203,7 @@ func checkDelegationPath(path string) error {
 func checkDelegation(report Report, options Options) (Report, error) {
 	if options.Delegation == "" {
 		const reason = "profile=cgroup requires delegation=/absolute/delegated/path"
-		if options.Required {
+		if options.Required() {
 			return report, errors.New(reason)
 		}
 		report.Skip = reason

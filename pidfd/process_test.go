@@ -173,18 +173,18 @@ func TestConcurrentObserversShareReadinessAndOnlyOneWaiterReaps(t *testing.T) {
 
 func TestClosingAHandleInterruptsWaitersWithoutKillingTheChild(t *testing.T) {
 	for _, scenario := range []struct {
-		name        string
-		nonblocking bool
-		reap        bool
+		name string
+		mode test.PidfdMode
+		reap bool
 	}{
 		{name: "blocking handle waiting for readiness"},
 		{name: "blocking handle waiting for child status", reap: true},
-		{name: "nonblocking handle waiting for readiness", nonblocking: true},
-		{name: "nonblocking handle waiting for child status", nonblocking: true, reap: true},
+		{name: "nonblocking handle waiting for readiness", mode: test.NonblockingPidfd},
+		{name: "nonblocking handle waiting for child status", mode: test.NonblockingPidfd, reap: true},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			child, _ := test.Child(t)
-			process, err := pidfd.Adopt(test.Pidfd(t, child.Pid, scenario.nonblocking))
+			process, err := pidfd.Adopt(test.Pidfd(t, child.Pid, scenario.mode))
 			require.NoError(t, err)
 			test.Cleanup(t, process)
 
@@ -294,15 +294,15 @@ func TestCompetingReapersConsumeChildStatusExactlyOnce(t *testing.T) {
 
 func TestAdoptionPreservesDescriptorFlagsAndTransfersOwnership(t *testing.T) {
 	for _, scenario := range []struct {
-		name        string
-		nonblocking bool
+		name string
+		mode test.PidfdMode
 	}{
 		{name: "blocking descriptor"},
-		{name: "nonblocking descriptor", nonblocking: true},
+		{name: "nonblocking descriptor", mode: test.NonblockingPidfd},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			child, input := test.Child(t)
-			file := test.Pidfd(t, child.Pid, scenario.nonblocking)
+			file := test.Pidfd(t, child.Pid, scenario.mode)
 			before := test.FileFlags(t, file)
 			fd := test.FileDescriptor(t, file)
 			process, err := pidfd.Adopt(file)
@@ -434,7 +434,7 @@ func TestOpeningAnUnavailableProcessReturnsNoHandle(t *testing.T) {
 
 func TestAdoptionAcceptsHandlesWhoseTargetWasAlreadyReaped(t *testing.T) {
 	child, input := test.Child(t)
-	file := test.Pidfd(t, child.Pid, false)
+	file := test.Pidfd(t, child.Pid, test.BlockingPidfd)
 
 	_, err := input.Write([]byte{0})
 	require.NoError(t, err)
@@ -637,7 +637,7 @@ func TestSignalZeroRejectsAnUnpermittedDifferentUserProcess(t *testing.T) {
 		require.NoError(t, err)
 
 		const reason = "signal permission denial needs an ordinary-user runner with a different-UID PID 1"
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 
 		t.Skip(reason)
 	}
@@ -688,7 +688,7 @@ func checkConstructionFailure(t *testing.T, scenario string) {
 	}
 
 	if scenario == "adopt" {
-		source = test.Pidfd(t, os.Getpid(), false)
+		source = test.Pidfd(t, os.Getpid(), test.BlockingPidfd)
 	}
 
 	freeSlot := test.ExhaustDescriptors(t)

@@ -12,6 +12,15 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// ValidationMode selects kernel validation for supported Netlink operations.
+type ValidationMode uint8
+
+// DefaultValidation preserves the socket's default validation.
+const DefaultValidation ValidationMode = 0
+
+// StrictValidation requests NETLINK_GET_STRICT_CHK for supported operations.
+const StrictValidation ValidationMode = 1
+
 // Options bounds memory use and selects kernel validation. Zero uses defaults.
 type Options struct {
 	// DatagramSize is the maximum consumed datagram in bytes, including headers
@@ -20,8 +29,9 @@ type Options struct {
 	// MaxResponseBytes bounds total received wire bytes per Execute or Dump.
 	// Zero means 16 MiB; values below 16 are invalid. Listeners ignore this field.
 	MaxResponseBytes int
-	// StrictCheck enables NETLINK_GET_STRICT_CHK (principally route GET/dumps).
-	StrictCheck bool
+	// Validation selects DefaultValidation or StrictValidation. Support varies
+	// by operation, principally route GET requests and dumps.
+	Validation ValidationMode
 }
 
 func (options Options) normalized() (Options, error) {
@@ -33,7 +43,8 @@ func (options Options) normalized() (Options, error) {
 	}
 	invalidDatagramSize := options.DatagramSize < unix.NLMSG_HDRLEN || uint64(options.DatagramSize) > 1<<31-1
 	invalidResponseLimit := options.MaxResponseBytes < unix.NLMSG_HDRLEN
-	if invalidDatagramSize || invalidResponseLimit {
+	invalidValidation := options.Validation > StrictValidation
+	if invalidDatagramSize || invalidResponseLimit || invalidValidation {
 		return Options{}, os.ErrInvalid
 	}
 
@@ -91,7 +102,7 @@ type Conn struct {
 // errors retain errno (including EAGAIN) and leave the connection open. An error
 // never establishes that a requested kernel mutation did not take effect.
 func (c *Conn) Execute(request Message) (Response, error) {
-	return c.exchange(request, false)
+	return c.exchange(request, executeExchange)
 }
 
 // Dump adds NLM_F_DUMP and reads through NLMSG_DONE, even if an ACK arrives first.
@@ -100,7 +111,7 @@ func (c *Conn) Execute(request Message) (Response, error) {
 // matched message returns ErrDumpInterrupted after draining the dump. Results
 // are not atomic snapshots, and interrupted dumps are never retried implicitly.
 func (c *Conn) Dump(request Message) (Response, error) {
-	return c.exchange(request, true)
+	return c.exchange(request, dumpExchange)
 }
 
 // Close releases the connection and interrupts pending I/O. Repeated Close
@@ -121,8 +132,15 @@ func (c *Conn) SetDeadline(deadline time.Time) error {
 	return c.conn.SetDeadline(deadline)
 }
 
-func (c *Conn) exchange(request Message, dump bool) (Response, error) {
-	if err := validateRequest(request.Header, dump); err != nil {
+type exchangeKind uint8
+
+const (
+	executeExchange exchangeKind = iota
+	dumpExchange
+)
+
+func (c *Conn) exchange(request Message, kind exchangeKind) (Response, error) {
+	if err := validateRequest(request.Header, kind); err != nil {
 		return Response{}, err
 	}
 
@@ -140,7 +158,7 @@ func (c *Conn) exchange(request Message, dump bool) (Response, error) {
 
 	request.Header.Sequence = c.sequence
 	request.Header.Flags |= Request | Acknowledge
-	if dump {
+	if kind == dumpExchange {
 		request.Header.Flags |= DumpFlags
 	}
 
@@ -153,15 +171,15 @@ func (c *Conn) exchange(request Message, dump bool) (Response, error) {
 		return Response{}, err
 	}
 
-	response, err := c.readResponse(request.Header, dump)
+	response, err := c.readResponse(request.Header, kind)
 	if !response.Complete {
 		c.Close()
 	}
 	return response, err
 }
 
-func (c *Conn) readResponse(request Header, dump bool) (Response, error) {
-	state := responseState{request: request, portID: c.portID, multipart: dump}
+func (c *Conn) readResponse(request Header, kind exchangeKind) (Response, error) {
+	state := responseState{request: request, portID: c.portID, multipart: kind == dumpExchange}
 	var received int
 
 	for !state.response.Complete {
@@ -288,15 +306,15 @@ func open(protocol socket.Protocol, options Options) (*socket.Conn, Options, err
 		return nil, Options{}, err
 	}
 
-	for _, set := range []func(bool) error{conn.SetExtendedAck, conn.SetCapAck} {
-		if err := set(true); err != nil {
+	for _, enable := range []func() error{conn.EnableExtendedAck, conn.EnableCapAck} {
+		if err := enable(); err != nil {
 			conn.Close()
 			return nil, Options{}, err
 		}
 	}
 
-	if options.StrictCheck {
-		if err := conn.SetStrictCheck(true); err != nil {
+	if options.Validation == StrictValidation {
+		if err := conn.EnableStrictCheck(); err != nil {
 			conn.Close()
 			return nil, Options{}, err
 		}
@@ -324,9 +342,9 @@ func receive(conn *socket.Conn, size int) ([]Message, int, error) {
 	return messages, message.N, err
 }
 
-func validateRequest(header Header, dump bool) error {
+func validateRequest(header Header, kind exchangeKind) error {
 	var allowed Flags
-	if dump {
+	if kind == dumpExchange {
 		allowed = Request | Acknowledge | DumpFlags
 	} else {
 		allowed = Request | Acknowledge | Replace | Exclusive | Create | Append

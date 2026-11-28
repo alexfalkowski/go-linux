@@ -45,11 +45,11 @@ These are message operations, so `Conn` implements `io.Closer` but deliberately 
 | `socket.UnixAddress{Name: "/run/app.sock"}` | Filesystem socket at `/run/app.sock`. |
 | `socket.UnixAddress{Name: "@app"}` | Abstract socket with kernel name `"\x00app"`. |
 | `socket.UnixAddress{Name: "\x00app"}` | The same abstract socket, using its native leading NUL. |
-| `socket.UnixAddress{Name: "@app", Pathname: true}` | Filesystem socket literally named `@app`, relative to the working directory. |
+| `socket.UnixAddress{Name: "@app", Interpretation: socket.LiteralPathname}` | Filesystem socket literally named `@app`, relative to the working directory. |
 
-`Pathname` is the package's literal-path selector, not a Linux socket option. Its zero value keeps the familiar Go shorthand. Set it to true when a leading `@` is part of a filesystem filename. This distinction matters when replying to native peers: a literal filesystem `@app` and abstract `@app` are separate endpoints and can exist at the same time.
+`UnixAddress{Name: "@app"}` uses Go's abstract-socket shorthand. Use `socket.UnixAddress{Name: "@app", Interpretation: socket.LiteralPathname}` when the leading `@` is part of the filesystem filename. This distinction matters when replying to native peers: a literal filesystem `@app` and abstract `@app` are separate endpoints and can exist at the same time.
 
-Pass the complete `Message.From` value back to `Send`, preserving `Pathname`, so replies remain in the sender's namespace. Do not rebuild the destination from `From.String()` or `UnixAddress.Name` alone: neither string records the literal-path selector. `Receive` and `LocalAddress` automatically set `Pathname` for leading-`@` and full-length filesystem names.
+Pass the complete `Message.From` value back to `Send` so replies stay in the sender's namespace. A display string from `From.String()` or `UnixAddress.Name` can be ambiguous. `Receive` and `LocalAddress` retain literal-path interpretation for leading-`@` and full-length filesystem names.
 
 Filesystem names cannot contain NULs. Embedded and trailing NULs are preserved in abstract names. Names using the default interpretation must be shorter than 108 bytes; explicit pathnames may use all 108 bytes supported by Linux. Returned abstract names use `@`; unnamed pairs have an empty `LocalAddress` name, distinct from the abstract name `@`.
 
@@ -63,13 +63,13 @@ Pass files with `sender.Send(payload, nil, file1, file2)` on a Unix pair, or sup
 
 On ancillary truncation, excess rights, or decoding failure, the package closes all received rights and returns no files. Ancillary truncation and excess rights match `EMSGSIZE`; `Message` still describes the consumed payload. The control buffer includes credential space, so the explicit file limit can reject rights even without Linux setting `ControlTruncated`. There is no retry for a consumed message. Unknown control types are ignored; timestamps, security labels, explicit credential sending, pidfd ancillary messages, and arbitrary control-message injection are outside this initial API.
 
-`SetPassCredentials(true)` enables kernel-validated per-message credentials on Unix sockets; inspect `Message.Credentials` (nil when absent). `PeerCredentials` reports the connection-time credentials recorded for a pair. Neither observation is a complete authorization policy; account for namespaces, credential changes, and file capability implications in the application.
+`EnablePassCredentials()` requests kernel-validated per-message credentials on Unix sockets. Inspect `Message.Credentials`, which is nil when absent. `DisablePassCredentials()` clears the request. `PeerCredentials` reports the connection-time credentials recorded for a pair. Neither observation is a complete authorization policy; account for namespaces, credential changes, and file capability implications in the application.
 
 ## Use Netlink transport
 
 `OpenNetlink(socket.Route, socket.NetlinkAddress{})` opens and binds a raw Netlink endpoint. `Route`, `Generic`, and `Usersock` are named protocols; other nonnegative signed-32-bit Linux protocol numbers are accepted and may fail with their kernel errno. A zero local `PortID` requests automatic allocation. Obtain the actual value with `LocalAddress`; it is not necessarily the process ID, especially for multiple endpoints in one process. Send encoded bytes to `NetlinkAddress{}` for the kernel or another explicit port for user messaging. Netlink is message-oriented even though its socket type is `SOCK_RAW`.
 
-`SetExtendedAck`, `SetCapAck`, and `SetStrictCheck` expose `NETLINK_EXT_ACK`, `NETLINK_CAP_ACK`, and `NETLINK_GET_STRICT_CHK`. `JoinGroup` and `LeaveGroup` use positive group IDs, not masks; `NetlinkAddress.Groups` is the older 32-bit bind/send mask. Membership and protocol operations can require privilege. These options do not encode messages, parse acknowledgements, match sequences, recover losses, or coordinate concurrent requests. Use [netlink](netlink.md) for protocol encoding and exchanges, or [netlink/route](netlink-route.md) for typed routing operations. Kernel `ENOBUFS` remains visible; payload truncation must also be handled before decoding. No suppression of loss notifications is offered.
+`EnableExtendedAck`, `EnableCapAck`, and `EnableStrictCheck` request `NETLINK_EXT_ACK`, `NETLINK_CAP_ACK`, and `NETLINK_GET_STRICT_CHK`. Use the corresponding `DisableExtendedAck`, `DisableCapAck`, and `DisableStrictCheck` operations to clear them. `JoinGroup` and `LeaveGroup` use positive group IDs, not masks; `NetlinkAddress.Groups` is the older 32-bit bind/send mask. Membership and protocol operations can require privilege. These options do not encode messages, parse acknowledgements, match sequences, recover losses, or coordinate concurrent requests. Use [netlink](netlink.md) for protocol encoding and exchanges, or [netlink/route](netlink-route.md) for typed routing operations. Kernel `ENOBUFS` remains visible; payload truncation must also be handled before decoding. No suppression of loss notifications is offered.
 
 ## Lifetime, options, and errors
 

@@ -89,28 +89,46 @@ func FileAllocatedBlocks(t *testing.T, file *os.File) int64 {
 	return stat.Blocks
 }
 
+// AllocationRequirements selects the filesystem behavior a range test needs.
+type AllocationRequirements uint8
+
+// BasicAllocation accepts ordinary file allocation.
+const BasicAllocation AllocationRequirements = 0
+
+// ZeroOrShiftAllocation requires zero-range or range shifting support.
+const ZeroOrShiftAllocation AllocationRequirements = 1
+
 // FileAllocationBlockSize provides alignment for range tests. The advanced
 // operations require a filesystem such as ext4 or XFS. In optional runs,
 // classify tmpfs explicitly since it cannot zero, collapse, or insert ranges.
-func FileAllocationBlockSize(t *testing.T, file *os.File, needsZeroOrShift bool) int {
+func FileAllocationBlockSize(t *testing.T, file *os.File, requirements AllocationRequirements) int {
 	t.Helper()
 	var stat unix.Statfs_t
 	FileControl(t, file, func(fd uintptr) {
 		require.NoError(t, unix.Fstatfs(int(fd), &stat))
 	})
-	if needsZeroOrShift && stat.Type == unix.TMPFS_MAGIC {
+	if requirements == ZeroOrShiftAllocation && stat.Type == unix.TMPFS_MAGIC {
 		options, err := testenv.FromEnvironment()
 		require.NoError(t, err)
 		const reason = "tmpfs lacks zero-range, collapse, and insert; set TMPDIR to a directory on a supporting filesystem"
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 	return int(stat.Bsize)
 }
 
-// SetNoDump changes only the temporary file's dump-exclusion flag. The fixture
+// DumpPolicy selects whether a temporary file is excluded from dumps.
+type DumpPolicy uint8
+
+// IncludeInDump clears the kernel's dump-exclusion flag.
+const IncludeInDump DumpPolicy = 0
+
+// ExcludeFromDump sets the kernel's dump-exclusion flag.
+const ExcludeFromDump DumpPolicy = 1
+
+// SetDumpPolicy changes only the temporary file's dump-exclusion flag. The fixture
 // filesystem must support FS_IOC_GETFLAGS and FS_IOC_SETFLAGS for its owner.
-func SetNoDump(t *testing.T, file *os.File, enabled bool) {
+func SetDumpPolicy(t *testing.T, file *os.File, policy DumpPolicy) {
 	t.Helper()
 	// x/sys omits FS_NODUMP_FL from Linux's include/uapi/linux/fs.h.
 	// https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/fs.h
@@ -118,7 +136,7 @@ func SetNoDump(t *testing.T, file *os.File, enabled bool) {
 	FileControl(t, file, func(fd uintptr) {
 		flags, err := unix.IoctlGetInt(int(fd), unix.FS_IOC_GETFLAGS)
 		require.NoError(t, err)
-		if enabled {
+		if policy == ExcludeFromDump {
 			flags |= noDump
 		} else {
 			flags &^= noDump
@@ -147,7 +165,7 @@ func BlockDevice(t *testing.T) string {
 		}
 	}
 
-	require.False(t, options.Required, "block-device metadata requires a visible /dev block inode; use the privileged namespace container")
+	require.False(t, options.Required(), "block-device metadata requires a visible /dev block inode; use the privileged namespace container")
 	t.Skip("no /dev block inode is visible for metadata-only observation")
 	return ""
 }

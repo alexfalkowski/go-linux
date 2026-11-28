@@ -90,7 +90,7 @@ func pathFlags(path string, options PathOptions) uintptr {
 	if path == "" {
 		flags |= unix.AT_EMPTY_PATH
 	}
-	if options.NoFollow {
+	if options.Symlinks == NoFollowFinalSymlink {
 		flags |= unix.AT_SYMLINK_NOFOLLOW
 	}
 	return flags

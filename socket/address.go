@@ -16,12 +16,22 @@ type Address interface {
 	socketAddress() unix.Sockaddr
 }
 
+// UnixAddressMode controls how a Unix address name is interpreted.
+type UnixAddressMode uint8
+
+// UnixAddressShorthand treats a leading @ or NUL as an abstract address.
+// Other names are filesystem paths. This is the default.
+const UnixAddressShorthand UnixAddressMode = 0
+
+// LiteralPathname interprets the whole name as a filesystem path, including a
+// leading @. NUL bytes are invalid.
+const LiteralPathname UnixAddressMode = 1
+
 // UnixAddress names a Unix datagram endpoint or an unnamed Unix pair.
 // Like [net.UnixAddr] on Linux, Name "@app" selects the abstract socket whose
 // kernel name is "\x00app"; an initial NUL is also accepted. Abstract sockets
-// create no filesystem entry. With Pathname true, Name "@app" instead selects
-// the literal filesystem path @app. Pathname is an address-interpretation
-// selector, not a Linux socket option.
+// create no filesystem entry. Use LiteralPathname for literal filesystem names
+// such as "@app".
 //
 // Empty means unnamed on received addresses and is invalid for ListenUnix.
 // Preserve the complete address returned in Message.From when replying: Name
@@ -29,11 +39,10 @@ type Address interface {
 type UnixAddress struct {
 	// Name is a filesystem path or abstract socket name, limited by sockaddr_un.
 	Name string
-	// Pathname interprets Name literally as a filesystem path, including a
-	// leading @. NUL bytes are invalid. Receive and LocalAddress set this flag
-	// for leading-@ or full-length (108-byte) pathnames so replies preserve them.
-	// False preserves the @/NUL shorthand and ordinary pathname interpretation.
-	Pathname bool
+	// Interpretation selects UnixAddressShorthand or LiteralPathname. Receive
+	// and LocalAddress select LiteralPathname for leading-@ or full-length
+	// (108-byte) pathnames so replies preserve them.
+	Interpretation UnixAddressMode
 }
 
 // Network returns "unixgram".
@@ -41,8 +50,8 @@ func (a UnixAddress) Network() string {
 	return "unixgram"
 }
 
-// String returns Name without encoding Pathname. Use the complete UnixAddress,
-// rather than rebuilding it from this display string, when sending a reply.
+// String returns the display name. Use the complete UnixAddress when sending
+// a reply so the interpretation is preserved.
 func (a UnixAddress) String() string {
 	return a.Name
 }

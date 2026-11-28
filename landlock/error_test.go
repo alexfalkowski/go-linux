@@ -20,12 +20,13 @@ func TestRestrictRejectsInvalidOptionsBeforePrivilegeChange(t *testing.T) {
 	test.LockThread()
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledNet: landlock.BindTCP})
 	blocker := test.SeccompErrnoFilter(t, test.PrctlSyscall, test.ErrPermissionDenied)
-	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	for _, options := range []landlock.Options{
 		{},
-		{Synchronization: 255, NoNewPrivileges: true},
-		{Synchronization: landlock.CallingThread, NoNewPrivileges: true, Log: 1 << 31},
+		{Synchronization: 255, Privileges: landlock.SetNoNewPrivileges},
+		{Synchronization: landlock.CallingThread, Log: 1 << 31, Privileges: landlock.SetNoNewPrivileges},
+		{Synchronization: landlock.CallingThread, Privileges: 255},
 	} {
 		require.ErrorIs(t, ruleset.Restrict(options), os.ErrInvalid)
 	}
@@ -40,7 +41,7 @@ func TestABIDiscoveryPreservesPolicyDenial(t *testing.T) {
 	}
 	test.LockThread()
 	blocker := test.SeccompErrnoFilter(t, test.LandlockCreateSyscall, test.ErrPermissionDenied)
-	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	version, err := landlock.ABI()
 	require.ErrorIs(t, err, test.ErrPermissionDenied)
@@ -77,7 +78,7 @@ func TestDeniedAddPathClosesTemporaryFile(t *testing.T) {
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 	file := test.TempFile(t, 0)
 	blocker := test.SeccompErrnoFilter(t, test.LandlockAddSyscall, test.ErrPermissionDenied)
-	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 	before := test.Descriptors(t)
 
 	require.ErrorIs(t, ruleset.AddPath(file.Name(), landlock.ReadFile), test.ErrPermissionDenied)
@@ -96,7 +97,7 @@ func TestDeniedPortRulePreservesErrno(t *testing.T) {
 	test.LockThread()
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledNet: landlock.BindTCP})
 	blocker := test.SeccompErrnoFilter(t, test.LandlockAddSyscall, test.ErrPermissionDenied)
-	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	require.ErrorIs(t, ruleset.AddPort(0, landlock.BindTCP), test.ErrPermissionDenied)
 }
@@ -110,9 +111,9 @@ func TestRestrictPreservesKernelFailureWithoutFallback(t *testing.T) {
 	_, denied := test.LandlockFiles(t)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 	blocker := test.SeccompErrnoFilter(t, test.LandlockRestrictSyscall, test.ErrPermissionDenied)
-	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
-	err := ruleset.Restrict(landlock.Options{Synchronization: landlock.AllThreads, NoNewPrivileges: true})
+	err := ruleset.Restrict(landlock.Options{Synchronization: landlock.AllThreads, Privileges: landlock.SetNoNewPrivileges})
 
 	require.ErrorIs(t, err, test.ErrPermissionDenied)
 	var operation *os.SyscallError
@@ -133,9 +134,9 @@ func TestNoNewPrivilegesFailurePreventsEnforcement(t *testing.T) {
 	_, denied := test.LandlockFiles(t)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 	blocker := test.SeccompErrnoFilter(t, test.PrctlSyscall, test.ErrPermissionDenied)
-	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
-	err := ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true})
+	err := ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges})
 
 	require.ErrorIs(t, err, test.ErrPermissionDenied)
 	_, err = os.ReadFile(denied)
@@ -151,7 +152,7 @@ func TestExistingNoNewPrivilegesNeedsNoPrctl(t *testing.T) {
 	_, denied := test.LandlockFiles(t)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 	blocker := test.SeccompErrnoFilter(t, test.PrctlSyscall, test.ErrPermissionDenied)
-	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, blocker.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread}))
 
@@ -167,7 +168,7 @@ func TestLayerLimitPreservesExistingPolicy(t *testing.T) {
 	test.LockThread()
 	_, denied := test.LandlockFiles(t)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
-	options := landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}
+	options := landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}
 	for range 16 {
 		require.NoError(t, ruleset.Restrict(options))
 	}
@@ -188,8 +189,9 @@ func TestAuditOptionsRetainEnforcement(t *testing.T) {
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 
 	err := ruleset.Restrict(landlock.Options{
-		Synchronization: landlock.CallingThread, NoNewPrivileges: true,
-		Log: landlock.LogSameExecOff | landlock.LogNewExecOn | landlock.LogSubdomainsOff,
+		Synchronization: landlock.CallingThread,
+		Log:             landlock.LogSameExecOff | landlock.LogNewExecOn | landlock.LogSubdomainsOff,
+		Privileges:      landlock.SetNoNewPrivileges,
 	})
 
 	require.NoError(t, err)

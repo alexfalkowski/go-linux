@@ -101,7 +101,7 @@ func (c *Conn) Send(p []byte, to Address, files ...*os.File) (int, error) {
 // still consumes a message and reports Truncated when bytes were discarded.
 // Payload truncation returns copied bytes and Truncated without an error.
 //
-// Credentials are decoded when present (see SetPassCredentials). Ancillary
+// Credentials are decoded when present (see EnablePassCredentials). Ancillary
 // truncation or more than maxFiles rights returns EMSGSIZE and no files; all
 // received references close, including when another decoding error occurs.
 // Linux closes rights that do not fit the ancillary buffer. MSG_CMSG_CLOEXEC
@@ -271,7 +271,7 @@ func sendMessage(fd int, p, control []byte, to Address) (int, error) {
 	for {
 		var n int
 		var err error
-		if address, ok := to.(UnixAddress); ok && address.Pathname {
+		if address, ok := to.(UnixAddress); ok && address.Interpretation == LiteralPathname {
 			n, err = sendPathnameMessage(fd, p, control, address.Name)
 		} else {
 			var address unix.Sockaddr

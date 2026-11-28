@@ -29,7 +29,7 @@ func TestFallocateReservesBlocksWithoutOverwritingData(t *testing.T) {
 			require.NoError(t, err)
 			require.NoError(t, f.Sync())
 			blocksBefore := test.FileAllocatedBlocks(t, f)
-			length := int64(4 * test.FileAllocationBlockSize(t, f, false))
+			length := int64(4 * test.FileAllocationBlockSize(t, f, test.BasicAllocation))
 
 			require.NoError(t, file.Fallocate(f, scenario.mode, 0, length))
 
@@ -49,7 +49,7 @@ func TestFallocateReservesBlocksWithoutOverwritingData(t *testing.T) {
 
 func TestFallocatePunchesAHoleWithoutChangingSize(t *testing.T) {
 	f := test.TempFile(t, 0)
-	block := test.FileAllocationBlockSize(t, f, false)
+	block := test.FileAllocationBlockSize(t, f, test.BasicAllocation)
 	original := bytes.Repeat([]byte("a"), 3*block)
 	_, err := f.Write(original)
 	require.NoError(t, err)
@@ -78,7 +78,7 @@ func TestFallocateZerosAndAllocatesTheRange(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			f := test.TempFile(t, 0)
-			block := test.FileAllocationBlockSize(t, f, true)
+			block := test.FileAllocationBlockSize(t, f, test.ZeroOrShiftAllocation)
 			original := bytes.Repeat([]byte("a"), 2*block)
 			_, err := f.Write(original)
 			require.NoError(t, err)
@@ -99,7 +99,7 @@ func TestFallocateZerosAndAllocatesTheRange(t *testing.T) {
 
 func TestFallocateZeroRangePreservesAllocatedBlocks(t *testing.T) {
 	f := test.TempFile(t, 0)
-	block := test.FileAllocationBlockSize(t, f, true)
+	block := test.FileAllocationBlockSize(t, f, test.ZeroOrShiftAllocation)
 	_, err := f.Write(bytes.Repeat([]byte("a"), block))
 	require.NoError(t, err)
 	require.NoError(t, f.Sync())
@@ -116,7 +116,7 @@ func TestFallocateZeroRangePreservesAllocatedBlocks(t *testing.T) {
 
 func TestFallocateCollapsesARangeAndShiftsLaterData(t *testing.T) {
 	f := test.TempFile(t, 0)
-	block := test.FileAllocationBlockSize(t, f, true)
+	block := test.FileAllocationBlockSize(t, f, test.ZeroOrShiftAllocation)
 	first := bytes.Repeat([]byte("a"), block)
 	middle := bytes.Repeat([]byte("b"), block)
 	last := bytes.Repeat([]byte("c"), block)
@@ -132,7 +132,7 @@ func TestFallocateCollapsesARangeAndShiftsLaterData(t *testing.T) {
 
 func TestFallocateInsertsAHoleAndShiftsLaterData(t *testing.T) {
 	f := test.TempFile(t, 0)
-	block := test.FileAllocationBlockSize(t, f, true)
+	block := test.FileAllocationBlockSize(t, f, test.ZeroOrShiftAllocation)
 	first := bytes.Repeat([]byte("a"), block)
 	last := bytes.Repeat([]byte("b"), block)
 	_, err := f.Write(bytes.Join([][]byte{first, last}, nil))
@@ -150,7 +150,7 @@ func TestFallocateInsertsAHoleAndShiftsLaterData(t *testing.T) {
 
 func TestFallocatePreservesTheFilesystemAlignmentError(t *testing.T) {
 	f := test.TempFile(t, 0)
-	block := test.FileAllocationBlockSize(t, f, true)
+	block := test.FileAllocationBlockSize(t, f, test.ZeroOrShiftAllocation)
 	original := bytes.Repeat([]byte("a"), 3*block)
 	_, err := f.Write(original)
 	require.NoError(t, err)

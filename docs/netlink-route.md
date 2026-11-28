@@ -9,7 +9,7 @@ Good for network inventory, interface configuration, and routing agents that rea
 ## Read current state
 
 ```go
-conn, err := route.Open(netlink.Options{StrictCheck: true})
+conn, err := route.Open(netlink.Options{Validation: netlink.StrictValidation})
 if err != nil {
     return err
 }

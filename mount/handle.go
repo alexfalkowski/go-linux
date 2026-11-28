@@ -26,6 +26,15 @@ const NoExec Attributes = unix.MOUNT_ATTR_NOEXEC
 
 const supportedAttributes = ReadOnly | NoSUID | NoDev | NoExec
 
+// AttributeScope selects which mounts receive an attribute change.
+type AttributeScope uint8
+
+// MountOnly changes the named mount and is the default scope.
+const MountOnly AttributeScope = 0
+
+// MountTree changes the named mount and its child mounts (AT_RECURSIVE).
+const MountTree AttributeScope = 1
+
 // AttributeChange changes restrictions on a handle's mount. Zero requests no
 // change. Unknown or overlapping Set/Clear bits match os.ErrInvalid.
 type AttributeChange struct {
@@ -33,8 +42,8 @@ type AttributeChange struct {
 	Set Attributes
 	// Clear removes restrictions without changing other attributes.
 	Clear Attributes
-	// Recursive applies the change to the entire tree rather than its root.
-	Recursive bool
+	// Scope selects MountOnly or MountTree.
+	Scope AttributeScope
 }
 
 // CloneFlags controls which mounts Clone copies. Zero copies only the named
@@ -144,17 +153,18 @@ func (h *Handle) Attributes() (Attributes, error) {
 }
 
 // SetAttributes uses mount_setattr with AT_EMPTY_PATH on this handle. Unknown
-// bits and overlapping masks fail before the syscall. Kernel failures can
+// bits, overlapping masks, and invalid scope fail before the syscall. Kernel failures can
 // follow partial application; no rollback is promised. Other attributes,
 // propagation, and ID mappings are left untouched.
 func (h *Handle) SetAttributes(change AttributeChange) error {
 	unknownAttributes := (change.Set|change.Clear) & ^supportedAttributes != 0
 	conflictingAttributes := change.Set&change.Clear != 0
-	if unknownAttributes || conflictingAttributes {
+	invalidScope := change.Scope > MountTree
+	if unknownAttributes || conflictingAttributes || invalidScope {
 		return &os.PathError{Op: "mount_setattr", Path: "mount", Err: os.ErrInvalid}
 	}
 	flags := uint(unix.AT_EMPTY_PATH)
-	if change.Recursive {
+	if change.Scope == MountTree {
 		flags |= unix.AT_RECURSIVE
 	}
 	return fileControl(h.file, "mount_setattr", "mount", func(fd int) error {

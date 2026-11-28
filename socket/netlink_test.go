@@ -64,7 +64,7 @@ func TestNetlinkSendRejectsEmptyPayload(t *testing.T) {
 func TestNetlinkRejectsUnixCredentialOperations(t *testing.T) {
 	conn := test.NetlinkSocket(t, socket.Usersock)
 
-	require.ErrorIs(t, conn.SetPassCredentials(true), os.ErrInvalid)
+	require.ErrorIs(t, conn.EnablePassCredentials(), os.ErrInvalid)
 	_, err := conn.PeerCredentials()
 	require.ErrorIs(t, err, os.ErrInvalid)
 }
@@ -138,17 +138,25 @@ func TestNetlinkBackpressureReturnsEAGAINAndAllowsRetry(t *testing.T) {
 	require.Equal(t, "retry", string(buffer[:message.N]))
 }
 
-func TestNetlinkAcknowledgementOptionsCanBeToggled(t *testing.T) {
-	conn, err := socket.OpenNetlink(socket.Route, socket.NetlinkAddress{})
-	require.NoError(t, err)
-	test.Cleanup(t, conn)
-	for _, enabled := range []bool{true, false} {
-		require.NoError(t, conn.SetExtendedAck(enabled))
+func TestNetlinkExtendedAcknowledgementsCanBeToggled(t *testing.T) {
+	conn := test.NetlinkSocket(t, socket.Route)
 
-		require.NoError(t, conn.SetCapAck(enabled))
+	require.NoError(t, conn.EnableExtendedAck())
+	require.NoError(t, conn.DisableExtendedAck())
+}
 
-		require.NoError(t, conn.SetStrictCheck(enabled))
-	}
+func TestNetlinkCappedAcknowledgementsCanBeToggled(t *testing.T) {
+	conn := test.NetlinkSocket(t, socket.Route)
+
+	require.NoError(t, conn.EnableCapAck())
+	require.NoError(t, conn.DisableCapAck())
+}
+
+func TestNetlinkStrictValidationCanBeToggled(t *testing.T) {
+	conn := test.NetlinkSocket(t, socket.Route)
+
+	require.NoError(t, conn.EnableStrictCheck())
+	require.NoError(t, conn.DisableStrictCheck())
 }
 
 func TestNetlinkSocketBuffersCanBeSet(t *testing.T) {

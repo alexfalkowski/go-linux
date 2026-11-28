@@ -22,12 +22,21 @@ const Create SetMode = unix.XATTR_CREATE
 // Replace requires an existing attribute (XATTR_REPLACE); otherwise ENODATA.
 const Replace SetMode = unix.XATTR_REPLACE
 
+// SymlinkMode selects how a final symlink is resolved.
+type SymlinkMode uint8
+
+// FollowFinalSymlink resolves the link to its target and is the default.
+const FollowFinalSymlink SymlinkMode = 0
+
+// NoFollowFinalSymlink selects the link itself.
+const NoFollowFinalSymlink SymlinkMode = 1
+
 // PathOptions controls only the final component of an at-style lookup.
 // Zero follows symlinks. These options do not confine untrusted paths.
 type PathOptions struct {
-	// NoFollow selects the final symlink itself. Intermediate links are followed.
-	// An empty path selects the borrowed handle itself regardless of this option.
-	NoFollow bool
+	// Symlinks selects FollowFinalSymlink or NoFollowFinalSymlink. Intermediate
+	// links are followed, and an empty path selects the borrowed handle itself.
+	Symlinks SymlinkMode
 }
 
 // Get returns the complete value of name on file, including an unlinked file.
@@ -52,7 +61,7 @@ func Get(file *os.File, name string) ([]byte, error) {
 // Linux interface: https://github.com/torvalds/linux/blob/v7.0/fs/xattr.c
 func GetAt(dir *os.File, path, name string, options PathOptions) ([]byte, error) {
 	var value []byte
-	err := control(dir, func(fd int) error {
+	err := control(dir, options, func(fd int) error {
 		var err error
 		value, err = readValue(func(buffer []byte) (int, error) {
 			return valueAt(unix.SYS_GETXATTRAT, fd, path, name, buffer, Upsert, options)
@@ -84,7 +93,7 @@ func SetAt(dir *os.File, path, name string, value []byte, mode SetMode, options 
 	var err error
 	switch mode {
 	case Upsert, Create, Replace:
-		err = control(dir, func(fd int) error {
+		err = control(dir, options, func(fd int) error {
 			_, err := valueAt(unix.SYS_SETXATTRAT, fd, path, name, value, mode, options)
 			return err
 		})
@@ -113,7 +122,7 @@ func List(file *os.File) ([]string, error) {
 // At-style interface: https://github.com/torvalds/linux/blob/v7.0/fs/xattr.c
 func ListAt(dir *os.File, path string, options PathOptions) ([]string, error) {
 	var value []byte
-	err := control(dir, func(fd int) error {
+	err := control(dir, options, func(fd int) error {
 		var err error
 		value, err = readValue(func(buffer []byte) (int, error) {
 			return listAt(fd, path, buffer, options)
@@ -148,7 +157,7 @@ func Remove(file *os.File, name string) error {
 //
 // Linux interface: https://github.com/torvalds/linux/blob/v7.0/fs/xattr.c
 func RemoveAt(dir *os.File, path, name string, options PathOptions) error {
-	err := control(dir, func(fd int) error {
+	err := control(dir, options, func(fd int) error {
 		return removeAt(fd, path, name, options)
 	})
 	if err != nil {
@@ -157,7 +166,10 @@ func RemoveAt(dir *os.File, path, name string, options PathOptions) error {
 	return nil
 }
 
-func control(file *os.File, operation func(int) error) error {
+func control(file *os.File, options PathOptions, operation func(int) error) error {
+	if options.Symlinks > NoFollowFinalSymlink {
+		return os.ErrInvalid
+	}
 	conn, err := file.SyscallConn()
 	if err != nil {
 		return err

@@ -56,7 +56,7 @@ func MountNamespace(t *testing.T) bool {
 	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
 	if unavailable {
 		reason := "profile=namespaces operation=clone(user,mount)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 
 		t.Skip(reason)
 	}
@@ -64,7 +64,7 @@ func MountNamespace(t *testing.T) bool {
 	var exit *exec.ExitError
 	missingMountPrerequisite := errors.As(err, &exit) && exit.ExitCode() == 77 && strings.Contains(string(output), "mount prerequisite unavailable: operation=")
 	if missingMountPrerequisite {
-		require.False(t, options.Required, string(output))
+		require.False(t, options.Required(), string(output))
 
 		t.Skip(string(output))
 	}
@@ -120,7 +120,7 @@ func NetworkNamespace(t *testing.T) bool {
 	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
 	if unavailable {
 		reason := "profile=namespaces operation=clone(user,network)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 	require.NoError(t, err, "isolated network test: %s", output)
@@ -159,7 +159,7 @@ func NamespaceProcess(t *testing.T) bool {
 	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
 	if unavailable {
 		reason := "profile=namespaces operation=clone(user)+uid/gid-mapping; prerequisite=permitted namespaces/mappings/quota: " + err.Error()
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 	require.NoError(t, err, "isolated namespace scenario: %s", output)

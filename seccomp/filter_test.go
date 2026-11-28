@@ -73,7 +73,7 @@ func TestNewCopiesProgramStorage(t *testing.T) {
 	require.NoError(t, err)
 	instructions[0].K = uint32(seccomp.Errno) | uint32(test.ErrPermissionDenied)
 
-	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	group, err := test.ProcessGroup(0)
 	require.NoError(t, err, "changing the source must not change the constructed filter")
@@ -87,7 +87,7 @@ func TestMaximumProgramLoads(t *testing.T) {
 	test.LockThread()
 	filter := test.SeccompMaximumFilter(t)
 
-	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 }
 
 func TestFilterTreeExhaustionDoesNotAttachRejectedFilter(t *testing.T) {
@@ -102,7 +102,7 @@ func TestFilterTreeExhaustionDoesNotAttachRejectedFilter(t *testing.T) {
 	// on both supported architectures, even without inherited filters.
 	// https://man7.org/linux/man-pages/man2/seccomp.2.html
 	for loaded := range 9 {
-		err := filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true})
+		err := filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges})
 		if err != nil {
 			require.ErrorIs(t, err, test.ErrNoMemory)
 			require.Positive(t, loaded, "at least one maximum-sized filter must load before exhaustion")
@@ -114,7 +114,7 @@ func TestFilterTreeExhaustionDoesNotAttachRejectedFilter(t *testing.T) {
 	require.FailNow(t, "filter stacking did not reach the kernel's aggregate instruction limit")
 }
 
-func TestLoadRejectsInvalidScopeBeforeChangingState(t *testing.T) {
+func TestLoadRejectsInvalidOptionsBeforeChangingState(t *testing.T) {
 	if !test.SeccompProcess(t) {
 		return
 	}
@@ -123,18 +123,24 @@ func TestLoadRejectsInvalidScopeBeforeChangingState(t *testing.T) {
 	before := test.NoNewPrivileges(t)
 	filters := test.SeccompFilterCount(t)
 
-	for _, scope := range []seccomp.Synchronization{0, 3, 255} {
-		err := filter.Load(seccomp.Options{Synchronization: scope, NoNewPrivileges: true})
-		require.ErrorIs(t, err, os.ErrInvalid, "scope=%d", scope)
+	for _, options := range []seccomp.Options{
+		{Privileges: seccomp.SetNoNewPrivileges},
+		{Synchronization: 3, Privileges: seccomp.SetNoNewPrivileges},
+		{Synchronization: 255, Privileges: seccomp.SetNoNewPrivileges},
+		{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges, Flags: 1 << 31},
+		{Synchronization: seccomp.CallingThread, Privileges: 255},
+	} {
+		err := filter.Load(options)
+		require.ErrorIs(t, err, os.ErrInvalid, "options=%+v", options)
 	}
 
-	require.Equal(t, before, test.NoNewPrivileges(t), "invalid scope must not set no-new-privileges")
-	require.Equal(t, filters, test.SeccompFilterCount(t), "invalid scope must not attach a filter")
+	require.Equal(t, before, test.NoNewPrivileges(t), "invalid options must not set no-new-privileges")
+	require.Equal(t, filters, test.SeccompFilterCount(t), "invalid options must not attach a filter")
 }
 
 func TestLoadRejectsNilAndZeroFilters(t *testing.T) {
 	for _, filter := range []*seccomp.Filter{nil, {}} {
-		require.ErrorIs(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}), os.ErrInvalid)
+		require.ErrorIs(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}), os.ErrInvalid)
 	}
 }
 
@@ -162,7 +168,7 @@ func TestGuardRejectsX32(t *testing.T) {
 	if os.Args[len(os.Args)-1] == marker {
 		test.LockThread()
 		filter := test.SeccompFilter(t, []seccomp.Instruction{{Code: seccomp.Return, K: uint32(seccomp.Allow)}})
-		require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+		require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 		_, err := os.Stdout.WriteString("loaded\n")
 		require.NoError(t, err)
 		test.InvokeX32(t)

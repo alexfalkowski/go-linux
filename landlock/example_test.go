@@ -52,7 +52,7 @@ func ExampleRuleset_Restrict() { //nolint:testableexamples // Executed by TestRe
 
 	if err := ruleset.Restrict(landlock.Options{
 		Synchronization: landlock.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      landlock.SetNoNewPrivileges,
 	}); err != nil {
 		panic(err)
 	}

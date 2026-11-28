@@ -23,7 +23,7 @@ func TestFilesystemRulesAllowOnlySelectedHierarchy(t *testing.T) {
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile | landlock.WriteFile})
 	require.NoError(t, ruleset.AddPath(filepath.Dir(allowed), landlock.ReadFile))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	data, err := os.ReadFile(allowed)
 	require.NoError(t, err)
@@ -53,7 +53,7 @@ func TestAddFileRetainsObjectAfterBorrowerCloseAndRename(t *testing.T) {
 	require.NoError(t, os.Rename(allowed, renamed))
 	require.NoError(t, os.WriteFile(allowed, []byte("replacement"), 0o600))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 	require.NoError(t, ruleset.Close())
 
 	data, err := os.ReadFile(renamed)
@@ -75,7 +75,7 @@ func TestAlreadyOpenFileRemainsReadable(t *testing.T) {
 	opened := test.OpenFile(t, denied)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	buffer := make([]byte, 6)
 	count, err := opened.Read(buffer)
@@ -94,7 +94,7 @@ func TestUnhandledMetadataRemainsAvailable(t *testing.T) {
 	_, denied := test.LandlockFiles(t)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	info, err := os.Stat(denied)
 	require.NoError(t, err)
@@ -112,7 +112,7 @@ func TestTruncateIsIndependentOfWritePermission(t *testing.T) {
 	require.NoError(t, ruleset.AddPath(filepath.Dir(allowed), landlock.WriteFile|landlock.Truncate))
 	require.NoError(t, ruleset.AddPath(denied, landlock.WriteFile))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	require.NoError(t, os.Truncate(allowed, 1))
 	require.ErrorIs(t, os.Truncate(denied, 1), test.ErrPermissionDenied)
@@ -147,7 +147,7 @@ func TestCrossDirectoryRenameRequiresRefer(t *testing.T) {
 			require.NoError(t, ruleset.AddPath(filepath.Dir(allowed), access))
 			require.NoError(t, ruleset.AddPath(filepath.Dir(denied), access))
 
-			require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+			require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 			err := os.Rename(allowed, denied)
 			if allowRefer {
@@ -168,7 +168,7 @@ func TestLaterRulesDoNotRelaxAppliedDomain(t *testing.T) {
 	allowed, denied := test.LandlockFiles(t)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ReadFile})
 	require.NoError(t, ruleset.AddPath(allowed, landlock.ReadFile))
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	require.NoError(t, ruleset.AddPath(denied, landlock.ReadFile))
 	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread}))
@@ -191,7 +191,7 @@ func TestDirectoryReadRulesEnforceSelectedHierarchy(t *testing.T) {
 
 	// Keep TempDir cleanup on the unrestricted test thread after the worker exits.
 	test.LockedThread(t, func() {
-		require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+		require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 		entries, err := os.ReadDir(filepath.Dir(allowed))
 		require.NoError(t, err)

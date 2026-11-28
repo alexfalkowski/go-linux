@@ -4,14 +4,14 @@
 //
 // Map borrows an os.File during construction; Anonymous needs no file. Close
 // releases the mapping independently of the source file. Region implements
-// io.Closer, with explicit Private/Shared modes, page protection, and advice.
+// io.Closer, with explicit Private/Shared modes, page protection, advice, and
+// whole-region synchronization.
 //
 // Bytes returns a borrowed slice, not managed Go storage. All access must stop
 // before Close, and callers must coordinate access with Protect and Advise.
-// Escaped slices cannot be made safe after unmapping. File truncation or
-// protection violations can cause fatal faults; mapping neither freezes a file
-// nor provides a memory-safety or persistence guarantee.
+// Coordinate writers with Sync to control which writes are included. File
+// truncation or protection violations can cause fatal faults.
 //
-// The package targets Linux 7.0+; required runtime verification uses arm64.
+// The package targets Linux 7.0+ on native amd64 and arm64.
 // See docs/verification-limits.md in the repository for execution limits.
 package mmap

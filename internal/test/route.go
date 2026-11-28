@@ -14,7 +14,7 @@ import (
 // Route opens a typed routing connection with cleanup and bounded request I/O.
 func Route(t *testing.T) *route.Conn {
 	t.Helper()
-	conn, err := route.Open(netlink.Options{StrictCheck: true})
+	conn, err := route.Open(netlink.Options{Validation: netlink.StrictValidation})
 	require.NoError(t, err)
 	Cleanup(t, conn)
 	require.NoError(t, conn.SetDeadline(time.Now().Add(5*time.Second)))

@@ -51,7 +51,7 @@ The comparison uses the [versioned Linux 7.0 UAPI](https://github.com/torvalds/l
 | [memfd](memfd.md) | Implemented | Anonymous files, all six named baseline seals, executable opt-in, and independently owned mappings; ordinary I/O uses Go file behavior. Huge-page creation and opaque-file passing are omitted. |
 | [eventfd](eventfd.md) | Implemented | Accumulating/semaphore counters, record I/O, deadlines, and typed epoll registration. Go channels and mutexes remain the ordinary in-process choice. |
 | [timerfd](timerfd.md) | Implemented | Relative/absolute timers on three explicit clocks, periodic counts, realtime cancellation, deadlines, and epoll registration. Wakeup/alarm clocks and tick injection are omitted. |
-| [mmap](mmap.md) | Partial | Owned anonymous/file mappings, shared/private views, protection, and five advice choices. Synchronization, locking/residency, resizing, and further advice are absent. |
+| [mmap](mmap.md) | Partial | Owned anonymous/file mappings, shared/private views, protection, whole-region synchronization, and five advice choices. Locking/residency, resizing, and further advice are absent. |
 | [pidfd](pidfd.md) | Partial | Stable acquired process identity, signals, exit observation, and designated child reaping. Target file duplication, wait-many, orphan-adoption controls, and wait-any reaping are absent. |
 | [mount](mount.md) | Partial | Flag/string configuration, detached creation/cloning, four restrictions, attachment, diagnostics, and unmount. Structured discovery, other parameter forms, reconfiguration, propagation/ID mapping, and root activation are absent. |
 | [epoll](epoll.md) | Implemented | Owned registrations, identity-preserving readiness, level/edge/one-shot modes, bounded waits, and close interruption. Ordinary Go I/O retains runtime polling; signal-mask waits and power/exclusive controls are omitted. |
@@ -89,7 +89,7 @@ Existing `file`, `mmap`, `mount`, `pidfd`, `seccomp`, and the new scheduling/IPC
 
 ### Compose storage and worker lifecycles
 
-Use `os.File`/`os.Root` for ordinary storage, `ReadAt`/`WriteAt` for positioned I/O, `Truncate` for logical sizing, and `File.Sync` for its standard synchronization contract. Add `file` for restricted lookup, metadata, atomic rename, log preallocation, or sparse-range changes. Use `xattr` for byte metadata and `mmap` for mapped indexes or shared buffers. Shared mapped writes do not supply msync or crash consistency. Explicit data/filesystem synchronization, locks, and mapping controls remain the partial coverage identified above. Asynchronous requests are outside the current API. Database layout, transactions, logging, and recovery policy belong to the application.
+Use `os.File`/`os.Root` for ordinary storage, `ReadAt`/`WriteAt` for positioned I/O, `Truncate` for logical sizing, and `File.Sync` for its standard synchronization contract. Add `file` for restricted lookup, metadata, atomic rename, log preallocation, or sparse-range changes. Use `xattr` for byte metadata and `mmap` for mapped indexes or shared buffers. Call `Region.Sync` to wait for shared mapped data writeback. Database layout, transaction ordering, logging, and crash recovery belong to the application.
 
 Use `os/exec` to start workers, Go pipes/message sockets for coordination, and `pidfd.OpenProcess` for independent stable exit observation/signaling. Keep `Cmd.Wait` as the reaper for a command; use `Process.Wait` from pidfd only with a separately designated eligible-child reaping owner. Counters/timers can join epoll through typed registration; procfs/sysfs supply non-atomic observations. A complete worker-tree supervisor still needs orphan adoption/reaping; CPU deadline scheduling and typed resource limits need the absent `sched`/`rlimit` facilities. Closing handles does not terminate workers, flush mappings, undo restrictions, or remove persistent kernel objects.
 
@@ -117,6 +117,22 @@ Linux errno identity is preserved through `errors.Is`/`errors.As`; error text is
 The Linux floor and supported native architectures are part of the v1 support contract. The Go minimum follows maintained Go releases and may advance in a documented minor release; consumers should check `go.mod` before upgrading. Verification evidence applies to its recorded revision and environment, not every kernel configuration or future toolchain.
 
 Internal packages and implementation dependencies are outside the stable library API; callers must not depend on upstream procfs types leaking through project packages.
+
+### Migrate boolean selectors
+
+The named selectors below replace their boolean counterparts. This is an incompatible Go API change and requires a new major module path before release. Zero options continue to select the previous defaults.
+
+| Previous selector | Replacement |
+| --- | --- |
+| `file.StatOptions.NoFollow`, `NoAutomount` | `Flags: file.StatNoFollow`, `file.StatNoAutomount`, or `file.StatNoFollow \| file.StatNoAutomount` |
+| `xattr.PathOptions.NoFollow` | `Symlinks: xattr.NoFollowFinalSymlink` |
+| `memfd.Options.Executable` | `Execution: memfd.AllowExecute` |
+| `mount.AttributeChange.Recursive` | `Scope: mount.MountTree` |
+| `netlink.Options.StrictCheck` | `Validation: netlink.StrictValidation` |
+| `seccomp.Options.NoNewPrivileges`, `landlock.Options.NoNewPrivileges` | `Privileges: seccomp.SetNoNewPrivileges` or `landlock.SetNoNewPrivileges`, respectively |
+| `seccomp.Options.Log` | `Flags: seccomp.LogNonAllow` |
+| `socket.UnixAddress.Pathname` | `Interpretation: socket.LiteralPathname` |
+| `Conn.SetPassCredentials`, `SetExtendedAck`, `SetCapAck`, `SetStrictCheck` | Use the corresponding `Enable…()` or `Disable…()` method. |
 
 ## Deliberate boundaries
 

@@ -61,7 +61,7 @@ func (fixture loopFilesystem) setup(t *testing.T) string {
 	for _, tool := range append([]string{"mkfs." + fixture.name, "mount"}, fixture.tools...) {
 		if _, err := exec.LookPath(tool); err != nil {
 			require.ErrorIs(t, err, exec.ErrNotFound)
-			require.False(t, options.Required, "%s%s: %v", loopFilesystemPrerequisite, tool, err)
+			require.False(t, options.Required(), "%s%s: %v", loopFilesystemPrerequisite, tool, err)
 			t.Skipf("%s%s: %v", loopFilesystemPrerequisite, tool, err)
 		}
 	}
@@ -80,12 +80,12 @@ func (fixture loopFilesystem) setup(t *testing.T) string {
 	require.NoError(t, ctx.Err(), "%s scenario exceeded its time bound", fixture.name)
 	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
 	if unavailable {
-		require.False(t, options.Required, "%s isolation requires permitted clone(mount) with initial-user-namespace CAP_SYS_ADMIN: %v", fixture.name, err)
+		require.False(t, options.Required(), "%s isolation requires permitted clone(mount) with initial-user-namespace CAP_SYS_ADMIN: %v", fixture.name, err)
 		t.Skipf("%s mount namespace unavailable: %v", fixture.name, err)
 	}
 	require.NoError(t, err, "scenario requires a private %s loop mount: %s", fixture.name, output)
 	if strings.Contains(string(output), loopFilesystemPrerequisite) {
-		require.False(t, options.Required, "%s", output)
+		require.False(t, options.Required(), "%s", output)
 		t.Skip(string(output))
 	}
 	require.Contains(t, string(output), "verified isolated "+fixture.name+" operations")

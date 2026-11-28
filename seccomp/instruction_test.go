@@ -42,7 +42,7 @@ func TestComparisonsSelectBothBranches(t *testing.T) {
 				{Code: seccomp.Return, K: uint32(seccomp.Allow)},
 			})
 
-			require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+			require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 			_, err := test.ProcessGroup(0)
 			if scenario.denied {
@@ -71,7 +71,7 @@ func TestAndAndJumpPreserveInstructionSemantics(t *testing.T) {
 		{Code: seccomp.Return, K: uint32(seccomp.Errno) | uint32(test.ErrPermissionDenied)},
 	})
 
-	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	_, err := test.ProcessGroup(0)
 	require.ErrorIs(t, err, test.ErrPermissionDenied, "AND must retain the low byte and Jump must skip both intermediate returns")
@@ -88,7 +88,7 @@ func TestGuardRestoresZeroAccumulator(t *testing.T) {
 		{Code: seccomp.Return, K: uint32(seccomp.Allow)},
 	})
 
-	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	_, err := test.ProcessGroup(0)
 	require.NoError(t, err)

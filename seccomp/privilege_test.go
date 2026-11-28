@@ -21,7 +21,7 @@ func TestLoadSetsNoNewPrivilegesFromZero(t *testing.T) {
 	require.False(t, test.NoNewPrivileges(t), "the transition must start with the bit unset")
 	filter := test.SeccompErrnoFilter(t, test.ProcessGroupSyscall, test.ErrPermissionDenied)
 
-	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 
 	require.True(t, test.NoNewPrivileges(t), "Load must set the requested bit")
 	_, err := test.ProcessGroup(0)
@@ -77,7 +77,7 @@ func TestAllThreadsPropagatesNoNewPrivilegesFromZero(t *testing.T) {
 	require.False(t, test.NoNewPrivileges(t))
 	filter := test.SeccompErrnoFilter(t, test.ProcessGroupSyscall, test.ErrPermissionDenied)
 
-	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.AllThreads, NoNewPrivileges: true}))
+	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.AllThreads, Privileges: seccomp.SetNoNewPrivileges}))
 
 	require.True(t, test.NoNewPrivileges(t), "the loading thread must receive the bit")
 	require.True(t, probePrivileges(), "TSYNC must set the bit on the existing sibling")

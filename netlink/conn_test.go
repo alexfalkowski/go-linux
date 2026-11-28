@@ -56,7 +56,7 @@ func TestLiveMultipartDumpDrainsTerminalReply(t *testing.T) {
 }
 
 func TestLiveRouteDumpPreservesKernelRecords(t *testing.T) {
-	conn := test.Netlink(t, socket.Route, netlink.Options{StrictCheck: true})
+	conn := test.Netlink(t, socket.Route, netlink.Options{Validation: netlink.StrictValidation})
 	response, err := conn.Dump(test.NetlinkLinkDump())
 	require.NoError(t, err)
 	require.True(t, response.Complete, "a strict route dump must reach DONE")
@@ -171,7 +171,14 @@ func TestExpiredSendDeadlineLeavesConnectionUsable(t *testing.T) {
 }
 
 func TestInvalidConnectionOptionsReturnNoOwner(t *testing.T) {
-	for _, options := range []netlink.Options{{DatagramSize: -1}, {DatagramSize: 15}, {DatagramSize: 1 << 31}, {MaxResponseBytes: -1}, {MaxResponseBytes: 15}} {
+	for _, options := range []netlink.Options{
+		{DatagramSize: -1},
+		{DatagramSize: 15},
+		{DatagramSize: 1 << 31},
+		{MaxResponseBytes: -1},
+		{MaxResponseBytes: 15},
+		{Validation: 255},
+	} {
 		conn, err := netlink.Open(socket.Generic, options)
 		test.NoResource(t, conn, err, os.ErrInvalid)
 	}
@@ -203,7 +210,7 @@ func TestInvalidFamilyNamesLeaveConnectionUsable(t *testing.T) {
 }
 
 func TestFamilyDiscoveryRejectsRouteProtocol(t *testing.T) {
-	route := test.Netlink(t, socket.Route, netlink.Options{StrictCheck: true})
+	route := test.Netlink(t, socket.Route, netlink.Options{Validation: netlink.StrictValidation})
 	_, err := route.LookupFamily("nlctrl")
 	require.ErrorIs(t, err, os.ErrInvalid)
 	_, err = route.Families()
@@ -258,7 +265,7 @@ func TestNetlinkControlFailuresReleaseAcquiredSocket(t *testing.T) {
 		before := test.Descriptors(t)
 		test.RefuseNetlinkControl(t, strings.TrimPrefix(argument, prefix))
 
-		conn, err := netlink.Open(socket.Generic, netlink.Options{StrictCheck: true})
+		conn, err := netlink.Open(socket.Generic, netlink.Options{Validation: netlink.StrictValidation})
 		test.NoResource(t, conn, err, test.ErrOperationNotPermitted)
 		require.Equal(t, before, test.Descriptors(t), "failed setup must close the acquired socket")
 		return

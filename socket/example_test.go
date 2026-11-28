@@ -90,7 +90,7 @@ func ExampleOpenNetlink() {
 	}
 	defer conn.Close()
 
-	if err := conn.SetExtendedAck(true); err != nil {
+	if err := conn.EnableExtendedAck(); err != nil {
 		panic(err)
 	}
 

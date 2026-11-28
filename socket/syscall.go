@@ -87,14 +87,14 @@ func unixAddress(name []byte) UnixAddress {
 	if end := bytes.IndexByte(name, 0); end >= 0 {
 		name = name[:end]
 	}
-	return UnixAddress{
-		Name:     string(name),
-		Pathname: len(name) > 0 && (name[0] == '@' || len(name) == len(unix.RawSockaddrUnix{}.Path)),
+	if len(name) > 0 && (name[0] == '@' || len(name) == len(unix.RawSockaddrUnix{}.Path)) {
+		return UnixAddress{Name: string(name), Interpretation: LiteralPathname}
 	}
+	return UnixAddress{Name: string(name)}
 }
 
 func bind(fd int, address Address) error {
-	if path, ok := address.(UnixAddress); ok && path.Pathname {
+	if path, ok := address.(UnixAddress); ok && path.Interpretation == LiteralPathname {
 		raw, size := pathnameAddress(path.Name)
 		_, _, errno := unix.Syscall(unix.SYS_BIND, uintptr(fd), uintptr(unsafe.Pointer(&raw)), uintptr(size))
 		if errno != 0 {

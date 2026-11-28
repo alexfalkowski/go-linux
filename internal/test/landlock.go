@@ -37,7 +37,7 @@ func LandlockAvailable(t *testing.T, minimum int) int {
 	if errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.EOPNOTSUPP) {
 		options, optionErr := testenv.FromEnvironment()
 		require.NoError(t, optionErr)
-		require.False(t, options.Required, "required Landlock unavailable: %v", err)
+		require.False(t, options.Required(), "required Landlock unavailable: %v", err)
 		t.Skipf("Landlock unavailable: %v", err)
 	}
 	require.NoError(t, err)
@@ -152,7 +152,7 @@ func LandlockDeviceNamespace(t *testing.T) bool {
 	require.NoError(t, ctx.Err(), "Landlock device scenario exceeded its time bound")
 	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
 	if unavailable {
-		require.False(t, options.Required, "device isolation requires permitted clone(mount) and applicable CAP_SYS_ADMIN: %v", err)
+		require.False(t, options.Required(), "device isolation requires permitted clone(mount) and applicable CAP_SYS_ADMIN: %v", err)
 		t.Skipf("device mount namespace unavailable: %v", err)
 	}
 	require.NoError(t, err, "isolated Landlock device scenario: %s", output)
@@ -195,7 +195,7 @@ func LandlockReadThread(t *testing.T, path string, initial *landlock.Ruleset) fu
 		LockThread()
 		defer close(done)
 		if initial != nil {
-			if err := initial.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}); err != nil {
+			if err := initial.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}); err != nil {
 				ready <- err
 				return
 			}
@@ -254,12 +254,21 @@ func UDPPeer(t *testing.T) *net.UDPConn {
 	return peer
 }
 
+// UnixPeerKind selects the address namespace of a test-owned Unix socket.
+type UnixPeerKind uint8
+
+// PathnamePeer creates a filesystem socket.
+const PathnamePeer UnixPeerKind = 0
+
+// AbstractPeer creates an abstract socket.
+const AbstractPeer UnixPeerKind = 1
+
 // LandlockUnixPeer creates a test-owned socket inside or outside a domain. Temp
 // directory uniqueness also supplies the abstract name; no host socket is used.
-func LandlockUnixPeer(t *testing.T, abstract bool) *net.UnixConn {
+func LandlockUnixPeer(t *testing.T, kind UnixPeerKind) *net.UnixConn {
 	t.Helper()
 	name := filepath.Join(t.TempDir(), "socket")
-	if abstract {
+	if kind == AbstractPeer {
 		name = "@" + name
 	}
 	peer, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: name, Net: "unixgram"})
