@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E04 — Add whole-file advisory locking**.
+Next: **E05 — Add POSIX and open-file-description record locks**.
 
-Resume note: E03 passed the required rootless file suite on native amd64 and the isolated mount suite in an emulated amd64 Linux 7.0.0-1016-aws guest. Confirm the final revision's required CircleCI jobs, including positive `SyncFS` execution on disposable XFS on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E04.
+Resume note: E04 passed the required rootless file suite directly on ext4 and in the pinned-profile container on native amd64 Linux 7.3. Confirm the final E04 revision's required CircleCI jobs, including successful `Flock` scenarios on native Linux 7.0 amd64 and arm64 and merged coverage, before starting E05.
 
 ## Objective and scope
 
@@ -35,7 +35,7 @@ These scenarios set the scope; they do not require this module to implement an e
 
 | Items | Application or container outcome and home | Required verification route |
 | --- | --- | --- |
-| E04–E07 | Extend `file` for advisory locking, metadata, and temporary/direct-I/O files. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
+| E05–E07 | Extend `file` for byte-range locking, metadata, and temporary/direct-I/O files. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
 | E08–E10 | Extend `mmap` for synchronized mapped indexes, locked buffers, residency, resizing, and advice. | Rootless mmap suite with bounded fault/limit children; filesystem fixtures where required. |
 | E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
 | E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
@@ -128,12 +128,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E04 — Add whole-file advisory locking
-
-- **Implement:** Add concrete shared/exclusive/unlock and nonblocking [flock](https://man7.org/linux/man-pages/man2/flock.2.html) operations with a clear borrowed-file or owned-lock lifecycle. Keep the underlying open-file-description semantics visible.
-- **Contracts:** Explain duplicate versus separately opened handles, lock conversion, final-reference release, and filesystem-dependent network-lock behavior. Blocking acquisition must not gain a fictitious context/deadline; avoid keeping an inaccessible duplicate alive after a reported unlock/close.
-- **Evidence:** Use bounded competing processes to prove exclusion, shared locks, nonblocking contention, explicit unlock, descriptor duplication semantics, and cleanup after process exit. Keep destructive/shared-network-filesystem scenarios out of ordinary local tests.
 
 #### E05 — Add POSIX and open-file-description record locks
 

@@ -7,7 +7,8 @@
 // validity masks, birth time, attributes, and mount identity. Rename exposes
 // renameat2 replacement and exchange modes. Fallocate reserves storage and
 // changes file ranges. Fadvise and Readahead guide kernel caching. Fdatasync
-// synchronizes file data, and SyncFS synchronizes the containing filesystem.
+// synchronizes file data, SyncFS synchronizes the containing filesystem, and
+// Flock applies whole-file advisory locks.
 // The module supports Linux 7.0 or later. Filesystem and security policy can
 // still reject individual operations.
 //

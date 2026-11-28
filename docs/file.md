@@ -1,6 +1,6 @@
 # file
 
-`github.com/alexfalkowski/go-linux/file` adds Linux path-resolution, metadata, rename, allocation, access advice, and synchronization controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. The module supports Linux 7.0+ and the Go floor in `go.mod`. Filesystem support and security policy can vary by operation.
+`github.com/alexfalkowski/go-linux/file` adds Linux path-resolution, metadata, rename, allocation, access advice, synchronization, and whole-file locking controls to standard `*os.File` handles. Use `os` and `os.Root` for ordinary file operations. The module supports Linux 7.0+ and the Go floor in `go.mod`. Filesystem support and security policy can vary by operation.
 
 ## Good for
 
@@ -105,11 +105,19 @@ After writing a record to an existing write-ahead log, use `file.Fdatasync(log)`
 
 Use `file.SyncFS(dir)` for an explicit filesystem-wide checkpoint. A regular file or directory handle identifies the containing filesystem. The operation can synchronize other files and report writeback errors unrelated to the supplied file. Both synchronization calls preserve the input's offset and can block. Coordinate transaction ordering and recovery in the application. [Linux 7.0 synchronization implementation](https://github.com/torvalds/linux/blob/v7.0/fs/sync.c)
 
+## Whole-file advisory locking
+
+Have each cooperating writer open the shared log segment with `os.O_APPEND` so writes start at the end of the file. Call `file.Flock(segment, file.LockExclusive|file.LockNonblock)` before appending. Handle `EWOULDBLOCK` through `errors.Is` if another worker holds an incompatible lock. Readers can acquire `LockShared` while other readers hold shared locks. Call `file.Flock(segment, file.Unlock)` to release the lock and keep using the file. Pass exactly one operation, with `LockNonblock` optional. See the [executable example](../file/example_test.go).
+
+Each open file description has one lock. Duplicated or inherited descriptors that refer to the same description share it. Unlocking through any of them releases it, as does closing the final reference. Separate opens compete even within one process. Switching between shared and exclusive mode can release the old lock before acquiring the new one. A failed conversion can leave the file unlocked. [Linux 7.0 locking implementation](https://github.com/torvalds/linux/blob/v7.0/fs/locks.c)
+
+Blocking acquisition can occupy an OS thread. Closing the file or setting a Go deadline does not interrupt a pending call. `LockNonblock` prevents waiting for a conflicting lock. Local locks are advisory and require all participants to cooperate. NFS and SMB can emulate `flock` with whole-file byte-range locks, depending on the server and mount options. NFS can require write access for an exclusive lock, and SMB can enforce the lock on I/O through separate opens. [Linux flock(2)](https://man7.org/linux/man-pages/man2/flock.2.html)
+
 ## Coverage boundary
 
 The [Linux 7.0 UAPI](https://github.com/torvalds/linux/tree/v7.0/include/uapi/linux) includes more than these operations. `Open` accepts only the flags listed above; `O_TMPFILE`, `O_DIRECT`, `O_SYNC`, and `O_DSYNC` are not exposed. There is no operation to publish an unnamed temporary inode. Ordinary creation, I/O, logical resizing, and `File.Sync` remain standard Go operations.
 
-The allocation API accepts the modes in the table. Whole-file and record locking and `sync_file_range` are outside the current surface. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
+The allocation API accepts the modes in the table. POSIX and open-file-description byte-range locks and `sync_file_range` are outside the current surface. [Linux 7.0 allocation definitions](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/falloc.h)
 
 The accepted statx request mask is exactly `MaskBasic|MaskBirthTime|MaskMountID|MaskUniqueMountID`, including individual basic bits. Direct-I/O memory/offset/read alignment, subvolume identity, and atomic-write unit/segment limits from [stat.h](https://github.com/torvalds/linux/blob/v7.0/include/uapi/linux/stat.h) have no fields or request constants here. Returned unknown mask/attribute bits survive, including an atomic-write attribute bit without a named constant; that does not expose the omitted fields or implement atomic data writes. Whiteout rename is absent. Reflink creation, extent inspection, and device control are outside this surface.
 
