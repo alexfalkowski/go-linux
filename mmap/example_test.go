@@ -87,3 +87,20 @@ func ExampleRegion_Sync() {
 
 	// Output: index-v1
 }
+
+func ExampleRegion_Residency() {
+	pageSize := os.Getpagesize()
+	region, err := mmap.Anonymous(pageSize+1, mmap.Options{Protection: mmap.Read | mmap.Write})
+	if err != nil {
+		panic(err)
+	}
+	defer region.Close()
+
+	snapshot, err := region.Residency()
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("pages: %d\n", len(snapshot.Resident))
+
+	// Output: pages: 2
+}

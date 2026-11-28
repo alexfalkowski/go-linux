@@ -295,8 +295,8 @@ func (r *Region) Sync(options SyncOptions) error {
 // Close unmaps the complete original region using [munmap(2)], invalidating all
 // escaped views. Callers must stop all view access before calling it. On error
 // the owner retains its mapping so the error can be addressed and Close retried.
-// The source file has an independent lifetime. Call Sync before Close to wait
-// for shared file writeback.
+// Unmapping releases the region's memory locks. The source file has an
+// independent lifetime. Call Sync before Close to wait for shared file writeback.
 //
 // [munmap(2)]: https://man7.org/linux/man-pages/man2/mmap.2.html
 func (r *Region) Close() error {

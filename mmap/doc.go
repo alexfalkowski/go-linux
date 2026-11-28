@@ -4,8 +4,8 @@
 //
 // Map borrows an os.File during construction; Anonymous needs no file. Close
 // releases the mapping independently of the source file. Region implements
-// io.Closer, with explicit Private/Shared modes, page protection, advice, and
-// whole-region synchronization.
+// io.Closer, with explicit Private/Shared modes, page protection, advice,
+// synchronization, memory locking, and page residency inspection.
 //
 // Bytes returns a borrowed slice, not managed Go storage. All access must stop
 // before Close, and callers must coordinate access with Protect and Advise.

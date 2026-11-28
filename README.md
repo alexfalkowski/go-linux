@@ -64,7 +64,7 @@ Choose a package by what you want to build. The tool links illustrate practical 
 | [memfd](docs/memfd.md) | Preparing memory-backed payloads with optional irreversible seals | [PipeWire media buffers](https://docs.pipewire.org/page_library.html) |
 | [eventfd](docs/eventfd.md) | Signaling workers or processes through a readiness loop | [QEMU device notifications](https://www.qemu.org/docs/master/devel/multi-process.html) |
 | [timerfd](docs/timerfd.md) | Scheduling readiness events against an explicit Linux clock | [systemd event timers](https://github.com/systemd/systemd/blob/main/src/libsystemd/sd-event/sd-event.c) |
-| [mmap](docs/mmap.md) | Reading files through memory mappings or sharing mapped regions | [SQLite mapped reads](https://sqlite.org/mmap.html) |
+| [mmap](docs/mmap.md) | Reading files through memory mappings, sharing mapped regions, and locking mapped buffers in memory | [SQLite mapped reads](https://sqlite.org/mmap.html) |
 | [pidfd](docs/pidfd.md) | Observing and signaling a stable process identity | [systemd child monitoring](https://www.freedesktop.org/software/systemd/man/latest/sd_event_add_child.html) |
 | [mount](docs/mount.md) | Preparing and attaching filesystems inside an isolated namespace | [runc filesystem setup](https://github.com/opencontainers/runc/blob/main/THREAT_MODEL.md) |
 | [epoll](docs/epoll.md) | Waiting for multiple kernel I/O sources in an explicit event loop | [Redis readiness backend](https://github.com/redis/redis/blob/unstable/src/ae_epoll.c) |

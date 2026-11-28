@@ -356,6 +356,13 @@ func TestUnavailableRegionsRejectAccess(t *testing.T) {
 			require.ErrorIs(t, region.Advise(255), scenario.err, "lifetime errors precede advice validation")
 			require.ErrorIs(t, region.Sync(mmap.SyncOptions{}), scenario.err)
 			require.ErrorIs(t, region.Sync(mmap.SyncOptions{Mode: 255}), scenario.err, "lifetime errors precede sync validation")
+			require.ErrorIs(t, region.Lock(mmap.LockImmediate), scenario.err)
+			require.ErrorIs(t, region.Lock(255), scenario.err, "lifetime errors precede lock mode validation")
+			require.ErrorIs(t, region.Unlock(), scenario.err)
+
+			snapshot, err := region.Residency()
+			require.ErrorIs(t, err, scenario.err)
+			require.Equal(t, mmap.Residency{}, snapshot)
 		})
 	}
 }

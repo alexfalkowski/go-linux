@@ -21,7 +21,7 @@ All rows assume the supported platform/toolchain and permission for the relevant
 | Facility | Additional requirements |
 | --- | --- |
 | [memfd](memfd.md) | Memory-backed file creation/sealing permitted; sealing state can irreversibly forbid later operations |
-| [mmap](mmap.md) | Readable source for file mappings, write permission for shared writable mappings, and coordinated mapping/truncation lifetime |
+| [mmap](mmap.md) | Readable source for file mappings, write permission for shared writable mappings, coordinated mapping/truncation lifetime, and sufficient `RLIMIT_MEMLOCK` or privilege for memory locking |
 | [eventfd](eventfd.md), [timerfd](timerfd.md), [epoll](epoll.md) | Descriptor creation, polling, and duplication permitted; ordinary operations need no extra capabilities; timer clocks remain explicit |
 | [pidfd](pidfd.md) | Process-handle operations permitted; signaling follows target permissions, and reaping requires an eligible child and one designated reaper |
 | [file](file.md) | Path access and filesystem support for the selected operation. Allocation requires a writable handle, and readahead requires a readable handle. |
@@ -51,7 +51,7 @@ The comparison uses the [versioned Linux 7.0 UAPI](https://github.com/torvalds/l
 | [memfd](memfd.md) | Implemented | Anonymous files, all six named baseline seals, executable opt-in, and independently owned mappings; ordinary I/O uses Go file behavior. Huge-page creation and opaque-file passing are omitted. |
 | [eventfd](eventfd.md) | Implemented | Accumulating/semaphore counters, record I/O, deadlines, and typed epoll registration. Go channels and mutexes remain the ordinary in-process choice. |
 | [timerfd](timerfd.md) | Implemented | Relative/absolute timers on three explicit clocks, periodic counts, realtime cancellation, deadlines, and epoll registration. Wakeup/alarm clocks and tick injection are omitted. |
-| [mmap](mmap.md) | Partial | Owned anonymous/file mappings, shared/private views, protection, whole-region synchronization, and five advice choices. Locking/residency, resizing, and further advice are absent. |
+| [mmap](mmap.md) | Partial | Owned anonymous/file mappings, shared/private views, protection, synchronization, immediate and on-fault locks, page residency snapshots, and five advice choices. Resizing and further advice are absent. |
 | [pidfd](pidfd.md) | Partial | Stable acquired process identity, signals, exit observation, and designated child reaping. Target file duplication, wait-many, orphan-adoption controls, and wait-any reaping are absent. |
 | [mount](mount.md) | Partial | Flag/string configuration, detached creation/cloning, four restrictions, attachment, diagnostics, and unmount. Structured discovery, other parameter forms, reconfiguration, propagation/ID mapping, and root activation are absent. |
 | [epoll](epoll.md) | Implemented | Owned registrations, identity-preserving readiness, level/edge/one-shot modes, bounded waits, and close interruption. Ordinary Go I/O retains runtime polling; signal-mask waits and power/exclusive controls are omitted. |
