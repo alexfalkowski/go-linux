@@ -104,3 +104,41 @@ func ExampleRegion_Residency() {
 
 	// Output: pages: 2
 }
+
+func ExampleRegion_Resize() {
+	pageSize := os.Getpagesize()
+	region, err := mmap.Anonymous(pageSize, mmap.Options{Protection: mmap.Read | mmap.Write})
+	if err != nil {
+		panic(err)
+	}
+	defer region.Close()
+
+	copy(region.Bytes(), "index-v1")
+
+	// Pause all readers and writers, then reacquire the view after Resize.
+	if err := region.Resize(2 * pageSize); err != nil {
+		panic(err)
+	}
+
+	index := region.Bytes()
+	copy(index[pageSize:], "new entry")
+	fmt.Println(string(index[:8]), string(index[pageSize:pageSize+9]))
+
+	// Output: index-v1 new entry
+}
+
+func ExampleRegion_Advise() {
+	region, err := mmap.Anonymous(os.Getpagesize(), mmap.Options{Protection: mmap.Read | mmap.Write})
+	if err != nil {
+		panic(err)
+	}
+	defer region.Close()
+
+	if err := region.Advise(mmap.PopulateWrite); err != nil {
+		panic(err)
+	}
+	copy(region.Bytes(), "ready")
+	fmt.Println(string(region.Bytes()[:5]))
+
+	// Output: ready
+}

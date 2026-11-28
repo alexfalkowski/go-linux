@@ -350,6 +350,7 @@ func TestUnavailableRegionsRejectAccess(t *testing.T) {
 			require.Nil(t, region.Bytes())
 
 			require.ErrorIs(t, region.Close(), scenario.err)
+			require.ErrorIs(t, region.Resize(0), scenario.err, "lifetime errors precede resize length validation")
 			require.ErrorIs(t, region.Protect(mmap.Read), scenario.err)
 			require.ErrorIs(t, region.Protect(255), scenario.err, "lifetime errors precede protection validation")
 			require.ErrorIs(t, region.Advise(mmap.Normal), scenario.err)
@@ -431,7 +432,7 @@ func TestInvalidMemoryAccessCausesAnAddressFault(t *testing.T) {
 		return
 	}
 
-	for _, scenario := range []string{"default no access", "protected no access", "read only write", "closed view", "truncated file"} {
+	for _, scenario := range []string{"default no access", "protected no access", "read only write", "closed view", "truncated file", "guarded last page"} {
 		t.Run(scenario, func(t *testing.T) {
 			ctx, command := test.Command(t, "TestInvalidMemoryAccessCausesAnAddressFault", "-test.v", "--", "mmap-fault="+scenario)
 
@@ -454,13 +455,14 @@ func checkMemoryFault(t *testing.T, scenario string) {
 
 	region := test.Anonymous(t, os.Getpagesize()+1, mmap.Options{})
 	view := region.Bytes()
+	var readOffset int
 
 	switch scenario {
 	case "default no access":
 	case "protected no access":
 		require.NoError(t, region.Protect(mmap.Read|mmap.Write))
 
-		view[0] = 1
+		view[readOffset] = 1
 
 		require.NoError(t, region.Protect(mmap.NoAccess))
 	case "read only write":
@@ -468,9 +470,16 @@ func checkMemoryFault(t *testing.T, scenario string) {
 	case "closed view":
 		require.NoError(t, region.Protect(mmap.Read|mmap.Write))
 
-		view[0] = 1
+		view[readOffset] = 1
 
 		require.NoError(t, region.Close())
+	case "guarded last page":
+		require.NoError(t, region.Protect(mmap.Read|mmap.Write))
+
+		readOffset = len(view) - 1
+		view[readOffset] = 42
+
+		require.NoError(t, region.Advise(mmap.GuardInstall))
 	case "truncated file":
 		file := test.TempFile(t, int64(os.Getpagesize()))
 		region = test.Mapping(t, file, 0, os.Getpagesize(), mmap.Options{Protection: mmap.Read})
@@ -495,7 +504,7 @@ func checkMemoryFault(t *testing.T, scenario string) {
 	if scenario == "read only write" {
 		view[len(view)-1] = 1
 	} else {
-		t.Logf("unexpectedly read %d", view[0])
+		t.Logf("unexpectedly read %d", view[readOffset])
 	}
 
 	runtime.KeepAlive(view)

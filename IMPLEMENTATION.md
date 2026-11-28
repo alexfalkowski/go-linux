@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E10 — Add mapped-region resizing and further advice**.
+Next: **E11 — Add structured mount discovery**.
 
-Resume note: E09 passed the required rootless mmap suite on native amd64 Linux 7.3. Before starting E10, confirm the final E09 revision's required CircleCI jobs, including immediate and on-fault locking, residency, child-local `RLIMIT_MEMLOCK` enforcement, unlock, and close cleanup in both native Linux 7.0 rootless jobs, plus merged coverage.
+Resume note: Before starting E11, confirm the final E10 revision's required CircleCI jobs. Both native Linux 7.0 rootless jobs must exercise mapped-region resizing and advice, including the bounded relocation, locked-grow failure, and guard-fault cases. Confirm the coverage merge.
 
 ## Objective and scope
 
@@ -35,7 +35,6 @@ These scenarios set the scope; they do not require this module to implement an e
 
 | Items | Application or container outcome and home | Required verification route |
 | --- | --- | --- |
-| E10 | Extend `mmap` to resize mappings and apply further memory advice. | Rootless mmap suite with bounded fault children and filesystem fixtures where required. |
 | E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
 | E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
 | E14a | Add orphan adoption and reaping for worker trees and container init; proposed `process` home, retaining `pidfd` for identified targets. | Rootless bounded subreaper children plus PID-namespace init scenarios in the namespace lane. |
@@ -125,14 +124,6 @@ For a new facility whose live operations do not fit the existing lanes, its firs
 New required native jobs must retain environment JSON, test events, JUnit, and raw atomic coverage, participate in coverage staging/merging, and gate the existing downstream workflow. Reports stay directly in `test/reports/`; use filename prefixes when retaining multiple local runs. Do not leave newly added jobs out of the coverage job's dependencies or merger facility list. A representative software/kernel scenario must run even where optional hardware or configuration-specific variants are unavailable. If no available runner can establish a promised core operation, keep that item pending and identify the required runner.
 
 ## Remaining work
-
-### Existing file and memory facilities
-
-#### E10 — Add mapped-region resizing and further advice
-
-- **Implement:** Add a deliberate [mremap](https://man7.org/linux/man-pages/man2/mremap.2.html) operation and expand typed `madvise` choices against the baseline: lazy free/removal, fork/dump controls, merge/huge-page advice, cold/pageout, read/write population, locked-page discard, and guard installation/removal where their mapping requirements can be represented. Preserve the original mapping if remapping fails and maintain the pinned `x/sys` mapper's bookkeeping correctly. Explain concrete unsupported combinations; hardware poison/offline and remote-process advice remain excluded because they exceed this region owner's scope.
-- **Contracts:** Define when all existing slices/pointers become invalid and how callers obtain the new view. Do not approximate remapping by reslicing. Fixed-address or alias-producing modes require a separately sound ownership contract; retain explicit exclusions for modes the region owner cannot represent safely.
-- **Evidence:** Verify grow/shrink, retained contents, failed-remap ownership, view lengths, and final unmapping in bounded children where stale access can fault. Exercise added advice without promising kernel heuristics or testing undefined stale-slice use in the main test process.
 
 ### Existing mount, process, and security facilities
 

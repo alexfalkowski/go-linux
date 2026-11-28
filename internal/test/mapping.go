@@ -3,12 +3,14 @@
 package test
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/alexfalkowski/go-linux/capability"
 	"github.com/alexfalkowski/go-linux/internal/testenv"
@@ -129,7 +131,7 @@ func RequireMemoryLock(t *testing.T, size int) {
 	var limit unix.Rlimit
 	require.NoError(t, unix.Getrlimit(unix.RLIMIT_MEMLOCK, &limit))
 	if limit.Cur < uint64(size) {
-		skipMemoryLock(t, fmt.Sprintf("fixture requires RLIMIT_MEMLOCK of at least %d bytes, got %d", size, limit.Cur))
+		unavailableMemoryFixture(t, fmt.Sprintf("fixture requires RLIMIT_MEMLOCK of at least %d bytes, got %d", size, limit.Cur))
 	}
 }
 
@@ -154,7 +156,7 @@ func MemoryLockLimitProcess(t *testing.T, size int) bool {
 	sets, err := capability.Current()
 	require.NoError(t, err)
 	if sets.Effective&capability.IPCLock != 0 {
-		skipMemoryLock(t, "effective CAP_IPC_LOCK can bypass RLIMIT_MEMLOCK")
+		unavailableMemoryFixture(t, "effective CAP_IPC_LOCK can bypass RLIMIT_MEMLOCK")
 	}
 
 	ctx, command := Command(t, t.Name(), "-test.v", "--", marker)
@@ -190,10 +192,109 @@ func LockedMemory(t *testing.T) int {
 	return 0
 }
 
-func skipMemoryLock(t *testing.T, reason string) {
+func unavailableMemoryFixture(t *testing.T, reason string) {
 	t.Helper()
 	options, err := testenv.FromEnvironment()
 	require.NoError(t, err)
 	require.False(t, options.Required(), reason)
 	t.Skip(reason)
+}
+
+// MappingAddress obtains the base address of a live mapping for ABI checks.
+func MappingAddress(view []byte) uintptr {
+	return reflect.ValueOf(view).Pointer()
+}
+
+// BlockMappingGrowth keeps the next virtual page occupied without replacing
+// an existing mapping. View must begin at a page boundary and fill one page.
+func BlockMappingGrowth(t *testing.T, view []byte) uintptr {
+	t.Helper()
+
+	page := unsafe.Add(unsafe.Pointer(unsafe.SliceData(view)), len(view))
+	flags := unix.MAP_PRIVATE | unix.MAP_ANONYMOUS | unix.MAP_FIXED_NOREPLACE
+	length := uintptr(len(view))
+	blocker, err := unix.MmapPtr(-1, 0, page, length, unix.PROT_NONE, flags)
+	if err != nil {
+		require.ErrorIs(t, err, unix.EEXIST, "reserve the page immediately after the mapping")
+		return MappingAddress(view)
+	}
+	t.Cleanup(func() {
+		require.NoError(t, unix.MunmapPtr(blocker, length))
+	})
+	require.Equal(t, page, blocker)
+	return MappingAddress(view)
+}
+
+// RequireUnmappedPage independently checks the former address of a page with
+// mincore. Capture the address while the view is live and call in a bounded child.
+func RequireUnmappedPage(t *testing.T, address uintptr) {
+	t.Helper()
+
+	var residency byte
+	_, _, errno := unix.Syscall(unix.SYS_MINCORE, address, uintptr(os.Getpagesize()), uintptr(unsafe.Pointer(&residency)))
+	require.Equal(t, unix.ENOMEM, errno, "the former page must be unmapped")
+}
+
+// MappingStatus reads one /proc/self/smaps field for the live region holding
+// view. The mapping must stay live throughout the inspection.
+func MappingStatus(t *testing.T, view []byte, field string) string {
+	t.Helper()
+
+	data := memoryFixtureFile(t, "/proc/self/smaps", "per-mapping procfs statistics")
+
+	address := uint64(MappingAddress(view))
+	inMapping := false
+	for line := range strings.SplitSeq(data, "\n") {
+		label, _, _ := strings.Cut(line, " ")
+		if start, end, ok := strings.Cut(label, "-"); ok {
+			low, err := strconv.ParseUint(start, 16, 64)
+			require.NoError(t, err)
+
+			high, err := strconv.ParseUint(end, 16, 64)
+			require.NoError(t, err)
+
+			inMapping = address >= low && address < high
+		} else if inMapping {
+			if value, ok := strings.CutPrefix(line, field+":"); ok {
+				return strings.TrimSpace(value)
+			}
+		}
+	}
+
+	require.FailNow(t, "live mapping field absent from smaps", "%s", field)
+	return ""
+}
+
+// RequireKSM checks that Linux exposes kernel same-page merging.
+func RequireKSM(t *testing.T) {
+	t.Helper()
+	memoryFixtureFile(t, "/sys/kernel/mm/ksm/run", "kernel same-page merging")
+}
+
+// TransparentHugePageSize returns the kernel's PMD-sized huge page in bytes.
+func TransparentHugePageSize(t *testing.T) int {
+	t.Helper()
+	setting := memoryFixtureFile(t, "/sys/kernel/mm/transparent_hugepage/hpage_pmd_size", "transparent huge pages")
+	size, err := strconv.Atoi(strings.TrimSpace(setting))
+	require.NoError(t, err)
+	require.Greater(t, size, os.Getpagesize())
+	return size
+}
+
+// RequireBoundedHugePage limits the transparent huge-page fixture to 64 MiB.
+func RequireBoundedHugePage(t *testing.T, size int) {
+	t.Helper()
+	if size > 32<<20 {
+		unavailableMemoryFixture(t, "collapse fixture requires a PMD page size of at most 32 MiB")
+	}
+}
+
+func memoryFixtureFile(t *testing.T, path, facility string) string {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if errors.Is(err, os.ErrNotExist) {
+		unavailableMemoryFixture(t, facility+" is unavailable")
+	}
+	require.NoError(t, err)
+	return string(data)
 }

@@ -47,32 +47,6 @@ type Options struct {
 	Protection Protection
 }
 
-// Advice selects one whole-region [madvise(2)] operation, not a bitmask.
-// Advice can affect performance and, for DontNeed, the mapped contents.
-//
-// [madvise(2)]: https://man7.org/linux/man-pages/man2/madvise.2.html
-type Advice uint8
-
-// Normal restores the default access-pattern advice (MADV_NORMAL).
-const Normal Advice = unix.MADV_NORMAL
-
-// Random suggests that accesses will be random (MADV_RANDOM).
-const Random Advice = unix.MADV_RANDOM
-
-// Sequential suggests that accesses will be sequential (MADV_SEQUENTIAL).
-const Sequential Advice = unix.MADV_SEQUENTIAL
-
-// WillNeed suggests bringing pages into memory (MADV_WILLNEED). Success does
-// not promise that all pages are resident or that later access cannot block.
-const WillNeed Advice = unix.MADV_WILLNEED
-
-// DontNeed discards this mapping's resident pages (MADV_DONTNEED). Subsequent
-// access to private anonymous pages sees zeros; private file changes are lost
-// and pages are reloaded from the file. Shared pages are repopulated from their
-// backing object, which need not be freed immediately. This does not truncate
-// the file or promise writeback, durability, or zeroing of shared contents.
-const DontNeed Advice = unix.MADV_DONTNEED
-
 // SyncMode selects the writeback behavior for Sync. Zero selects SyncWait.
 // The modes are mutually exclusive.
 type SyncMode uint8
@@ -168,7 +142,11 @@ func Anonymous(length int, options Options) (*Region, error) {
 		return nil, &os.PathError{Op: "mmap", Path: "anonymous", Err: err}
 	}
 
-	return &Region{data: data}, nil
+	region := &Region{data: data}
+	if options.Mode == Shared {
+		region.sharedAnonymousPages = 1 + (length-1)/os.Getpagesize()
+	}
+	return region, nil
 }
 
 // Region owns one complete mapping. Do not copy a Region after first use.
@@ -177,28 +155,70 @@ func Anonymous(length int, options Options) (*Region, error) {
 // Bytes returns nil and all other methods, including Close, match os.ErrClosed.
 //
 // Methods serialize their operations, but returned slices escape that lock.
-// Callers must coordinate ALL slice use with Close, Protect, and Advise, and
-// synchronize conflicting memory accesses. Coordinate writes with Sync to
+// Callers must coordinate ALL slice use with Resize, Close, Protect, and Advise,
+// and synchronize conflicting memory accesses. Coordinate writes with Sync to
 // control which changes are included. A concurrent Bytes call does not keep
 // its result mapped. There is no finalizer: unmapping is explicit.
 type Region struct {
-	data   []byte
-	mu     sync.Mutex
-	closed bool
+	data                 []byte
+	sharedAnonymousPages int // Original backing size in pages, zero for other mappings.
+	mu                   sync.Mutex
+	closed               bool
 }
 
 // Bytes returns a borrowed view with length and capacity equal to the requested
 // mapping length. It does not copy or check page permissions. Normal Go bounds
 // checks apply; page rounding does not permit extending the slice.
 //
-// Every view, subslice, or pointer becomes invalid after successful Close.
-// Access then can fault or silently corrupt an unrelated mapping at a reused
-// address. Keeping a slice or Region reachable does not prevent explicit Close.
+// Every view, subslice, or pointer becomes invalid after successful Resize or
+// Close. Access then can fault or silently corrupt an unrelated mapping at a
+// reused address. Keeping a slice or Region reachable cannot pin the mapping.
 func (r *Region) Bytes() []byte {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	return r.data
+}
+
+// Resize sets the region's byte length through [mremap(2)]. Linux may
+// relocate the mapping. The retained prefix keeps its contents and protection.
+// Linux rounds both lengths up to pages. Shrinking releases only whole pages,
+// and growing within the last mapped page may expose existing contents.
+//
+// Stop using every borrowed slice and pointer before Resize. On success, even
+// if the address or length did not change, discard those views and call Bytes
+// for the new view. Resize can block. It leaves the size of any backing file
+// unchanged. Before accessing a grown file mapping, arrange sufficient backing
+// storage so access to whole pages beyond EOF cannot fault.
+//
+// Owner-state errors take precedence. A nonpositive length or a shared
+// anonymous length beyond the original page-rounded backing size matches
+// os.ErrInvalid. On failure, the original mapping and its views remain valid
+// with their existing protections, and kernel errors preserve their errno.
+// Growing a locked region is subject to RLIMIT_MEMLOCK.
+//
+// [mremap(2)]: https://man7.org/linux/man-pages/man2/mremap.2.html
+func (r *Region) Resize(length int) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err := r.stateError(); err != nil {
+		return &os.PathError{Op: "mremap", Path: "mmap", Err: err}
+	}
+	if length <= 0 {
+		return &os.PathError{Op: "mremap", Path: "mmap", Err: os.ErrInvalid}
+	}
+	requestedPages := 1 + (length-1)/os.Getpagesize()
+	if r.sharedAnonymousPages > 0 && requestedPages > r.sharedAnonymousPages {
+		return &os.PathError{Op: "mremap", Path: "mmap", Err: os.ErrInvalid}
+	}
+	data, err := unix.Mremap(r.data, length, unix.MREMAP_MAYMOVE)
+	if err != nil {
+		return &os.PathError{Op: "mremap", Path: "mmap", Err: err}
+	}
+
+	r.data = data
+	return nil
 }
 
 // Protect changes permissions on all pages intersecting the region through
@@ -221,32 +241,6 @@ func (r *Region) Protect(protection Protection) error {
 	}
 	if err := unix.Mprotect(r.data, int(protection)); err != nil {
 		return &os.PathError{Op: "mprotect", Path: "mmap", Err: err}
-	}
-
-	return nil
-}
-
-// Advise applies one supported advice to all pages intersecting the region
-// through [madvise(2)]. Unknown values match os.ErrInvalid without a syscall;
-// owner-state errors take precedence. Kernel errors preserve errno and may
-// follow partial application. Advice is synchronous as a syscall and may block;
-// no context, deadline, or residency guarantee is offered.
-//
-// [madvise(2)]: https://man7.org/linux/man-pages/man2/madvise.2.html
-func (r *Region) Advise(advice Advice) error {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	if err := r.stateError(); err != nil {
-		return &os.PathError{Op: "madvise", Path: "mmap", Err: err}
-	}
-	switch advice {
-	case Normal, Random, Sequential, WillNeed, DontNeed:
-	default:
-		return &os.PathError{Op: "madvise", Path: "mmap", Err: os.ErrInvalid}
-	}
-	if err := unix.Madvise(r.data, int(advice)); err != nil {
-		return &os.PathError{Op: "madvise", Path: "mmap", Err: err}
 	}
 
 	return nil
@@ -292,7 +286,7 @@ func (r *Region) Sync(options SyncOptions) error {
 	return nil
 }
 
-// Close unmaps the complete original region using [munmap(2)], invalidating all
+// Close unmaps the complete current region using [munmap(2)], invalidating all
 // escaped views. Callers must stop all view access before calling it. On error
 // the owner retains its mapping so the error can be addressed and Close retried.
 // Unmapping releases the region's memory locks. The source file has an
