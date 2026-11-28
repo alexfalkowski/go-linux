@@ -177,6 +177,46 @@ func ExampleFdatasync() {
 	// Output: log data synchronized
 }
 
+func ExampleFlock() {
+	path, err := os.MkdirTemp("", "locked-segment-*")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(path)
+
+	name := filepath.Join(path, "segment")
+	if err := os.WriteFile(name, []byte("first record\n"), 0o600); err != nil {
+		panic(err)
+	}
+
+	// Each worker opens the same file in append mode before taking a lock.
+	segment, err := os.OpenFile(name, os.O_WRONLY|os.O_APPEND, 0)
+	if err != nil {
+		panic(err)
+	}
+	defer segment.Close()
+
+	if err := file.Flock(segment, file.LockExclusive|file.LockNonblock); err != nil {
+		panic(err)
+	}
+	if _, err := segment.WriteString("second record\n"); err != nil {
+		panic(err)
+	}
+	if err := file.Flock(segment, file.Unlock); err != nil {
+		panic(err)
+	}
+
+	contents, err := os.ReadFile(name)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Print(string(contents))
+
+	// Output:
+	// first record
+	// second record
+}
+
 func ExampleFallocate_unshareRange() {
 	segment, err := os.CreateTemp("", "working-copy-*.db")
 	if err != nil {

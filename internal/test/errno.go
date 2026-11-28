@@ -19,6 +19,9 @@ const ErrAddressInUse = syscall.EADDRINUSE
 // ErrTryAgain preserves Linux EAGAIN for exact error assertions.
 const ErrTryAgain = syscall.EAGAIN
 
+// ErrWouldBlock preserves Linux EWOULDBLOCK for nonblocking lock contention.
+const ErrWouldBlock = syscall.EWOULDBLOCK
+
 // ErrBadDescriptor preserves Linux EBADF for exact error assertions.
 const ErrBadDescriptor = syscall.EBADF
 
