@@ -10,6 +10,8 @@ Add Linux mechanisms that the standard library does not express; reuse ordinary 
 
 Use familiar resource names and operations: `New` creates, `Open` acquires by identity, `Adopt` consumes ownership, and `Close` releases a local resource. Independent flag bits use typed masks; standalone mutually exclusive modes use enums. Use named option fields when they clarify settings of different kinds. Preserve conventional Go/Linux flag combinations rather than replacing masks solely to avoid `|`. Document zero options and reject unknown input bits or contradictory combinations. Preserve unknown output bits so inspection does not silently discard newer kernel information.
 
+Behavior selectors use named values or operations so a caller can read the selected policy directly. This applies to option fields as well as positional arguments. A mode can distinguish a preserved default from an explicit choice, and a named operation can make a distinct side effect visible. Keep `bool` for predicates, observed state, and required interface signatures. The approved migration replaces the original boolean selectors directly. See the [caller migration](../../support.md#migrate-boolean-selectors) for the new expressions and release boundary.
+
 Facility owners keep descriptors private. Typed operations perform borrowing, duplication, and polling internally; exported raw callbacks, descriptor accessors, and embedded files would make those implementation details permanent caller responsibilities. Selected standard interfaces remain available where their contracts fit. The `file` package deliberately borrows and returns standard files because it adds individual file operations rather than another resource owner.
 
 ## Ownership and lifetime

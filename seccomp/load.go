@@ -24,26 +24,41 @@ const CallingThread Synchronization = 1
 // have a compatible filter tree; failures never fall back to CallingThread.
 const AllThreads Synchronization = 2
 
+// PrivilegePolicy selects the no-new-privileges transition before loading.
+type PrivilegePolicy uint8
+
+// PreserveNoNewPrivileges leaves the bit as it is. Loading then requires the
+// bit already set or effective CAP_SYS_ADMIN in the caller's user namespace.
+const PreserveNoNewPrivileges PrivilegePolicy = 0
+
+// SetNoNewPrivileges irreversibly sets PR_SET_NO_NEW_PRIVS before loading. The
+// bit remains set on failure and successful AllThreads propagates it.
+const SetNoNewPrivileges PrivilegePolicy = 1
+
+// LoadFlags requests additional kernel behavior when attaching a filter.
+type LoadFlags uint32
+
+// LogNonAllow requests SECCOMP_FILTER_FLAG_LOG for non-Allow results.
+// Audit delivery depends on host configuration.
+const LogNonAllow LoadFlags = unix.SECCOMP_FILTER_FLAG_LOG
+
 // Options controls irreversible loading. The zero value is invalid because
-// Synchronization must be explicit. NoNewPrivileges and Log default to false.
+// Synchronization must be explicit. By default, Load preserves the current
+// no-new-privileges bit and uses the kernel's default audit policy.
 type Options struct {
 	// Synchronization selects CallingThread or AllThreads.
 	Synchronization Synchronization
-	// NoNewPrivileges sets PR_SET_NO_NEW_PRIVS before loading. It is irreversible
-	// and remains set on the caller even if loading subsequently fails. With
-	// successful AllThreads it propagates to the synchronized threads. False
-	// requires existing no-new-privileges or effective CAP_SYS_ADMIN in the user
-	// namespace. This field never clears existing no-new-privileges state.
-	NoNewPrivileges bool
-	// Log requests SECCOMP_FILTER_FLAG_LOG for non-Allow results. Audit records
-	// remain subject to host configuration; this does not guarantee a log entry.
-	Log bool
+	// Privileges selects PreserveNoNewPrivileges or SetNoNewPrivileges.
+	Privileges PrivilegePolicy
+	// Flags may request LogNonAllow. Zero uses the kernel's default audit policy.
+	Flags LoadFlags
 }
 
 // Load attaches this filter using seccomp(SECCOMP_SET_MODE_FILTER). Lock the
 // goroutine before calling and never unlock it, even after failure. Nil/zero
-// filters and invalid synchronization match os.ErrInvalid before any change.
-// NoNewPrivileges may persist on failure; successful attachment is irreversible.
+// filters and invalid options match os.ErrInvalid before any change.
+// SetNoNewPrivileges can set the privilege bit even if Load fails. Successful
+// attachment is irreversible.
 // Repeated loads stack filters and can reach Linux's aggregate instruction limit.
 // Kernel errno is preserved; incompatible AllThreads trees return a
 // SynchronizationError. There is no retry or weaker-scope fallback.
@@ -61,11 +76,14 @@ func (filter *Filter) Load(options Options) error {
 	default:
 		return os.NewSyscallError("seccomp load", os.ErrInvalid)
 	}
-	if options.Log {
-		flags |= unix.SECCOMP_FILTER_FLAG_LOG
+	unknownFlags := options.Flags & ^LogNonAllow != 0
+	invalidPrivileges := options.Privileges > SetNoNewPrivileges
+	if unknownFlags || invalidPrivileges {
+		return os.NewSyscallError("seccomp load", os.ErrInvalid)
 	}
+	flags |= uintptr(options.Flags)
 
-	if options.NoNewPrivileges {
+	if options.Privileges == SetNoNewPrivileges {
 		if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 			return os.NewSyscallError("prctl(PR_SET_NO_NEW_PRIVS)", err)
 		}
@@ -88,7 +106,7 @@ func (filter *Filter) attach(flags uintptr) error {
 }
 
 // SynchronizationError reports the thread whose filter tree refused TSYNC.
-// The new filter was not attached. NoNewPrivileges requested during Load can
+// The new filter was not attached. A privilege bit requested during Load can
 // still remain set on the loading thread. Ordinary errno failures instead use
 // os.SyscallError. Inspect this error with errors.As.
 type SynchronizationError struct {

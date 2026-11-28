@@ -20,7 +20,7 @@ func TestCallingThreadLeavesExistingThreadUnrestricted(t *testing.T) {
 
 	err := filter.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	})
 	require.NoError(t, err)
 
@@ -39,7 +39,7 @@ func TestAllThreadsRestrictsExistingThread(t *testing.T) {
 
 	err := filter.Load(seccomp.Options{
 		Synchronization: seccomp.AllThreads,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	})
 	require.NoError(t, err)
 
@@ -60,7 +60,7 @@ func TestSynchronizationConflictDoesNotAttachFilter(t *testing.T) {
 
 	err := filter.Load(seccomp.Options{
 		Synchronization: seccomp.AllThreads,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	})
 
 	var conflict *seccomp.SynchronizationError

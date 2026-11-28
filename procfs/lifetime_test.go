@@ -97,7 +97,7 @@ func TestPermissionFailuresRetainNativeErrno(t *testing.T) {
 		require.NoError(t, err)
 
 		const reason = "permission denial requires an ordinary user without DAC override"
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 	root := test.ProcRoot(t, map[string]string{"42/stat": test.ProcStat("example")})

@@ -40,7 +40,7 @@ func FanotifyNamespace(t *testing.T) bool {
 	if options.Profile != "namespaces" {
 		t.Skip("fanotify descriptor integration requires profile=namespaces and initial-user-namespace CAP_SYS_ADMIN")
 	}
-	fanotifyPrivilege(t, options.Required)
+	fanotifyPrivilege(t, options)
 	before, err := os.Readlink("/proc/self/ns/mnt")
 	require.NoError(t, err)
 	ctx, command := Command(t, t.Name(), "-test.v", "--", prefix+before)
@@ -49,7 +49,7 @@ func FanotifyNamespace(t *testing.T) bool {
 	require.NoError(t, ctx.Err(), "isolated fanotify test exceeded its time bound")
 	unavailable := errors.Is(err, unix.EPERM) || errors.Is(err, unix.EACCES) || errors.Is(err, unix.ENOSYS) || errors.Is(err, unix.ENOSPC)
 	if unavailable {
-		require.False(t, options.Required, "mount namespace prerequisite: %v", err)
+		require.False(t, options.Required(), "mount namespace prerequisite: %v", err)
 		t.Skipf("fanotify isolation requires permitted clone(mount): %v", err)
 	}
 	require.NoError(t, err, "isolated fanotify test: %s", output)
@@ -76,7 +76,7 @@ func FanotifyRecord(fd, pid int32, mask uint64, info []byte) []byte {
 	return record
 }
 
-func fanotifyPrivilege(t *testing.T, required bool) {
+func fanotifyPrivilege(t *testing.T, options testenv.Options) {
 	t.Helper()
 	status, err := os.ReadFile("/proc/self/status")
 	require.NoError(t, err)
@@ -89,7 +89,7 @@ func fanotifyPrivilege(t *testing.T, required bool) {
 	}
 	if effective&(1<<unix.CAP_SYS_ADMIN) == 0 {
 		reason := "fanotify descriptor mode requires initial-user-namespace CAP_SYS_ADMIN; observed CapEff lacks CAP_SYS_ADMIN"
-		require.False(t, required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 }

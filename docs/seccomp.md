@@ -38,11 +38,11 @@ During development, perform loading and restricted work only in a disposable sub
 
 ```go
 runtime.LockOSThread() // Intentionally never unlocked, including on failure.
-err := filter.Load(seccomp.Options{
+options := seccomp.Options{
     Synchronization: seccomp.AllThreads,
-    NoNewPrivileges: true,
-})
-if err != nil {
+    Privileges:      seccomp.SetNoNewPrivileges,
+}
+if err := filter.Load(options); err != nil {
     return err
 }
 // Continue the child's policy-compatible work here.
@@ -52,7 +52,7 @@ if err != nil {
 
 `CallingThread` explicitly restricts only the loading thread. Lock its goroutine before loading and keep it locked until it exits; do not defer `runtime.UnlockOSThread`. Other existing threads keep their policies, and a new goroutine may run on one of those threads. This mode cannot promise restrictions for the whole Go program. Go destroys ordinary locked threads on goroutine exit; its startup thread may instead remain parked until process exit. Neither case rolls back restrictions inherited by descendants.
 
-`NoNewPrivileges: true` first sets the calling thread's irreversible bit. That change persists even if the subsequent seccomp call fails, including a TSYNC conflict. Successful TSYNC propagates the bit when it is set on the loading thread. False leaves the existing bit intact and requires that bit or CAP_SYS_ADMIN. Invalid filter/scope inputs are rejected before any change. `Log: true` requests SECCOMP_FILTER_FLAG_LOG; actual audit records depend on administrator policy.
+`Privileges: seccomp.SetNoNewPrivileges` requests that Load set the calling thread's irreversible bit before attaching the filter. That change persists even if the subsequent seccomp call fails, including a TSYNC conflict. Successful TSYNC propagates the bit when it is set on the loading thread. By default, Load preserves the bit and requires that it already be set or that the caller have CAP_SYS_ADMIN. Invalid filters or options fail before any change. `Flags: seccomp.LogNonAllow` requests SECCOMP_FILTER_FLAG_LOG. Actual audit records depend on administrator policy.
 
 Successful loads are irreversible. Repeated calls stack filters, subject to the kernel's aggregate instruction limit; an Allow result cannot override an earlier higher-precedence denial. There is no descriptor, `Close`, unload, automatic restoration, or success idempotency. `Filter` is immutable, owns a copy of its instructions, and may be shared by concurrent loads; kernel policy still needs caller coordination. Use a pointer and do not copy it after use. Nil and zero filters cannot be loaded.
 

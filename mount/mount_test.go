@@ -224,6 +224,7 @@ func TestInvalidMountAttributesAndEmptyTargetsAreRejected(t *testing.T) {
 	for _, attribute := range []mount.Attributes{mount.ReadOnly, mount.NoSUID, mount.NoDev, mount.NoExec} {
 		require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{Set: attribute, Clear: attribute}), os.ErrInvalid)
 	}
+	require.ErrorIs(t, handle.SetAttributes(mount.AttributeChange{Scope: 255}), os.ErrInvalid)
 
 	require.ErrorIs(t, handle.Attach(nil, ""), os.ErrInvalid)
 }
@@ -663,7 +664,7 @@ func TestRecursiveAttributesAffectTheCloneAndItsChildMounts(t *testing.T) {
 		t.Run(scenario.name, func(t *testing.T) {
 			handle, path := test.ClonedMount(t, source, scenario.flags)
 
-			require.NoError(t, handle.SetAttributes(mount.AttributeChange{Set: mount.ReadOnly, Recursive: true}))
+			require.NoError(t, handle.SetAttributes(mount.AttributeChange{Set: mount.ReadOnly, Scope: mount.MountTree}))
 
 			for _, directory := range []string{path, filepath.Join(path, "nested")} {
 				require.ErrorIs(t, os.WriteFile(filepath.Join(directory, "new"), nil, 0o600), test.ErrReadOnlyFilesystem, directory)
@@ -671,7 +672,7 @@ func TestRecursiveAttributesAffectTheCloneAndItsChildMounts(t *testing.T) {
 
 			require.NoError(t, os.WriteFile(filepath.Join(source, "original"), nil, 0o600), "source mount remains writable")
 
-			require.NoError(t, handle.SetAttributes(mount.AttributeChange{Clear: mount.ReadOnly, Recursive: true}))
+			require.NoError(t, handle.SetAttributes(mount.AttributeChange{Clear: mount.ReadOnly, Scope: mount.MountTree}))
 
 			require.NoError(t, os.WriteFile(filepath.Join(path, "nested", "new"), nil, 0o600))
 		})

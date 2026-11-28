@@ -24,7 +24,7 @@ func TestRestrictSetsNoNewPrivilegesFromZero(t *testing.T) {
 	require.NoError(t, capability.SetCurrent(capability.Sets{}))
 	require.False(t, test.NoNewPrivileges(t), "the transition must start with the bit unset")
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	require.True(t, test.NoNewPrivileges(t), "Restrict must set the requested bit")
 	_, err := os.ReadFile(denied)
@@ -85,7 +85,7 @@ func TestAllThreadsPropagatesNoNewPrivilegesFromZero(t *testing.T) {
 	require.NoError(t, capability.SetCurrent(capability.Sets{}))
 	require.False(t, test.NoNewPrivileges(t))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.AllThreads, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.AllThreads, Privileges: landlock.SetNoNewPrivileges}))
 
 	require.True(t, test.NoNewPrivileges(t), "the restricting thread must receive the bit")
 	require.True(t, probePrivileges(), "TSYNC must set the bit on the existing sibling")

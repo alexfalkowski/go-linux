@@ -57,7 +57,7 @@ The matching [executable example](../memfd/example_test.go) runs in the test sui
 
 `New` returns an empty, readable and writable file. Use its ordinary Go methods for reading, writing, seeking, resizing, and metadata, including `io.ReaderFrom` and `io.WriterTo`. The file is opaque: it exposes neither an underlying `*os.File` nor raw descriptor access. Do not copy a `memfd.File` after use. Close explicitly when done.
 
-Descriptors are atomically close-on-exec and allow sealing. By default, execute permission bits are cleared and locked by `SealExec`. `Options{Executable: true}` explicitly requests an executable file; namespace or security policy can reject that request, and the constructor returns the actual error without fallback. Non-executable mode bits do not prohibit executable memory mappings or provide a general execution sandbox.
+Descriptors are atomically close-on-exec and allow sealing. By default, execute permission bits are cleared and locked by `SealExec`. `memfd.Options{Execution: memfd.AllowExecute}` explicitly requests an executable file. Namespace or security policy can reject that request, and the constructor returns the kernel error. Non-executable mode bits do not prohibit executable memory mappings or provide a general execution sandbox.
 
 Methods are safe for concurrent use, including sealing during close, but a sequence of calls is not a transaction. These regular files do not support I/O deadlines. A zero `File` owns no descriptor and error-returning operations match `os.ErrInvalid`; after creation, I/O and sealing after close match `os.ErrClosed`, except that an invalid seal mask is rejected before checking closed state.
 

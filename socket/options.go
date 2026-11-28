@@ -21,14 +21,28 @@ func (c *Conn) SetWriteBuffer(bytes int) error {
 	return c.setBuffer(unix.SO_SNDBUF, bytes)
 }
 
-// SetPassCredentials enables/disables SO_PASSCRED on Unix sockets. Receive then
-// returns kernel-validated sender credentials. Linux may autobind an unnamed
+const (
+	optionDisabled = 0
+	optionEnabled  = 1
+)
+
+// EnablePassCredentials enables SO_PASSCRED on Unix sockets so Receive can
+// return kernel-validated sender credentials. Linux may autobind an unnamed
 // socket. Other families match os.ErrInvalid.
-func (c *Conn) SetPassCredentials(enabled bool) error {
+func (c *Conn) EnablePassCredentials() error {
+	return c.setPassCredentials(optionEnabled)
+}
+
+// DisablePassCredentials disables SO_PASSCRED. Other families match os.ErrInvalid.
+func (c *Conn) DisablePassCredentials() error {
+	return c.setPassCredentials(optionDisabled)
+}
+
+func (c *Conn) setPassCredentials(value int) error {
 	if c.family != unix.AF_UNIX {
 		return socketError("setsockopt", os.ErrInvalid)
 	}
-	return c.setBoolOption(unix.SOL_SOCKET, unix.SO_PASSCRED, enabled)
+	return c.setOption(unix.SOL_SOCKET, unix.SO_PASSCRED, value)
 }
 
 // PeerCredentials reads SO_PEERCRED on connected Unix pairs. Credentials are
@@ -51,22 +65,39 @@ func (c *Conn) PeerCredentials() (Credentials, error) {
 	return Credentials{PID: credentials.Pid, UID: credentials.Uid, GID: credentials.Gid}, nil
 }
 
-// SetExtendedAck controls NETLINK_EXT_ACK diagnostic attributes. It does not
-// decode acknowledgements. Other families match os.ErrInvalid.
-func (c *Conn) SetExtendedAck(enabled bool) error {
-	return c.netlinkBool(unix.NETLINK_EXT_ACK, enabled)
+// EnableExtendedAck requests NETLINK_EXT_ACK diagnostic attributes.
+// Other families match os.ErrInvalid. Decoding belongs to the caller.
+func (c *Conn) EnableExtendedAck() error {
+	return c.netlinkOption(unix.NETLINK_EXT_ACK, optionEnabled)
 }
 
-// SetCapAck controls NETLINK_CAP_ACK, allowing capped acknowledgement payloads.
-// Other families match os.ErrInvalid; decoders must inspect response flags.
-func (c *Conn) SetCapAck(enabled bool) error {
-	return c.netlinkBool(unix.NETLINK_CAP_ACK, enabled)
+// DisableExtendedAck clears the request for NETLINK_EXT_ACK diagnostic
+// attributes. Other families match os.ErrInvalid.
+func (c *Conn) DisableExtendedAck() error {
+	return c.netlinkOption(unix.NETLINK_EXT_ACK, optionDisabled)
 }
 
-// SetStrictCheck controls NETLINK_GET_STRICT_CHK for supported route dumps.
-// Kernel validation remains protocol-specific. Other families match os.ErrInvalid.
-func (c *Conn) SetStrictCheck(enabled bool) error {
-	return c.netlinkBool(unix.NETLINK_GET_STRICT_CHK, enabled)
+// EnableCapAck requests NETLINK_CAP_ACK, allowing capped acknowledgement payloads.
+// Other families match os.ErrInvalid. Decoders must inspect response flags.
+func (c *Conn) EnableCapAck() error {
+	return c.netlinkOption(unix.NETLINK_CAP_ACK, optionEnabled)
+}
+
+// DisableCapAck clears the NETLINK_CAP_ACK request. Other families match os.ErrInvalid.
+func (c *Conn) DisableCapAck() error {
+	return c.netlinkOption(unix.NETLINK_CAP_ACK, optionDisabled)
+}
+
+// EnableStrictCheck requests NETLINK_GET_STRICT_CHK for supported route dumps.
+// Validation remains protocol-specific. Other families match os.ErrInvalid.
+func (c *Conn) EnableStrictCheck() error {
+	return c.netlinkOption(unix.NETLINK_GET_STRICT_CHK, optionEnabled)
+}
+
+// DisableStrictCheck clears the NETLINK_GET_STRICT_CHK request.
+// Other families match os.ErrInvalid.
+func (c *Conn) DisableStrictCheck() error {
+	return c.netlinkOption(unix.NETLINK_GET_STRICT_CHK, optionDisabled)
 }
 
 // JoinGroup adds a Netlink multicast membership using NETLINK_ADD_MEMBERSHIP.
@@ -86,26 +117,20 @@ func (c *Conn) setBuffer(option, bytes int) error {
 	if bytes <= 0 || uint64(bytes) > 1<<31-1 {
 		return socketError("setsockopt", os.ErrInvalid)
 	}
-	return c.control("setsockopt", func(fd int) error {
-		return unix.SetsockoptInt(fd, unix.SOL_SOCKET, option, bytes)
-	})
+	return c.setOption(unix.SOL_SOCKET, option, bytes)
 }
 
-func (c *Conn) setBoolOption(level, option int, enabled bool) error {
-	var value int
-	if enabled {
-		value = 1
-	}
+func (c *Conn) setOption(level, option, value int) error {
 	return c.control("setsockopt", func(fd int) error {
 		return unix.SetsockoptInt(fd, level, option, value)
 	})
 }
 
-func (c *Conn) netlinkBool(option int, enabled bool) error {
+func (c *Conn) netlinkOption(option, value int) error {
 	if c.family != unix.AF_NETLINK {
 		return socketError("setsockopt", os.ErrInvalid)
 	}
-	return c.setBoolOption(unix.SOL_NETLINK, option, enabled)
+	return c.setOption(unix.SOL_NETLINK, option, value)
 }
 
 func (c *Conn) membership(option int, group uint32) error {
@@ -113,7 +138,5 @@ func (c *Conn) membership(option int, group uint32) error {
 	if c.family != unix.AF_NETLINK || invalidGroup {
 		return socketError("setsockopt", os.ErrInvalid)
 	}
-	return c.control("setsockopt", func(fd int) error {
-		return unix.SetsockoptInt(fd, unix.SOL_NETLINK, option, int(group))
-	})
+	return c.setOption(unix.SOL_NETLINK, option, int(group))
 }

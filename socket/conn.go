@@ -5,6 +5,7 @@ package socket
 import (
 	"errors"
 	"os"
+	"strings"
 	"syscall"
 	"time"
 
@@ -64,10 +65,11 @@ func Pair(mode Kind) (*Conn, *Conn, error) {
 
 // ListenUnix binds an owned Unix datagram socket using [bind(2)]. Empty names and
 // filesystem names containing NULs match os.ErrInvalid. A leading @ or NUL
-// selects the abstract namespace unless Pathname is set; embedded NULs are
-// preserved only in abstract names. A successful filesystem binding leaves a
-// socket path that the caller must unlink after Close; Close never removes or
-// replaces paths. See UnixAddress for the @ shorthand and literal-path selector.
+// selects the abstract namespace by default. Set [UnixAddress.Interpretation]
+// to [LiteralPathname] for a filesystem name that starts with @. Embedded NULs
+// are preserved in abstract names. A successful filesystem binding leaves a
+// socket path that the caller must unlink after Close. Close never removes or
+// replaces paths.
 // Failure closes every acquired descriptor and returns no owner.
 //
 // [bind(2)]: https://man7.org/linux/man-pages/man2/bind.2.html
@@ -225,18 +227,12 @@ func validUnixAddress(address UnixAddress) bool {
 	maximum := len(unix.RawSockaddrUnix{}.Path)
 	empty := len(name) == 0
 	tooLong := len(name) > maximum
-	fullLengthImplicit := len(name) == maximum && !address.Pathname
-	if empty || tooLong || fullLengthImplicit {
+	invalidInterpretation := address.Interpretation > LiteralPathname
+	literalPath := address.Interpretation == LiteralPathname
+	fullLengthImplicit := len(name) == maximum && !literalPath
+	if empty || tooLong || fullLengthImplicit || invalidInterpretation {
 		return false
 	}
-	abstract := !address.Pathname && (name[0] == '@' || name[0] == 0)
-	if abstract {
-		return true
-	}
-	for i := range len(name) {
-		if name[i] == 0 {
-			return false
-		}
-	}
-	return true
+	abstract := !literalPath && (name[0] == '@' || name[0] == 0)
+	return abstract || strings.IndexByte(name, 0) < 0
 }

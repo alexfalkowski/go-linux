@@ -36,17 +36,25 @@ const LogSubdomainsOff LogFlags = unix.LANDLOCK_RESTRICT_SELF_LOG_SUBDOMAINS_OFF
 
 const supportedLog = LogSameExecOff | LogNewExecOn | LogSubdomainsOff
 
+// PrivilegePolicy selects the no-new-privileges transition before restriction.
+type PrivilegePolicy uint8
+
+// PreserveNoNewPrivileges leaves the bit as it is. Restriction then requires the
+// bit already set or effective CAP_SYS_ADMIN in the caller's user namespace.
+const PreserveNoNewPrivileges PrivilegePolicy = 0
+
+// SetNoNewPrivileges irreversibly sets PR_SET_NO_NEW_PRIVS before restriction.
+// The bit remains set on failure and successful AllThreads propagates it.
+const SetNoNewPrivileges PrivilegePolicy = 1
+
 // Options controls irreversible Restrict changes. Zero options are invalid.
 type Options struct {
 	// Log selects audit flags; zero preserves the kernel defaults.
 	Log LogFlags
 	// Synchronization explicitly selects CallingThread or AllThreads.
 	Synchronization Synchronization
-	// NoNewPrivileges sets PR_SET_NO_NEW_PRIVS before applying the ruleset.
-	// It remains set even if enforcement later fails. False requires the bit
-	// already set or effective CAP_SYS_ADMIN in the caller's user namespace.
-	// Successful AllThreads also propagates a set bit to sibling threads.
-	NoNewPrivileges bool
+	// Privileges selects PreserveNoNewPrivileges or SetNoNewPrivileges.
+	Privileges PrivilegePolicy
 }
 
 // Restrict applies this ruleset using landlock_restrict_self(2). Lock the
@@ -77,7 +85,7 @@ func (ruleset *Ruleset) Restrict(options Options) error {
 			return unix.EOPNOTSUPP
 		}
 
-		if options.NoNewPrivileges {
+		if options.Privileges == SetNoNewPrivileges {
 			if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 				return os.NewSyscallError("prctl(PR_SET_NO_NEW_PRIVS)", err)
 			}
@@ -92,7 +100,9 @@ func (ruleset *Ruleset) Restrict(options Options) error {
 }
 
 func (options Options) flags() (uintptr, error) {
-	if options.Log & ^supportedLog != 0 {
+	unknownLogFlags := options.Log & ^supportedLog != 0
+	invalidPrivileges := options.Privileges > SetNoNewPrivileges
+	if unknownLogFlags || invalidPrivileges {
 		return 0, os.ErrInvalid
 	}
 

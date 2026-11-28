@@ -42,10 +42,11 @@ During development, restrict only a disposable subprocess. On its dedicated goro
 
 ```go
 runtime.LockOSThread() // Intentionally never unlocked, including after errors.
-if err := ruleset.Restrict(landlock.Options{
+options := landlock.Options{
     Synchronization: landlock.AllThreads,
-    NoNewPrivileges: true,
-}); err != nil {
+    Privileges:      landlock.SetNoNewPrivileges,
+}
+if err := ruleset.Restrict(options); err != nil {
     return err
 }
 // Continue policy-compatible work in this child.
@@ -59,7 +60,7 @@ This snippet also imports `runtime`. `AllThreads` uses kernel TSYNC, available i
 
 Descendants inherit the creating thread's policy across process creation and exec. Use ordinary `os/exec` synchronously on the locked goroutine when inheritance depends on that thread. Existing separate processes do not acquire a later policy, including with AllThreads. The package has no raw fork or process-start hook. Any restriction can prevent runtime I/O or other application progress, so successful kernel application alone does not establish that a policy is usable by the whole program.
 
-`NoNewPrivileges: true` first sets the irreversible PR_SET_NO_NEW_PRIVS bit. It remains set if subsequent restriction fails. False preserves the existing bit and requires either that bit or effective CAP_SYS_ADMIN in the caller's user namespace. Invalid inputs, closed owners, and unsupported ABI options fail before attempting this transition. No operation clears the bit, retries failed enforcement, or promises rollback.
+`Privileges: landlock.SetNoNewPrivileges` requests that Restrict set the irreversible PR_SET_NO_NEW_PRIVS bit before enforcement. It remains set if restriction fails. The default preserves the current state and requires the bit already set or effective CAP_SYS_ADMIN in the caller's user namespace. Invalid inputs, closed owners, and unsupported ABI options fail before attempting this transition. No operation clears the bit, retries failed enforcement, or promises rollback.
 
 `Restrict` snapshots the current rules into a new domain. Adding further rules changes future applications rather than an already applied domain. Repeated applications stack with at most 16 layers, subject to inherited layers; exhaustion returns E2BIG. Closing a Ruleset releases its descriptor and never undoes an applied policy. Inputs borrowed for rules remain separately owned. Nil/zero owners match `os.ErrInvalid`; valid operations after close and repeated close match `os.ErrClosed`. Do not copy a Ruleset after first use.
 

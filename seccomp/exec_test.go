@@ -17,7 +17,7 @@ func TestFilterSurvivesOrdinaryExec(t *testing.T) {
 	}
 	test.LockThread()
 	filter := test.SeccompSyscallFilter(t, test.ProcessGroupSyscall, uint32(seccomp.Errno)|uint32(test.ErrPermissionDenied))
-	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 	ctx, command := test.Command(t, "TestExecChild", "--", "seccomp-exec")
 
 	output, err := command.CombinedOutput()

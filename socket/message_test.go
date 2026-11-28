@@ -109,7 +109,7 @@ func TestClosingReceiverReleasesQueuedFileReferences(t *testing.T) {
 
 func TestMaximumRightsAndCredentialsFitOneMessage(t *testing.T) {
 	a, b := test.MessagePair(t, socket.Datagram)
-	require.NoError(t, b.SetPassCredentials(true))
+	require.NoError(t, b.EnablePassCredentials())
 
 	file := test.TempFile(t, 0)
 	files := make([]*os.File, 253)
@@ -203,7 +203,7 @@ func TestUnixPeerCredentialsDescribeConnectedProcess(t *testing.T) {
 func TestUnixMessageCredentialsCanBeEnabledAndDisabled(t *testing.T) {
 	a, b := test.MessagePair(t, socket.SeqPacket)
 
-	require.NoError(t, b.SetPassCredentials(true))
+	require.NoError(t, b.EnablePassCredentials())
 
 	_, err := a.Send([]byte("identified"), nil)
 	require.NoError(t, err)
@@ -212,7 +212,7 @@ func TestUnixMessageCredentialsCanBeEnabledAndDisabled(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, &socket.Credentials{PID: int32(os.Getpid()), UID: uint32(os.Getuid()), GID: uint32(os.Getgid())}, message.Credentials) //nolint:gosec // Linux ABI fields.
 
-	require.NoError(t, b.SetPassCredentials(false))
+	require.NoError(t, b.DisablePassCredentials())
 
 	_, err = a.Send([]byte("anonymous"), nil)
 	require.NoError(t, err)

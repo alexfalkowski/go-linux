@@ -52,7 +52,7 @@ func ExampleGetAt() {
 	}
 	defer dir.Close()
 
-	options := xattr.PathOptions{NoFollow: true}
+	options := xattr.PathOptions{Symlinks: xattr.NoFollowFinalSymlink}
 	if err := xattr.SetAt(dir, "data", "user.status", []byte("ready"), xattr.Upsert, options); err != nil {
 		panic(err)
 	}

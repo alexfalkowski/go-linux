@@ -33,9 +33,17 @@ The caller owns `Region` and must close it. Zero options mean `Private` and `NoA
 
 `mmap.Map(file, offset, length, options)` borrows `*os.File` during the call and returns an independent mapping owner. Use a positive length and a nonnegative offset divisible by `os.Getpagesize()`; the length need not be page-aligned. Closing the file after success leaves the mapping valid, and closing the region leaves the file open. For a `memfd.File`, call `file.Map(offset, length, options)` directly; its descriptor stays private.
 
-Select `mmap.Shared` to make changes visible to other shared mappings and ordinary file I/O. The source must be readable; shared writable mappings also require a writable source. `mmap.Private` (the default) permits private copy-on-write modifications without changing the file, even with a read-only source. Later file modifications have unspecified visibility in private mappings. Shared visibility does not establish synchronization or disk durability, and Close does not flush data for persistence.
+Select `mmap.Shared` to make changes visible to other shared mappings and ordinary file I/O. The source must be readable. Shared writable mappings also require a writable source. `mmap.Private` (the default) permits private copy-on-write modifications without changing the file, even with a read-only source. Later file modifications have unspecified visibility in private mappings. Use explicit synchronization when mapped writes need to reach storage.
 
 Arrange adequate file contents and coordinate truncation with every mapping user. Mapping does not extend or freeze the file; accessing whole pages beyond EOF can cause fatal SIGBUS, including when another owner truncates a mapped file. There is no race-free automatic file-size check.
+
+## Synchronize a region
+
+After updating a shared file mapping, use `region.Sync(mmap.SyncOptions{})` to wait for the filesystem to synchronize the mapped data. Sync covers every page intersecting the region, including the entire last page of a partial-page view. Linux uses the mapping's backing reference, so Sync works after the original file handle closes. Close unmaps the region independently of writeback. See the [executable Sync example](../mmap/example_test.go).
+
+The zero options and `Mode: mmap.SyncWait` request `MS_SYNC`. The call can block while the filesystem completes data synchronization for the covered file range. Coordinate writers through the return of Sync to control which changes are included. Filesystem and device guarantees determine durability. Applications still own ordering across updates, directory-entry durability, and crash recovery. Private copy-on-write changes stay in the view, and anonymous mappings have no persistent storage. [Linux 7.0 msync implementation](https://github.com/torvalds/linux/blob/v7.0/mm/msync.c).
+
+`Mode: mmap.SyncAsync` requests `MS_ASYNC`. Linux tracks dirty pages independently, so this mode neither starts nor waits for writeback. Set `Flags: mmap.SyncInvalidate` with either mode to request `MS_INVALIDATE`. Linux returns `EBUSY` for locked pages in the range, and a successful request carries no eviction or reload guarantee. Choose one mode. Unknown flags or invalid modes match `os.ErrInvalid`, after checking the region's lifetime. A kernel error can follow partial writeback, preserves its errno, and leaves the caller owning the region. [msync(2)](https://man7.org/linux/man-pages/man2/msync.2.html).
 
 ## Advice, errors, and concurrency
 
@@ -49,7 +57,7 @@ A zero Region returns nil from Bytes and `os.ErrInvalid` from other methods. Aft
 
 ## Coverage boundary
 
-Only `Private`/`Shared`, the listed protection bits, and the five listed advice values are accepted. There is no msync, mlock/mlock2/munlock, mincore, or mremap operation. [Linux 7.0 memory controls](https://github.com/torvalds/linux/blob/v7.0/include/uapi/asm-generic/mman-common.h) also include lazy-free/removal, fork/dump behavior, merge/huge-page advice, cold/pageout, population, locked-page discard, and guard operations; none is accepted by `Advise` today. Advice must not be supplied by casting additional Linux values into this package's enum.
+Only `Private`/`Shared`, the listed protection bits, sync modes, and the five listed advice values are accepted. There is no mlock/mlock2/munlock, mincore, or mremap operation. [Linux 7.0 memory controls](https://github.com/torvalds/linux/blob/v7.0/include/uapi/asm-generic/mman-common.h) also include lazy-free/removal, fork/dump behavior, merge/huge-page advice, cold/pageout, population, locked-page discard, and guard operations; none is accepted by `Advise` today. Advice must not be supplied by casting additional Linux values into this package's enum.
 
 Executable/protection-key mappings, fixed addresses, huge-page selection, MAP_SYNC, process-wide locking, and remote-process memory advice are outside the current surface. Fixed-address/alias mappings need ownership beyond this single-region owner, and hardware-poison/offline operations can affect the host beyond a region. No current method provides those contracts. Ordinary Go allocation and synchronization remain with the runtime and standard library.
 

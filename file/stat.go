@@ -126,6 +126,15 @@ const SyncForce SyncMode = unix.AT_STATX_FORCE_SYNC
 // SyncDont permits cached metadata without server synchronization (AT_STATX_DONT_SYNC).
 const SyncDont SyncMode = unix.AT_STATX_DONT_SYNC
 
+// StatFlags selects independent controls for the final path component.
+type StatFlags uint32
+
+// StatNoFollow queries the final symlink itself. Intermediate symlinks are followed.
+const StatNoFollow StatFlags = unix.AT_SYMLINK_NOFOLLOW
+
+// StatNoAutomount suppresses automounting at the final path component.
+const StatNoAutomount StatFlags = unix.AT_NO_AUTOMOUNT
+
 // StatOptions controls a statx query. Zero requests no particular fields, but
 // Linux may return available fields anyway. Use MaskBasic for ordinary metadata.
 type StatOptions struct {
@@ -135,13 +144,9 @@ type StatOptions struct {
 	// Sync selects metadata freshness policy; zero is SyncDefault.
 	Sync SyncMode
 
-	// NoFollow queries a final symlink itself. Intermediate symlinks are followed.
-	// An empty name selects the handle itself regardless of this option.
-	NoFollow bool
-
-	// NoAutomount prevents triggering an automount at the final component.
-	// This does not restrict intermediate mount points or confine the lookup.
-	NoAutomount bool
+	// Flags can combine StatNoFollow and StatNoAutomount. Zero uses ordinary
+	// resolution. An empty name selects the handle itself.
+	Flags StatFlags
 }
 
 // Metadata is a statx observation, not an atomic filesystem snapshot. Fields
@@ -290,7 +295,9 @@ func StatAt(dir *os.File, name string, options StatOptions) (Metadata, error) {
 func statFlags(options StatOptions) (int, error) {
 	const masks = MaskBasic | MaskBirthTime | MaskMountID | MaskUniqueMountID |
 		MaskDirectIOAlignment | MaskDirectIOReadAlignment | MaskSubvolumeID | MaskAtomicWrite
-	if options.Mask & ^masks != 0 {
+	unknownMask := options.Mask & ^masks != 0
+	unknownFlags := options.Flags & ^(StatNoFollow|StatNoAutomount) != 0
+	if unknownMask || unknownFlags {
 		return 0, os.ErrInvalid
 	}
 	switch options.Sync {
@@ -298,14 +305,7 @@ func statFlags(options StatOptions) (int, error) {
 	default:
 		return 0, os.ErrInvalid
 	}
-	flags := int(options.Sync)
-	if options.NoFollow {
-		flags |= unix.AT_SYMLINK_NOFOLLOW
-	}
-	if options.NoAutomount {
-		flags |= unix.AT_NO_AUTOMOUNT
-	}
-	return flags, nil
+	return int(options.Sync) | int(options.Flags), nil
 }
 
 func metadata(stat unix.Statx_t) Metadata {

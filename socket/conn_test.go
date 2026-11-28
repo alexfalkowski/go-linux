@@ -181,7 +181,7 @@ func TestAuthenticatedRepliesPreserveNativeUnixPathnameNamespaces(t *testing.T) 
 			server, err := socket.ListenUnix(socket.UnixAddress{Name: "service"})
 			require.NoError(t, err)
 			test.Cleanup(t, server)
-			require.NoError(t, server.SetPassCredentials(true))
+			require.NoError(t, server.EnablePassCredentials())
 			require.NoError(t, server.SetDeadline(time.Now().Add(time.Second)))
 
 			_, err = peer.WriteToUnix([]byte("request"), &net.UnixAddr{Name: "service", Net: "unixgram"})
@@ -189,7 +189,7 @@ func TestAuthenticatedRepliesPreserveNativeUnixPathnameNamespaces(t *testing.T) 
 
 			message, err := server.Receive(make([]byte, 32), 0)
 			require.NoError(t, err)
-			require.Equal(t, socket.UnixAddress{Name: name, Pathname: true}, message.From, "reply addresses must retain their filesystem namespace")
+			require.Equal(t, socket.UnixAddress{Name: name, Interpretation: socket.LiteralPathname}, message.From, "reply addresses must retain their filesystem namespace")
 			require.NotNil(t, message.Credentials)
 			require.EqualValues(t, os.Getpid(), message.Credentials.PID, "authenticate the native request's process")
 			require.EqualValues(t, os.Getuid(), message.Credentials.UID, "authenticate the native request's user")
@@ -221,7 +221,7 @@ func TestLiteralUnixPathnamesPreserveTheFullKernelLength(t *testing.T) {
 	for _, prefix := range []string{"@", "p"} {
 		t.Run(prefix, func(t *testing.T) {
 			t.Chdir(t.TempDir())
-			address := socket.UnixAddress{Name: prefix + strings.Repeat("x", 107), Pathname: true}
+			address := socket.UnixAddress{Name: prefix + strings.Repeat("x", 107), Interpretation: socket.LiteralPathname}
 			peer, err := socket.ListenUnix(address)
 			require.NoError(t, err)
 			test.Cleanup(t, peer)
@@ -263,7 +263,7 @@ func TestFailedLiteralPathnameSendsReleaseBorrowedDuplicates(t *testing.T) {
 	file := test.TempFile(t, 4)
 	before := test.DescriptorCount(t)
 
-	_, err = server.Send([]byte("missing"), socket.UnixAddress{Name: "@missing", Pathname: true}, file)
+	_, err = server.Send([]byte("missing"), socket.UnixAddress{Name: "@missing", Interpretation: socket.LiteralPathname}, file)
 	require.ErrorIs(t, err, test.ErrNotExist)
 	require.Equal(t, before, test.DescriptorCount(t))
 
@@ -346,7 +346,7 @@ func TestCloseInterruptsAllPendingReceivers(t *testing.T) {
 func TestAddressedUnixBackpressureReturnsEAGAINAndRetainsBorrowedFiles(t *testing.T) {
 	for _, destination := range []socket.UnixAddress{
 		{Name: "receiver"},
-		{Name: "@receiver", Pathname: true},
+		{Name: "@receiver", Interpretation: socket.LiteralPathname},
 	} {
 		t.Run(destination.Name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
@@ -449,10 +449,11 @@ func TestListenUnixRejectsInvalidAddresses(t *testing.T) {
 		"empty":             {},
 		"NUL in path":       {Name: "bad\x00path"},
 		"long path":         {Name: strings.Repeat("x", 108)},
-		"empty literal":     {Pathname: true},
-		"NUL in literal":    {Name: "\x00abstract", Pathname: true},
-		"NUL after at sign": {Name: "@bad\x00path", Pathname: true},
-		"long literal":      {Name: strings.Repeat("x", 109), Pathname: true},
+		"unknown mode":      {Name: "valid", Interpretation: 255},
+		"empty literal":     {Interpretation: socket.LiteralPathname},
+		"NUL in literal":    {Name: "\x00abstract", Interpretation: socket.LiteralPathname},
+		"NUL after at sign": {Name: "@bad\x00path", Interpretation: socket.LiteralPathname},
+		"long literal":      {Name: strings.Repeat("x", 109), Interpretation: socket.LiteralPathname},
 	} {
 		t.Run(name, func(t *testing.T) {
 			conn, err := socket.ListenUnix(address)
@@ -478,10 +479,11 @@ func TestSendRejectsInvalidUnixDestinations(t *testing.T) {
 	sender, _ := test.MessagePair(t, socket.Datagram)
 	before := test.DescriptorCount(t)
 	for name, address := range map[string]socket.UnixAddress{
-		"empty literal":     {Pathname: true},
-		"NUL in literal":    {Name: "\x00abstract", Pathname: true},
-		"NUL after at sign": {Name: "@bad\x00path", Pathname: true},
-		"long literal":      {Name: strings.Repeat("x", 109), Pathname: true},
+		"unknown mode":      {Name: "valid", Interpretation: 255},
+		"empty literal":     {Interpretation: socket.LiteralPathname},
+		"NUL in literal":    {Name: "\x00abstract", Interpretation: socket.LiteralPathname},
+		"NUL after at sign": {Name: "@bad\x00path", Interpretation: socket.LiteralPathname},
+		"long literal":      {Name: strings.Repeat("x", 109), Interpretation: socket.LiteralPathname},
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := sender.Send([]byte("invalid"), address)
@@ -506,9 +508,9 @@ func TestUnixSocketsRejectNetlinkOptions(t *testing.T) {
 
 	require.ErrorIs(t, conn.JoinGroup(1), os.ErrInvalid)
 	require.ErrorIs(t, conn.LeaveGroup(1), os.ErrInvalid)
-	require.ErrorIs(t, conn.SetExtendedAck(true), os.ErrInvalid)
-	require.ErrorIs(t, conn.SetCapAck(true), os.ErrInvalid)
-	require.ErrorIs(t, conn.SetStrictCheck(true), os.ErrInvalid)
+	require.ErrorIs(t, conn.EnableExtendedAck(), os.ErrInvalid)
+	require.ErrorIs(t, conn.EnableCapAck(), os.ErrInvalid)
+	require.ErrorIs(t, conn.EnableStrictCheck(), os.ErrInvalid)
 	require.Equal(t, before, test.DescriptorCount(t), "invalid socket options must not retain descriptors")
 }
 

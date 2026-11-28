@@ -11,15 +11,22 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// ExecutionMode controls the file's execute permission bits at creation.
+type ExecutionMode uint8
+
+// SealExecuteBits clears and locks the execute permission bits (MFD_NOEXEC_SEAL).
+const SealExecuteBits ExecutionMode = 0
+
+// AllowExecute requests MFD_EXEC. Kernel or namespace policy may reject it.
+const AllowExecute ExecutionMode = 1
+
 // Options controls creation through [memfd_create(2)]. The zero value creates
 // a sealable file with execute permission bits cleared and locked by SealExec.
 //
 // [memfd_create(2)]: https://man7.org/linux/man-pages/man2/memfd_create.2.html
 type Options struct {
-	// Executable requests MFD_EXEC instead of MFD_NOEXEC_SEAL. Kernel or
-	// namespace policy may reject it; New preserves the error without fallback.
-	// This permits execute mode bits but does not execute the file.
-	Executable bool
+	// Execution selects SealExecuteBits or AllowExecute.
+	Execution ExecutionMode
 }
 
 // Seals is an inode's irreversible seal bitmask. Combine Seal constants with |.
@@ -55,9 +62,9 @@ const SealExec Seals = unix.F_SEAL_EXEC
 // New creates an empty, readable and writable memory-backed file using
 // [memfd_create(2)]. The caller owns the result and must close it.
 //
-// The descriptor is atomically close-on-exec and allows sealing. By default,
-// MFD_NOEXEC_SEAL clears and locks execute permission bits; Options.Executable
-// requests MFD_EXEC instead. There is no fallback to weaker creation flags.
+// The descriptor is atomically close-on-exec and allows sealing. SealExecuteBits
+// clears and locks execute permission bits by default. Unknown modes match
+// os.ErrInvalid. Kernel flag errors are preserved.
 //
 // The name is a debugging label, not a path. Empty names are allowed; embedded
 // NUL bytes and names longer than 249 bytes fail with EINVAL. Errors wrap the
@@ -66,10 +73,13 @@ const SealExec Seals = unix.F_SEAL_EXEC
 // [memfd_create(2)]: https://man7.org/linux/man-pages/man2/memfd_create.2.html
 func New(name string, options Options) (*File, error) {
 	flags := unix.MFD_CLOEXEC | unix.MFD_ALLOW_SEALING
-	if options.Executable {
-		flags |= unix.MFD_EXEC
-	} else {
+	switch options.Execution {
+	case SealExecuteBits:
 		flags |= unix.MFD_NOEXEC_SEAL
+	case AllowExecute:
+		flags |= unix.MFD_EXEC
+	default:
+		return nil, &os.PathError{Op: "memfd_create", Path: name, Err: os.ErrInvalid}
 	}
 
 	fd, err := unix.MemfdCreate(name, flags)

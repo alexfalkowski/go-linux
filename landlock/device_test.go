@@ -35,7 +35,7 @@ func TestDeviceIOCTLAllowanceIsDeterminedWhenOpened(t *testing.T) {
 				require.NoError(t, ruleset.AddPath("/dev/ptmx", landlock.IOCTLDev))
 			}
 
-			require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+			require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 			after := test.LandlockTerminal(t)
 			_, err = test.TerminalNumber(t, after)
@@ -61,7 +61,7 @@ func TestFIFOCreationRequiresMakeFIFO(t *testing.T) {
 	require.NoError(t, ruleset.AddPath(filepath.Dir(allowed), landlock.MakeFIFO))
 	require.NoError(t, ruleset.AddPath(filepath.Dir(denied), landlock.MakeSock))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	path := filepath.Join(filepath.Dir(allowed), "fifo")
 	require.NoError(t, test.MakeFIFO(path))
@@ -83,7 +83,7 @@ func TestSocketCreationRequiresMakeSock(t *testing.T) {
 	require.NoError(t, ruleset.AddPath(filepath.Dir(allowed), landlock.MakeSock))
 	require.NoError(t, ruleset.AddPath(filepath.Dir(denied), landlock.MakeFIFO))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	connection, err := net.ListenUnixgram("unixgram", &net.UnixAddr{Name: filepath.Join(filepath.Dir(allowed), "socket"), Net: "unixgram"})
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestDeviceCreationRequiresMatchingRights(t *testing.T) {
 			require.NoError(t, ruleset.AddPath(denied, scenario.other))
 
 			test.LockedThread(t, func() {
-				require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+				require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 				path := filepath.Join(allowed, "device")
 				require.NoError(t, test.MakeDevice(path, scenario.mode))

@@ -125,7 +125,7 @@ func recordLock(f *os.File, scope RecordLockScope, lock RecordLock, posixCommand
 		return unix.Flock_t{}, &os.PathError{Op: "fcntl", Path: f.Name(), Err: os.ErrInvalid}
 	}
 
-	if !lock.Type.valid(posixCommand != unix.F_GETLK) {
+	if !lock.Type.validFor(posixCommand) {
 		return unix.Flock_t{}, &os.PathError{Op: "fcntl", Path: f.Name(), Err: os.ErrInvalid}
 	}
 
@@ -142,12 +142,12 @@ func recordLock(f *os.File, scope RecordLockScope, lock RecordLock, posixCommand
 	return native, nil
 }
 
-func (kind RecordLockType) valid(allowRelease bool) bool {
+func (kind RecordLockType) validFor(posixCommand int) bool {
 	switch kind {
 	case LockRead, LockWrite:
 		return true
 	case LockRelease:
-		return allowRelease
+		return posixCommand != unix.F_GETLK
 	default:
 		return false
 	}

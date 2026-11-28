@@ -24,7 +24,7 @@ func TestErrnoDeniesOnlySelectedSyscall(t *testing.T) {
 
 	require.NoError(t, filter.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	}))
 
 	group, err = test.ProcessGroup(0)
@@ -50,7 +50,7 @@ func TestArgumentFilterDistinguishesEquivalentProcessGroupQueries(t *testing.T) 
 
 	require.NoError(t, filter.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	}))
 
 	_, err := test.ProcessGroup(0)
@@ -69,7 +69,7 @@ func TestStackedAllowCannotRelaxDenial(t *testing.T) {
 	allow := test.SeccompFilter(t, []seccomp.Instruction{{Code: seccomp.Return, K: uint32(seccomp.Allow)}})
 	options := seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	}
 	require.NoError(t, deny.Load(options))
 
@@ -87,7 +87,7 @@ func TestLoadPreservesKernelDenialsAndPriorNoNewPrivileges(t *testing.T) {
 	blocker := test.SeccompErrnoFilter(t, test.SeccompSyscall, test.ErrPermissionDenied)
 	require.NoError(t, blocker.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	}))
 	filtersBefore := test.SeccompFilterCount(t)
 	filter := test.SeccompFilter(t, []seccomp.Instruction{{Code: seccomp.Return, K: uint32(seccomp.Allow)}})
@@ -110,7 +110,7 @@ func TestActionAvailabilityPreservesPolicyDenial(t *testing.T) {
 	blocker := test.SeccompErrnoFilter(t, test.SeccompSyscall, test.ErrPermissionDenied)
 	require.NoError(t, blocker.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	}))
 
 	available, err := seccomp.ActionAvailable(seccomp.Allow)
@@ -127,7 +127,7 @@ func TestLoadUsesExistingNoNewPrivilegesWhenPrctlDenied(t *testing.T) {
 	blocker := test.SeccompErrnoFilter(t, test.PrctlSyscall, test.ErrPermissionDenied)
 	require.NoError(t, blocker.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	}))
 	filter := test.SeccompErrnoFilter(t, test.ProcessGroupSyscall, test.ErrOperationNotPermitted)
 
@@ -145,14 +145,14 @@ func TestNoNewPrivilegesFailurePreventsLoading(t *testing.T) {
 	blocker := test.SeccompErrnoFilter(t, test.PrctlSyscall, test.ErrPermissionDenied)
 	require.NoError(t, blocker.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	}))
 	filtersBefore := test.SeccompFilterCount(t)
 	filter := test.SeccompFilter(t, []seccomp.Instruction{{Code: seccomp.Return, K: uint32(seccomp.Allow)}})
 
 	err := filter.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
+		Privileges:      seccomp.SetNoNewPrivileges,
 	})
 
 	require.ErrorIs(t, err, test.ErrPermissionDenied)

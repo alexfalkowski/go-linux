@@ -149,7 +149,7 @@ func TestPermissionFailuresPreserveErrno(t *testing.T) {
 		options, err := testenv.FromEnvironment()
 		require.NoError(t, err)
 		const reason = "permission denial requires an ordinary user without DAC override"
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 	root := test.SysRoot(t, nil)

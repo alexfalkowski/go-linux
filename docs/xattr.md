@@ -37,7 +37,7 @@ Names retain their fully qualified namespace, such as `user.content_type`. Value
 
 `GetAt(dir, path, name, options)`, `SetAt(dir, path, name, value, mode, options)`, `ListAt(dir, path, options)`, and `RemoveAt(dir, path, name, options)` resolve relative paths from a borrowed directory. Absolute paths ignore the directory identity, but every call still requires a live nonnil handle. Empty paths select the handle itself. An `O_PATH` directory can anchor a nonempty path.
 
-`PathOptions{}` follows symlinks. `PathOptions{NoFollow: true}` selects the final symlink itself; intermediate links are still followed. An empty path always selects the handle itself. Linux disallows `user.*` attributes on symlinks: reads return ENODATA and mutation returns EPERM; listing can still succeed. Other namespaces follow filesystem and security-module policy. There is no fallback that silently accesses the link target.
+`PathOptions{}` follows symlinks. `xattr.PathOptions{Symlinks: xattr.NoFollowFinalSymlink}` selects the final symlink itself. Intermediate links are still followed. An empty path always selects the handle itself. Linux disallows `user.*` attributes on symlinks: reads return ENODATA and mutation returns EPERM; listing can still succeed. Other namespaces follow filesystem and security-module policy. There is no fallback that silently accesses the link target.
 
 Paths pass unchanged to Linux, including trailing slashes and `..`. Directory-relative lookup does not confine an untrusted path. For restricted lookup, use `file.Open` with suitable resolution restrictions and an ordinary file access mode, then pass that file to the handle operations. Separate sizing/read lookups may select different inodes if directory entries change.
 

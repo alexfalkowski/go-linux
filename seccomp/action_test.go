@@ -23,8 +23,8 @@ func TestPermissiveActionsExecuteSyscall(t *testing.T) {
 
 			err := filter.Load(seccomp.Options{
 				Synchronization: seccomp.CallingThread,
-				NoNewPrivileges: true,
-				Log:             true,
+				Privileges:      seccomp.SetNoNewPrivileges,
+				Flags:           seccomp.LogNonAllow,
 			})
 			require.NoError(t, err)
 
@@ -44,8 +44,8 @@ func TestTraceWithoutTracerReturnsNotImplemented(t *testing.T) {
 
 	err := filter.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
-		Log:             true,
+		Privileges:      seccomp.SetNoNewPrivileges,
+		Flags:           seccomp.LogNonAllow,
 	})
 	require.NoError(t, err)
 
@@ -62,8 +62,8 @@ func TestZeroErrnoReportsSuccessWithoutExecutingSyscall(t *testing.T) {
 
 	err := filter.Load(seccomp.Options{
 		Synchronization: seccomp.CallingThread,
-		NoNewPrivileges: true,
-		Log:             true,
+		Privileges:      seccomp.SetNoNewPrivileges,
+		Flags:           seccomp.LogNonAllow,
 	})
 	require.NoError(t, err)
 
@@ -77,7 +77,7 @@ func TestKillProcessTerminatesWithSIGSYS(t *testing.T) {
 	if os.Args[len(os.Args)-1] == marker {
 		test.LockThread()
 		filter := test.SeccompSyscallFilter(t, test.ProcessGroupSyscall, uint32(seccomp.KillProcess))
-		require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+		require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 		_, err := os.Stdout.WriteString("loaded\n")
 		require.NoError(t, err)
 
@@ -99,7 +99,7 @@ func TestTrapIsFatalToGoProcess(t *testing.T) {
 	if os.Args[len(os.Args)-1] == marker {
 		test.LockThread()
 		filter := test.SeccompSyscallFilter(t, test.ProcessGroupSyscall, uint32(seccomp.Trap)|123)
-		require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}))
+		require.NoError(t, filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}))
 		_, err := os.Stdout.WriteString("loaded\n")
 		require.NoError(t, err)
 
@@ -129,7 +129,7 @@ func TestKillThreadLeavesOtherThreadsRunning(t *testing.T) {
 	go func() {
 		id := test.LockThread()
 		filter := test.SeccompSyscallFilter(t, test.ProcessGroupSyscall, uint32(seccomp.KillThread))
-		if err := filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}); err != nil {
+		if err := filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}); err != nil {
 			ready <- test.ReadResult[int]{Err: err}
 			return
 		}

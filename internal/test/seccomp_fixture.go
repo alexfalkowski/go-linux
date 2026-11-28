@@ -75,7 +75,7 @@ func SecurityPrivileges(t *testing.T) {
 	missingPrivilege := NoNewPrivileges(t) || sets.Effective&capability.SysAdmin == 0
 	if missingPrivilege {
 		reason := "security privilege transitions require initial NoNewPrivs=0 and effective CAP_SYS_ADMIN in the caller's user namespace"
-		require.False(t, options.Required, reason)
+		require.False(t, options.Required(), reason)
 		t.Skip(reason)
 	}
 }
@@ -219,7 +219,7 @@ func ProcessGroupThread(t *testing.T, filter *seccomp.Filter) (int, func() error
 		id := LockThread()
 		defer close(done)
 		if filter != nil {
-			if err := filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, NoNewPrivileges: true}); err != nil {
+			if err := filter.Load(seccomp.Options{Synchronization: seccomp.CallingThread, Privileges: seccomp.SetNoNewPrivileges}); err != nil {
 				ready <- ReadResult[int]{Err: err}
 				return
 			}

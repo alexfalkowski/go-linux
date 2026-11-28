@@ -25,7 +25,7 @@ func TestTCPConnectAllowsOnlySelectedPort(t *testing.T) {
 	port := allowed.Addr().(*net.TCPAddr).AddrPort().Port()
 	require.NoError(t, ruleset.AddPort(port, landlock.ConnectTCP))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	dialer := net.Dialer{Timeout: time.Second}
 	connection, err := dialer.DialContext(t.Context(), "tcp4", allowed.Addr().String())
@@ -46,7 +46,7 @@ func TestTCPBindZeroAllowsEphemeralButNotExplicitPort(t *testing.T) {
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledNet: landlock.BindTCP})
 	require.NoError(t, ruleset.AddPort(0, landlock.BindTCP))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	allowed := test.TCPListener(t)
 	require.Positive(t, allowed.Addr().(*net.TCPAddr).Port)
@@ -69,7 +69,7 @@ func TestUDPOptionalRightsEnforceDestinationPort(t *testing.T) {
 	port := allowed.LocalAddr().(*net.UDPAddr).AddrPort().Port()
 	require.NoError(t, ruleset.AddPort(port, landlock.ConnectSendUDP))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	sender := test.UDPPeer(t)
 	_, err := sender.WriteToUDP([]byte("allowed"), allowed.LocalAddr().(*net.UDPAddr))
@@ -88,12 +88,12 @@ func TestAbstractUnixScopeDeniesOutsideDomainAndAllowsInside(t *testing.T) {
 		return
 	}
 	test.LockThread()
-	outside := test.LandlockUnixPeer(t, true)
+	outside := test.LandlockUnixPeer(t, test.AbstractPeer)
 	ruleset := test.LandlockRuleset(t, landlock.Config{Scoped: landlock.AbstractUnixSocket})
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
-	inside := test.LandlockUnixPeer(t, true)
+	inside := test.LandlockUnixPeer(t, test.AbstractPeer)
 	connection, err := net.DialUnix("unixgram", nil, inside.LocalAddr().(*net.UnixAddr))
 	require.NoError(t, err)
 	require.NoError(t, connection.Close())
@@ -108,12 +108,12 @@ func TestResolveUnixOptionalRightAllowsSelectedPath(t *testing.T) {
 		return
 	}
 	test.LockThread()
-	allowed := test.LandlockUnixPeer(t, false)
-	denied := test.LandlockUnixPeer(t, false)
+	allowed := test.LandlockUnixPeer(t, test.PathnamePeer)
+	denied := test.LandlockUnixPeer(t, test.PathnamePeer)
 	ruleset := test.LandlockRuleset(t, landlock.Config{HandledFS: landlock.ResolveUnix})
 	require.NoError(t, ruleset.AddPath(filepath.Dir(allowed.LocalAddr().String()), landlock.ResolveUnix))
 
-	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, NoNewPrivileges: true}))
+	require.NoError(t, ruleset.Restrict(landlock.Options{Synchronization: landlock.CallingThread, Privileges: landlock.SetNoNewPrivileges}))
 
 	connection, err := net.DialUnix("unixgram", nil, allowed.LocalAddr().(*net.UnixAddr))
 	require.NoError(t, err)

@@ -11,7 +11,7 @@ import (
 )
 
 func ExampleConn_Links() {
-	conn, err := route.Open(netlink.Options{StrictCheck: true})
+	conn, err := route.Open(netlink.Options{Validation: netlink.StrictValidation})
 	if err != nil {
 		panic(err)
 	}

@@ -73,6 +73,36 @@ const WillNeed Advice = unix.MADV_WILLNEED
 // the file or promise writeback, durability, or zeroing of shared contents.
 const DontNeed Advice = unix.MADV_DONTNEED
 
+// SyncMode selects the writeback behavior for Sync. Zero selects SyncWait.
+// The modes are mutually exclusive.
+type SyncMode uint8
+
+// SyncWait completes synchronous data writeback (MS_SYNC) for the file
+// range covered by a shared file mapping, at page granularity.
+const SyncWait SyncMode = unix.MS_SYNC
+
+// SyncAsync requests MS_ASYNC. Linux already tracks dirty pages and this
+// mode neither starts nor waits for writeback.
+const SyncAsync SyncMode = unix.MS_ASYNC
+
+// SyncFlags selects additional synchronization behavior. Zero requests only
+// the selected writeback mode.
+type SyncFlags uint8
+
+// SyncInvalidate requests MS_INVALIDATE. Linux may return EBUSY for locked
+// pages. Success gives no guarantee of eviction or reload.
+const SyncInvalidate SyncFlags = unix.MS_INVALIDATE
+
+// SyncOptions controls whole-region synchronization. The zero value waits
+// for writeback from a shared file mapping.
+type SyncOptions struct {
+	// Mode selects SyncWait (also the zero default) or SyncAsync.
+	Mode SyncMode
+
+	// Flags optionally requests SyncInvalidate with either mode.
+	Flags SyncFlags
+}
+
 // Map creates a file-backed region using [mmap(2)]. It borrows file only during
 // the call, protecting descriptor lifetime against concurrent file.Close. The
 // caller owns the returned region and must close it independently of the file.
@@ -148,8 +178,9 @@ func Anonymous(length int, options Options) (*Region, error) {
 //
 // Methods serialize their operations, but returned slices escape that lock.
 // Callers must coordinate ALL slice use with Close, Protect, and Advise, and
-// synchronize conflicting memory accesses. A concurrent Bytes call does not
-// keep its result mapped. There is no finalizer: unmapping is explicit.
+// synchronize conflicting memory accesses. Coordinate writes with Sync to
+// control which changes are included. A concurrent Bytes call does not keep
+// its result mapped. There is no finalizer: unmapping is explicit.
 type Region struct {
 	data   []byte
 	mu     sync.Mutex
@@ -221,10 +252,51 @@ func (r *Region) Advise(advice Advice) error {
 	return nil
 }
 
+// Sync synchronizes all pages intersecting the region through [msync(2)].
+// SyncWait returns after the filesystem completes data synchronization for a
+// shared file mapping. Private changes stay private, and anonymous mappings
+// have no persistent backing. Sync can block. For a defined set of writes,
+// coordinate writers through its return. Views retain their lifetime and
+// permissions. File or directory changes outside the mapped data and crash
+// consistency of a series of updates require separate coordination.
+//
+// Owner-state errors take precedence over options validation. Unknown or
+// combined modes and unknown flags match os.ErrInvalid. Kernel errors preserve
+// errno and may follow partial writeback. The mapping remains owned after an error.
+//
+// [msync(2)]: https://man7.org/linux/man-pages/man2/msync.2.html
+func (r *Region) Sync(options SyncOptions) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	if err := r.stateError(); err != nil {
+		return &os.PathError{Op: "msync", Path: "mmap", Err: err}
+	}
+
+	var flags int
+	switch options.Mode {
+	case 0, SyncWait:
+		flags = unix.MS_SYNC
+	case SyncAsync:
+		flags = unix.MS_ASYNC
+	default:
+		return &os.PathError{Op: "msync", Path: "mmap", Err: os.ErrInvalid}
+	}
+	if options.Flags & ^SyncInvalidate != 0 {
+		return &os.PathError{Op: "msync", Path: "mmap", Err: os.ErrInvalid}
+	}
+	if err := unix.Msync(r.data, flags|int(options.Flags)); err != nil {
+		return &os.PathError{Op: "msync", Path: "mmap", Err: err}
+	}
+
+	return nil
+}
+
 // Close unmaps the complete original region using [munmap(2)], invalidating all
 // escaped views. Callers must stop all view access before calling it. On error
 // the owner retains its mapping so the error can be addressed and Close retried.
-// Close does not close the source file or promise durable writeback.
+// The source file has an independent lifetime. Call Sync before Close to wait
+// for shared file writeback.
 //
 // [munmap(2)]: https://man7.org/linux/man-pages/man2/mmap.2.html
 func (r *Region) Close() error {

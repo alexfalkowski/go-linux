@@ -71,7 +71,7 @@ func DelegatedCgroup(t *testing.T) *cgroup.Group {
 		t.Skip("live cgroup mutations require profile=cgroup delegation=/absolute/delegated/path")
 	}
 	if options.Delegation == "" {
-		require.False(t, options.Required, "profile=cgroup requires delegation=/absolute/delegated/path")
+		require.False(t, options.Required(), "profile=cgroup requires delegation=/absolute/delegated/path")
 		t.Skip("profile=cgroup has no explicitly delegated subtree")
 	}
 	parent, err := cgroup.Open(options.Delegation)

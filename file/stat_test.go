@@ -92,7 +92,7 @@ func TestStatAtDistinguishesLinksTargetsAndStableHandles(t *testing.T) {
 	require.True(t, target.Mode.IsRegular())
 	require.Equal(t, uint64(8), target.Size)
 
-	link, err := file.StatAt(dir, "link", file.StatOptions{Mask: file.MaskBasic, NoFollow: true, NoAutomount: true})
+	link, err := file.StatAt(dir, "link", file.StatOptions{Mask: file.MaskBasic, Flags: file.StatNoFollow | file.StatNoAutomount})
 	require.NoError(t, err)
 	require.Equal(t, os.ModeSymlink, link.Mode.Type())
 	require.Equal(t, uint64(4), link.Size)
@@ -138,6 +138,7 @@ func TestStatAtReturnsZeroMetadataAndPreservesErrors(t *testing.T) {
 		{name: "missing", path: "missing", wantErr: test.ErrNotExist},
 		{name: "embedded NUL", path: "bad\x00name", wantErr: test.ErrInvalidArgument},
 		{name: "unknown mask", path: ".", wantErr: os.ErrInvalid, options: file.StatOptions{Mask: 1 << 31}},
+		{name: "unknown flags", path: ".", wantErr: os.ErrInvalid, options: file.StatOptions{Flags: 1 << 31}},
 		{name: "unknown sync", path: ".", wantErr: os.ErrInvalid, options: file.StatOptions{Sync: 1}},
 		{name: "combined sync", path: ".", wantErr: os.ErrInvalid, options: file.StatOptions{Sync: file.SyncDont | file.SyncForce}},
 	} {
@@ -194,19 +195,19 @@ func TestStatTranslatesBlockDeviceMetadata(t *testing.T) {
 
 func TestStatReportsNoDumpChanges(t *testing.T) {
 	source := test.TempFile(t, 0)
-	test.SetNoDump(t, source, false)
+	test.SetDumpPolicy(t, source, test.IncludeInDump)
 	initial, err := file.Stat(source, file.MaskBasic)
 	require.NoError(t, err)
 	require.NotZero(t, initial.AttributesMask&file.NoDump, "the fixture filesystem must report NoDump support")
 	require.Zero(t, initial.Attributes&file.NoDump)
 
-	test.SetNoDump(t, source, true)
+	test.SetDumpPolicy(t, source, test.ExcludeFromDump)
 	set, err := file.Stat(source, file.MaskBasic)
 	require.NoError(t, err)
 	require.NotZero(t, set.AttributesMask&file.NoDump)
 	require.NotZero(t, set.Attributes&file.NoDump)
 
-	test.SetNoDump(t, source, false)
+	test.SetDumpPolicy(t, source, test.IncludeInDump)
 	cleared, err := file.Stat(source, file.MaskBasic)
 	require.NoError(t, err)
 	require.NotZero(t, cleared.AttributesMask&file.NoDump)

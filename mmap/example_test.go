@@ -56,3 +56,34 @@ func ExampleMap() {
 
 	// Output: world
 }
+
+func ExampleRegion_Sync() {
+	file, err := os.CreateTemp("", "mmap-index-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.Remove(file.Name())
+	defer file.Close()
+
+	if err := file.Truncate(8); err != nil {
+		panic(err)
+	}
+	region, err := mmap.Map(file, 0, 8, mmap.Options{Mode: mmap.Shared, Protection: mmap.Read | mmap.Write})
+	if err != nil {
+		panic(err)
+	}
+	defer region.Close()
+
+	copy(region.Bytes(), "index-v1")
+	if err := region.Sync(mmap.SyncOptions{}); err != nil {
+		panic(err)
+	}
+
+	header := make([]byte, 8)
+	if _, err := file.ReadAt(header, 0); err != nil {
+		panic(err)
+	}
+	fmt.Println(string(header))
+
+	// Output: index-v1
+}
