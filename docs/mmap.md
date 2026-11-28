@@ -4,7 +4,7 @@ Import `github.com/alexfalkowski/go-linux/mmap` for anonymous or file-backed map
 
 ## Good for
 
-Good for accessing file contents as memory or sharing updates through mapped regions. [SQLite optionally uses memory-mapped I/O for database reads](https://sqlite.org/mmap.html), showing where mapped access can avoid a separate read buffer.
+Use mapped regions to read file contents, share updates, or grow an in-memory index as entries arrive. [SQLite optionally uses memory-mapped I/O for database reads](https://sqlite.org/mmap.html), showing where mapped access can avoid a separate read buffer.
 
 ## Create and use a region
 
@@ -27,7 +27,7 @@ _ = message
 
 The caller owns `Region` and must close it. Zero options mean `Private` and `NoAccess`: set protection explicitly before reading/writing. `Protect` accepts `NoAccess`, `Read`, `Write`, or `Read|Write` for the whole region. Requested permissions can be broadened by architecture/process settings; this API is not a sandbox. It does not offer executable mappings.
 
-`Bytes` borrows memory with exactly the requested length and capacity; ordinary Go bounds checks apply. It performs no permission check. All slices, subslices, and pointers derived from it are valid only while the region remains mapped with the necessary protection. Stop every access before `Close`, protection changes, or content-changing advice. Access after unmapping can fault or silently corrupt another mapping. Retaining a slice or Region does not preserve its mapping after explicit Close. Copy bytes into ordinary Go storage when they must outlive the region.
+`Bytes` borrows memory with exactly the requested length and capacity; ordinary Go bounds checks apply. It performs no permission check. All slices, subslices, and pointers derived from it are valid only while the region remains mapped with the necessary protection. Stop every access before `Resize`, `Close`, protection changes, or advice that changes contents or access. Access after unmapping can fault or silently corrupt another mapping. Retaining a slice or Region cannot pin the mapping. Copy bytes into ordinary Go storage when they must outlive the region.
 
 ## Map a file
 
@@ -36,6 +36,16 @@ The caller owns `Region` and must close it. Zero options mean `Private` and `NoA
 Select `mmap.Shared` to make changes visible to other shared mappings and ordinary file I/O. The source must be readable. Shared writable mappings also require a writable source. `mmap.Private` (the default) permits private copy-on-write modifications without changing the file, even with a read-only source. Later file modifications have unspecified visibility in private mappings. Use explicit synchronization when mapped writes need to reach storage.
 
 Arrange adequate file contents and coordinate truncation with every mapping user. Mapping does not extend or freeze the file; accessing whole pages beyond EOF can cause fatal SIGBUS, including when another owner truncates a mapped file. There is no race-free automatic file-size check.
+
+## Resize a region
+
+Pause all readers and writers before calling `region.Resize(newLength)`. Linux may relocate the mapping. On every successful call, discard all old slices, subslices, and pointers and obtain a fresh view from `region.Bytes()`. On failure the original mapping and its views remain usable with their existing permissions. If the OS limits a locked mapping's growth, the error preserves Linux's `EAGAIN`. [Executable resize example](../mmap/example_test.go). [mremap(2)](https://man7.org/linux/man-pages/man2/mremap.2.html).
+
+The new view has exactly the requested length and capacity. The retained prefix keeps its contents and protection. Linux operates on whole pages, so shrinking within a page leaves the underlying bytes available to a later grow, and newly exposed bytes within an already mapped page may contain earlier data. Close releases the current mapping. Growth requires one eligible Linux virtual memory area. If prior page operations split the range or the backing cannot expand, Linux can return `EFAULT`.
+
+Shared anonymous mappings can shrink and regrow within their original page-rounded size. Regrowth can expose earlier contents from the same backing object. Larger lengths match `os.ErrInvalid`. To grow shared storage beyond that size, use a file-backed mapping, such as `memfd.File.Map`, and extend the backing file.
+
+Resize leaves the backing file's length unchanged. Grow the file far enough to cover the mapping offset and new length before accessing the added range. When reducing both sizes, end access and shrink the mapping before truncating the file. Coordinate that sequence with other users of the file.
 
 ## Synchronize a region
 
@@ -55,7 +65,21 @@ Call `region.Residency()` to inspect the status Linux reports without accessing 
 
 ## Advice, errors, and concurrency
 
-`region.Advise` accepts one of `Normal`, `Random`, `Sequential`, `WillNeed`, or `DontNeed` for the complete region. The first three describe access patterns; `WillNeed` suggests bringing pages into memory without guaranteeing residency. `DontNeed` discards private anonymous contents to zero and private file copies back to file contents. Shared mappings repopulate from their backing object; this does not erase shared contents, truncate a file, or promise durable writeback. Coordinate advice that changes contents with all users. System calls and later page faults can block; there are no deadlines or contexts.
+Select one typed `Advice` in `region.Advise`. Linux applies it to every page intersecting the complete region, including the partial last page. Coordinate contents and access changes with all view users. Advice can block and may apply to part of the region before returning an error. [madvise(2)](https://man7.org/linux/man-pages/man2/madvise.2.html).
+
+| Advice | Effect and prerequisites |
+| --- | --- |
+| `Normal`, `Random`, `Sequential`, `WillNeed` | Set the access pattern or request read-ahead. Residency can change independently. |
+| `DontNeed`, `DontNeedLocked` | Discard private anonymous data or private file changes. File-backed and shared regions repopulate from their backing object. Choose `DontNeedLocked` to permit discarding pages even in locked regions while keeping the lock policy. |
+| `Free` | Makes unlocked private anonymous pages eligible for lazy discard. |
+| `Remove` | Punches a hole in the backing store of an unlocked shared mapping. Linux must permit changing the backing object, and its filesystem must support hole punching. A mapping from a writable file can punch holes even with `mmap.Read` protection. Other users see the holes, and the backing object's size stays the same. |
+| `DontFork`, `DoFork`, `WipeOnFork`, `KeepOnFork` | Exclude the mapping from fork inheritance or restore eligibility. Wipe-on-fork gives a child zero-filled pages and requires private anonymous memory. Keep-on-fork clears that setting. |
+| `DontDump`, `DoDump` | Omit the region from core dumps or return it to normal system dump policy. |
+| `Mergeable`, `Unmergeable` | Opt eligible private anonymous pages into or out of kernel same-page merging. Availability and merging depend on kernel configuration, page eligibility, and system policy. |
+| `HugePage`, `NoHugePage`, `Collapse` | Set transparent huge-page eligibility or request synchronous best-effort collapse of eligible huge-page-aligned ranges. Availability and allocation depend on the kernel and backing memory. |
+| `Cold`, `PageOut` | Deprioritize eligible unlocked pages or ask Linux to reclaim them. Success carries no eviction, writeback, or residency guarantee. |
+| `PopulateRead`, `PopulateWrite` | Prefault with the requested permission. Write population can break copy-on-write. Errors can expose backing or permission problems during the call, and residency can change afterward. |
+| `GuardInstall`, `GuardRemove` | Install access-faulting guards on unlocked pages or remove them. Installing guards discards private contents. Removing them restores access according to the mapping's protection and backing. |
 
 Methods serialize their own operations, including concurrent Close, but cannot protect escaped slices. Callers must synchronize shared-memory accesses themselves and ensure all views stop being used before lifecycle changes. Sequences of method calls are not transactions.
 
@@ -65,8 +89,6 @@ A zero Region returns nil from Bytes and `os.ErrInvalid` from other methods. Aft
 
 ## Coverage boundary
 
-Only `Private`/`Shared`, the listed protection bits, sync and lock modes, and the five listed advice values are accepted. There is no mremap operation. [Linux 7.0 memory controls](https://github.com/torvalds/linux/blob/v7.0/include/uapi/asm-generic/mman-common.h) also include lazy-free/removal, fork/dump behavior, merge/huge-page advice, cold/pageout, population, locked-page discard, and guard operations; none is accepted by `Advise` today. Advice must not be supplied by casting additional Linux values into this package's enum.
+The mapping owner supports `Private` and `Shared` and a single contiguous region. Fixed-address replacement and alias-producing remaps require control of other virtual ranges or a separate owner. Explicit huge-page mappings, executable/protection-key mappings, MAP_SYNC, and process-wide locking are outside the API. Hardware-poison/offline advice affects memory beyond this owner's lifetime. Remote-process advice requires a different process and access contract. Advice values outside the supported set match `os.ErrInvalid`. [Linux 7.0 memory controls](https://github.com/torvalds/linux/blob/v7.0/include/uapi/asm-generic/mman-common.h).
 
-Executable/protection-key mappings, fixed addresses, huge-page selection, MAP_SYNC, process-wide locking, and remote-process memory advice are outside the current surface. Fixed-address/alias mappings need ownership beyond this single-region owner, and hardware-poison/offline operations can affect the host beyond a region. No current method provides those contracts. Ordinary Go allocation and synchronization remain with the runtime and standard library.
-
-Run `package=mmap make specs` for ordinary-user integration coverage, including bounded subprocess protection/lifetime faults. The package has no privileged profile. See the [verification guide](verification.md) for runner requirements, report locations, and verified environments.
+Run `make specs package=mmap profile=rootless required=true` for ordinary-user integration coverage, including bounded subprocess faults and remapping. See the [verification guide](verification.md) for runner requirements and reports.
