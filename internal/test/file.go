@@ -5,7 +5,10 @@ package test
 import (
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/alexfalkowski/go-linux/internal/testenv"
 	"github.com/stretchr/testify/require"
@@ -17,6 +20,43 @@ const ReservedAllocationMode = unix.FALLOC_FL_NO_HIDE_STALE
 
 // ExtendedStatxMask requests all statx direct-I/O, subvolume, and atomic-write fields.
 const ExtendedStatxMask = unix.STATX_DIOALIGN | unix.STATX_DIO_READ_ALIGN | unix.STATX_SUBVOL | unix.STATX_WRITE_ATOMIC
+
+// DataSyncFlag is the native data-integrity synchronization status flag.
+const DataSyncFlag = unix.O_DSYNC
+
+// SyncFlag is the native file-integrity synchronization status flag.
+const SyncFlag = unix.O_SYNC
+
+// FileCreationMask observes the process umask without modifying it.
+func FileCreationMask(t *testing.T) os.FileMode {
+	t.Helper()
+	status, err := os.ReadFile("/proc/self/status")
+	require.NoError(t, err)
+	_, field, found := strings.Cut(string(status), "\nUmask:\t")
+	require.True(t, found, "procfs reports the process umask")
+	value, _, _ := strings.Cut(field, "\n")
+	mask, err := strconv.ParseUint(value, 8, 32)
+	require.NoError(t, err)
+	return os.FileMode(mask)
+}
+
+// AlignedBuffer allocates size bytes with the given address alignment.
+func AlignedBuffer(t *testing.T, size, alignment uint32) []byte {
+	t.Helper()
+	require.Positive(t, alignment, "buffer alignment in bytes")
+	buffer := make([]byte, int(size)+int(alignment)-1)
+	remainder := uintptr(unsafe.Pointer(&buffer[0])) % uintptr(alignment)
+	start := int((uintptr(alignment) - remainder) % uintptr(alignment))
+	return buffer[start : start+int(size)]
+}
+
+// PathDeviceNumbers independently observes the represented device of an inode.
+func PathDeviceNumbers(t *testing.T, path string) (uint32, uint32) {
+	t.Helper()
+	var stat unix.Stat_t
+	require.NoError(t, unix.Lstat(path, &stat))
+	return unix.Major(stat.Rdev), unix.Minor(stat.Rdev)
+}
 
 // ShmemFile creates an ordinary writable memfd for testing shmem behavior.
 func ShmemFile(t *testing.T) *os.File {

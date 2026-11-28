@@ -56,6 +56,76 @@ func ExampleOpen() {
 	// Output: hello 5
 }
 
+func ExampleLink() {
+	path, err := os.MkdirTemp("", "publish-example-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(path)
+
+	dir, err := os.Open(path)
+	if err != nil {
+		panic(err)
+	}
+	defer dir.Close()
+
+	draft, err := file.Open(dir, ".", file.OpenOptions{
+		Flags:   file.TempFile | file.WriteOnly,
+		Perm:    0o600,
+		Resolve: file.Beneath,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer draft.Close()
+
+	if _, err := draft.WriteString("ready"); err != nil {
+		panic(err)
+	}
+	if err := file.Link(draft, dir, "manifest"); err != nil {
+		panic(err)
+	}
+
+	manifest, err := os.ReadFile(filepath.Join(path, "manifest"))
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(string(manifest))
+
+	// Output: ready
+}
+
+func ExampleOpen_dataSync() {
+	path, err := os.MkdirTemp("", "journal-example-")
+	if err != nil {
+		panic(err)
+	}
+	defer os.RemoveAll(path)
+
+	dir, err := os.Open(path)
+	if err != nil {
+		panic(err)
+	}
+	defer dir.Close()
+
+	journal, err := file.Open(dir, "journal", file.OpenOptions{
+		Flags: file.WriteOnly | file.Create | file.Append | file.DataSync,
+		Perm:  0o600,
+	})
+	if err != nil {
+		panic(err)
+	}
+	defer journal.Close()
+
+	n, err := journal.WriteString("commit\n")
+	if err != nil {
+		panic(err)
+	}
+	fmt.Printf("wrote %d bytes\n", n)
+
+	// Output: wrote 7 bytes
+}
+
 func ExampleStat() {
 	status, err := os.Open("/proc/self/status")
 	if err != nil {

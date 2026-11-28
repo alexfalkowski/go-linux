@@ -105,6 +105,7 @@ func TestRenamePreservesBothNamesAndErrno(t *testing.T) {
 		{name: "embedded NUL", old: "bad\x00name", wantErr: test.ErrInvalidArgument},
 		{name: "unknown mode", old: "source", mode: 1 << 31, wantErr: os.ErrInvalid},
 		{name: "incompatible modes", old: "source", mode: file.NoReplace | file.Exchange, wantErr: os.ErrInvalid},
+		{name: "whiteout with exchange", old: "source", mode: file.Whiteout | file.Exchange, wantErr: os.ErrInvalid},
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			err := file.Rename(dir, scenario.old, dir, "destination", scenario.mode)

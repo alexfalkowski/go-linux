@@ -1,8 +1,8 @@
 # Linux APIs for Go: implementation sequence
 
-Next: **E07 — Extend Linux-specific open and rename controls**.
+Next: **E08 — Add mapped-file synchronization**.
 
-Resume note: E06 passed the required rootless file suite on native amd64 Linux 7.3 and the required mount suite in an emulated amd64 Linux 7.0 guest. Confirm the final E06 revision's required CircleCI jobs, including rootless metadata, positive XFS and Btrfs metadata on native Linux 7.0 amd64 and arm64, and merged coverage, before starting E07.
+Resume note: E07 passed the required rootless file suite on native amd64 Linux 7.3 and the required mount suite in an emulated amd64 Linux 7.0 guest. Before starting E08, confirm the final E07 revision's required CircleCI jobs, including temporary-file publication and synchronous opening in the rootless suite, aligned direct I/O and whiteout identity on isolated XFS, and merged coverage from native Linux 7.0 amd64 and arm64.
 
 ## Objective and scope
 
@@ -35,7 +35,6 @@ These scenarios set the scope; they do not require this module to implement an e
 
 | Items | Application or container outcome and home | Required verification route |
 | --- | --- | --- |
-| E07 | Extend `file` for temporary/direct-I/O files and rename whiteouts. | Rootless file suite and isolated filesystem fixtures for filesystem-specific operations. |
 | E08–E10 | Extend `mmap` for synchronized mapped indexes, locked buffers, residency, resizing, and advice. | Rootless mmap suite with bounded fault/limit children; filesystem fixtures where required. |
 | E11–E13 | Extend `mount` for discovery, configuration forms, propagation/ID mapping, and private root activation. | Existing isolated mount/native lane, including actual UID/GID translation and root switch. |
 | E14 | Extend `pidfd` to recover a supervised child's open file. | Rootless child suite where permitted; extend namespace isolation when ptrace/LSM policy requires it. |
@@ -128,12 +127,6 @@ New required native jobs must retain environment JSON, test events, JUnit, and r
 ## Remaining work
 
 ### Existing file and memory facilities
-
-#### E07 — Extend Linux-specific open and rename controls
-
-- **Implement:** Extend `file` for `O_TMPFILE`, direct-I/O opening, explicit `O_SYNC`/`O_DSYNC` opening, and rename whiteouts where the baseline/filesystem supports them. Add the concrete operation needed to link an unnamed temporary inode into a directory; retain the standard-library boundary for ordinary path operations.
-- **Contracts:** Preserve permission/umask behavior, unnamed-inode ownership, direct-I/O alignment requirements, atomic rename modes, and whiteout privilege/filesystem restrictions. Keep current zero options and path-resolution guarantees unchanged. Do not expose descriptor plumbing to complete the workflow.
-- **Evidence:** Demonstrate temporary creation/write/link/cleanup, permitted aligned direct I/O, invalid alignment behavior, and whiteout identity through isolated filesystem/namespace fixtures. A normal rename is not positive whiteout evidence.
 
 #### E08 — Add mapped-file synchronization
 

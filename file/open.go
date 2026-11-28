@@ -27,7 +27,8 @@ const Append OpenFlags = unix.O_APPEND
 // Create creates the file if absent (O_CREAT); Perm controls its initial mode.
 const Create OpenFlags = unix.O_CREAT
 
-// Exclusive with Create requires a new file (O_EXCL).
+// Exclusive with Create requires a new file (O_EXCL). With TempFile, it
+// prevents the unnamed inode from being linked into the filesystem.
 const Exclusive OpenFlags = unix.O_EXCL
 
 // Truncate truncates an existing writable file (O_TRUNC).
@@ -35,6 +36,25 @@ const Truncate OpenFlags = unix.O_TRUNC
 
 // Directory requires the opened object to be a directory (O_DIRECTORY).
 const Directory OpenFlags = unix.O_DIRECTORY
+
+// TempFile creates an unnamed regular file in the directory named by Open
+// (O_TMPFILE). It requires WriteOnly or ReadWrite and uses OpenOptions.Perm.
+// It includes Directory and cannot be used with Create.
+// An unpublished inode is reclaimed when its last open reference is closed.
+const TempFile OpenFlags = unix.O_TMPFILE
+
+// Direct requests direct I/O (O_DIRECT). Filesystem support and buffer, offset,
+// and length alignment vary. Use Stat to query reported alignment.
+const Direct OpenFlags = unix.O_DIRECT
+
+// DataSync makes writes wait for data and the metadata needed to retrieve it
+// to reach storage (O_DSYNC).
+const DataSync OpenFlags = unix.O_DSYNC
+
+// Sync makes writes wait for data and associated file metadata to reach storage
+// (O_SYNC). It includes DataSync. Directory entries have their own lifetime
+// and synchronization requirements.
+const Sync OpenFlags = unix.O_SYNC
 
 // NoFollow rejects a final symlink, except that Path|NoFollow opens the link
 // itself (O_NOFOLLOW). It does not restrict intermediate symlinks.
@@ -80,8 +100,8 @@ type OpenOptions struct {
 	// Flags selects access and creation behavior. Close-on-exec is unconditional.
 	Flags OpenFlags
 
-	// Perm supplies Go permission, setuid, setgid, and sticky bits for Create,
-	// before umask and filesystem policy. It must be zero without Create.
+	// Perm supplies Go permission, setuid, setgid, and sticky bits for Create
+	// or TempFile, before umask and filesystem policy. It is zero otherwise.
 	Perm os.FileMode
 
 	// Resolve restricts this lookup; zero does not provide confinement.
@@ -129,25 +149,32 @@ func Open(dir *os.File, name string, options OpenOptions) (*os.File, error) {
 
 func openMode(options OpenOptions) (uint64, error) {
 	const (
-		flags       = WriteOnly | ReadWrite | Append | Create | Exclusive | Truncate | Directory | NoFollow | Path
 		resolve     = NoXDev | NoMagicLinks | NoSymlinks | Beneath | InRoot | Cached
 		permissions = os.ModePerm | os.ModeSetuid | os.ModeSetgid | os.ModeSticky
 	)
 
-	unknownFlags := options.Flags & ^flags != 0
-	invalidAccess := options.Flags&(WriteOnly|ReadWrite) == WriteOnly|ReadWrite
-	invalidPathFlags := options.Flags&Path != 0 && options.Flags & ^(Path|Directory|NoFollow) != 0
 	unknownResolve := options.Resolve & ^resolve != 0
 	conflictingResolve := options.Resolve&(Beneath|InRoot) == Beneath|InRoot
 	unknownPermissions := options.Perm & ^permissions != 0
-	permissionsWithoutCreate := options.Flags&Create == 0 && options.Perm != 0
-	if unknownFlags || invalidAccess || invalidPathFlags ||
-		unknownResolve || conflictingResolve ||
-		unknownPermissions || permissionsWithoutCreate {
+	createsFile := options.Flags&Create != 0 || options.Flags&TempFile == TempFile
+	permissionsWithoutCreate := !createsFile && options.Perm != 0
+	if invalidOpenFlags(options.Flags) || unknownResolve || conflictingResolve || unknownPermissions || permissionsWithoutCreate {
 		return 0, os.ErrInvalid
 	}
 
 	return linuxMode(options.Perm), nil
+}
+
+func invalidOpenFlags(flags OpenFlags) bool {
+	const supported = WriteOnly | ReadWrite | Append | Create | Exclusive | Truncate | Directory | NoFollow | Path | TempFile | Direct | Sync
+
+	// O_TMPFILE includes O_DIRECTORY, and O_SYNC includes O_DSYNC.
+	incompleteTempFile := flags&(TempFile&^Directory) != 0 && flags&Directory == 0
+	incompleteSync := flags&(Sync&^DataSync) != 0 && flags&DataSync == 0
+	unknownFlags := flags & ^supported != 0
+	invalidAccess := flags&(WriteOnly|ReadWrite) == WriteOnly|ReadWrite
+	invalidPathFlags := flags&Path != 0 && flags & ^(Path|Directory|NoFollow) != 0
+	return unknownFlags || incompleteTempFile || incompleteSync || invalidAccess || invalidPathFlags
 }
 
 func linuxMode(perm os.FileMode) uint64 {
